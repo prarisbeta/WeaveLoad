@@ -11,13 +11,15 @@ import (
 )
 
 type fakeUserAdmin struct {
-	users    []store.User
-	listErr  error
-	roleErr  error
-	enErr    error
-	lastRole store.Role
-	lastID   int64
-	lastEn   *bool
+	users     []store.User
+	listErr   error
+	roleErr   error
+	enErr     error
+	createErr error
+	lastRole  store.Role
+	lastID    int64
+	lastEn    *bool
+	created   *store.User // last CreateUser call's (email, name, role), for assertions
 }
 
 func (f *fakeUserAdmin) ListUsers() ([]store.User, error) { return f.users, f.listErr }
@@ -28,6 +30,15 @@ func (f *fakeUserAdmin) SetRole(id int64, role store.Role) error {
 func (f *fakeUserAdmin) SetEnabled(id int64, enabled bool) error {
 	f.lastID, f.lastEn = id, &enabled
 	return f.enErr
+}
+func (f *fakeUserAdmin) CreateUser(email, name string, role store.Role) (store.User, error) {
+	if f.createErr != nil {
+		return store.User{}, f.createErr
+	}
+	u := store.User{ID: 99, Email: email, Name: name, Role: role, Enabled: true}
+	f.created = &u
+	f.users = append(f.users, u)
+	return u, nil
 }
 
 func usersTemplates(t *testing.T) *template.Template {
@@ -136,6 +147,84 @@ func TestUserUpdateHandler_UnknownAction_400(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestUserCreateHandler_PreRegistersAccount(t *testing.T) {
+	ua := &fakeUserAdmin{}
+	au := &fakeAudit{}
+	h := &UserCreateHandler{Store: ua, Audit: au, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/create", strings.NewReader("email=Baru@Example.id&name=Baru&role=operator"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if ua.created == nil || ua.created.Email != "Baru@Example.id" || ua.created.Role != store.RoleOperator {
+		t.Errorf("CreateUser called with = %+v", ua.created)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "user.create" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+	if !strings.Contains(rec.Body.String(), "Baru@Example.id:operator") {
+		t.Errorf("expected the new user in the re-rendered list, got %q", rec.Body.String())
+	}
+}
+
+func TestUserCreateHandler_RejectsInvalidEmail(t *testing.T) {
+	ua := &fakeUserAdmin{}
+	h := &UserCreateHandler{Store: ua, Audit: &fakeAudit{}, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/create", strings.NewReader("email=not-an-email&role=viewer"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if ua.created != nil {
+		t.Error("CreateUser should never have been called for an invalid email")
+	}
+}
+
+func TestUserCreateHandler_RejectsUnknownRole(t *testing.T) {
+	ua := &fakeUserAdmin{}
+	h := &UserCreateHandler{Store: ua, Audit: &fakeAudit{}, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/create", strings.NewReader("email=x@example.id&role=superuser"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	if ua.created != nil {
+		t.Error("CreateUser should never have been called for an invalid role")
+	}
+}
+
+func TestUserCreateHandler_DuplicateEmail_409(t *testing.T) {
+	ua := &fakeUserAdmin{createErr: store.ErrEmailTaken}
+	au := &fakeAudit{}
+	h := &UserCreateHandler{Store: ua, Audit: au, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/create", strings.NewReader("email=dup@example.id&role=viewer"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("status = %d, want 409", rec.Code)
+	}
+	if len(au.entries) != 1 {
+		t.Errorf("a failed create should still be audit-logged, got %+v", au.entries)
 	}
 }
 

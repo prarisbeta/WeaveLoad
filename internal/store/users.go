@@ -70,6 +70,44 @@ func (s *Store) UpsertSSOUser(email, name, subject string) (User, error) {
 	return User{ID: id, Email: email, Name: name, Role: RoleViewer, SSOSubject: subject, Enabled: true}, nil
 }
 
+// ErrEmailTaken is returned by CreateUser when the email is already
+// registered (whether from a prior SSO login or a prior CreateUser call).
+var ErrEmailTaken = errors.New("email already registered")
+
+// CreateUser pre-registers an account with a chosen role, before that
+// person has ever logged in — so an admin can grant Operator/Admin access
+// up front instead of waiting for a first SSO login to land them as Viewer
+// and promoting them after the fact. sso_subject is left empty; the first
+// real SSO login fills it in via UpsertSSOUser, which matches by email and
+// never resets a role that's already set.
+func (s *Store) CreateUser(email, name string, role Role) (User, error) {
+	email = normalizeEmail(email)
+	if email == "" {
+		return User{}, fmt.Errorf("email is required")
+	}
+	switch role {
+	case RoleViewer, RoleOperator, RoleAdmin:
+	default:
+		return User{}, fmt.Errorf("invalid role: %q", role)
+	}
+
+	if _, err := s.UserByEmail(email); err == nil {
+		return User{}, ErrEmailTaken
+	} else if !errors.Is(err, ErrNotFound) {
+		return User{}, err
+	}
+
+	res, err := s.db.Exec(
+		`INSERT INTO users (email, name, role, enabled) VALUES (?, ?, ?, 1)`,
+		email, name, role,
+	)
+	if err != nil {
+		return User{}, fmt.Errorf("insert user: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return User{ID: id, Email: email, Name: name, Role: role, Enabled: true}, nil
+}
+
 // UserByEmail looks up a user, returning ErrNotFound if none exists.
 func (s *Store) UserByEmail(email string) (User, error) {
 	row := s.db.QueryRow(

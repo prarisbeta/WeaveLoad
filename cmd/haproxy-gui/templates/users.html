@@ -3,6 +3,31 @@
 {{define "users_content"}}
 <h1>Pengguna</h1>
 <p class="hint">Semua orang masuk lewat akun SSO kantor. Saat login pertama kali, akun otomatis dibuat sebagai "Pengamat" (hanya bisa melihat) — naikkan perannya di sini agar bisa mengoperasikan atau mengelola sistem.</p>
+
+<div class="panel">
+  <h3>Tambah pengguna dari SSO OMS CNI</h3>
+  <p class="hint">Daftarkan email akun SSO kantornya lebih dulu dan tentukan perannya sekarang — orang tersebut tidak perlu login dulu. Begitu dia login dengan SSO, akun ini otomatis tersambung dan perannya tetap seperti yang dipilih di sini.</p>
+  <form hx-post="/api/users/create" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="new-email">Email SSO</label>
+      <input type="text" id="new-email" name="email" placeholder="nama@cni.net.id" required>
+    </div>
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="new-name">Nama (opsional)</label>
+      <input type="text" id="new-name" name="name" placeholder="Nama tampilan">
+    </div>
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="new-role">Peran</label>
+      <select id="new-role" name="role" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
+        <option value="viewer">Pengamat</option>
+        <option value="operator">Operator</option>
+        <option value="admin">Administrator</option>
+      </select>
+    </div>
+    <button type="submit" class="primary">Tambah pengguna</button>
+  </form>
+</div>
+
 <div id="users-panel">
 {{template "users_table.html" .}}
 </div>

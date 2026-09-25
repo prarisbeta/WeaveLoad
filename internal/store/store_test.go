@@ -175,6 +175,62 @@ func TestListAudit_NewestFirstAndFiltered(t *testing.T) {
 	}
 }
 
+func TestCreateUser_PreRegistersWithChosenRole(t *testing.T) {
+	s := newTestDB(t)
+	u, err := s.CreateUser("Baru@Example.com", "Baru", RoleOperator)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if u.Email != "baru@example.com" {
+		t.Errorf("email = %q, want lowercased", u.Email)
+	}
+	if u.Role != RoleOperator {
+		t.Errorf("role = %q, want operator", u.Role)
+	}
+	if !u.Enabled {
+		t.Error("pre-registered user should be enabled by default")
+	}
+}
+
+func TestCreateUser_RejectsDuplicateEmail(t *testing.T) {
+	s := newTestDB(t)
+	if _, err := s.CreateUser("dup@example.com", "A", RoleViewer); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateUser("Dup@Example.com", "B", RoleAdmin); err != ErrEmailTaken {
+		t.Errorf("err = %v, want ErrEmailTaken", err)
+	}
+}
+
+func TestCreateUser_RejectsUnknownRole(t *testing.T) {
+	s := newTestDB(t)
+	if _, err := s.CreateUser("x@example.com", "X", "superuser"); err == nil {
+		t.Error("expected error for invalid role")
+	}
+}
+
+func TestCreateUser_FirstSSOLoginKeepsPreAssignedRole(t *testing.T) {
+	s := newTestDB(t)
+	pre, err := s.CreateUser("future-admin@example.com", "Future Admin", RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	loggedIn, err := s.UpsertSSOUser("future-admin@example.com", "Future Admin", "sub-xyz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loggedIn.ID != pre.ID {
+		t.Errorf("SSO login should match the pre-registered row, got a different ID")
+	}
+	if loggedIn.Role != RoleAdmin {
+		t.Errorf("role after first login = %q, want admin (pre-assigned role must survive)", loggedIn.Role)
+	}
+	if loggedIn.SSOSubject != "sub-xyz" {
+		t.Errorf("sso_subject = %q, want it filled in by the first real login", loggedIn.SSOSubject)
+	}
+}
+
 func TestSetRole_RejectsUnknownRole(t *testing.T) {
 	s := newTestDB(t)
 	u, _ := s.UpsertSSOUser("user@example.com", "User", "sub")

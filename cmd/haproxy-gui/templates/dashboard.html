@@ -51,6 +51,17 @@
 
 {{if not .Snapshot.Backends}}
 <div class="panel"><div class="empty-state"><h3>Belum ada kelompok server</h3><p>Belum ada backend yang terdaftar untuk menerima trafik.</p></div></div>
+{{else}}
+<div class="panel">
+  <h3>Koneksi keseluruhan per kelompok</h3>
+  <p class="hint">Perbandingan jumlah koneksi aktif antar kelompok server saat ini — batang terpanjang adalah kelompok tersibuk.</p>
+  {{range .Snapshot.ConnectionsByBackend}}
+  <div class="chart-row">
+    <div class="chart-label"><span>{{.Name}}</span><span class="muted">{{.Sessions}}</span></div>
+    <div class="chart-track"><div class="chart-fill" style="width:{{.Percent}}%"></div></div>
+  </div>
+  {{end}}
+</div>
 {{end}}
 
 {{$canOperate := .CanOperate}}
@@ -91,6 +102,17 @@
     {{end}}
   </table>
   </div>
+  {{if gt (len .Servers) 1}}
+  <div style="margin-top:14px">
+    <p class="hint" style="margin-bottom:8px">Distribusi koneksi antar server di kelompok ini.</p>
+    {{range .ConnectionsByServer}}
+    <div class="chart-row">
+      <div class="chart-label"><span>{{.Name}}</span><span class="muted">{{.Sessions}}</span></div>
+      <div class="chart-track"><div class="chart-fill" style="width:{{.Percent}}%"></div></div>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
 </div>
 {{end}}
 {{end}}

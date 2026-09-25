@@ -97,6 +97,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	usersHandler := &web.UsersHandler{Store: d.store, Audit: d.store, Templates: d.templates}
 	mux.Handle("GET /users", chain(usersHandler, requireAuth, requireAdmin))
 	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 
 	return securityHeaders(mux)
 }

@@ -127,3 +127,64 @@ https_ixcni,BACKEND,UP,,,,0
 		t.Error("expected Healthy() false when a server is down")
 	}
 }
+
+func TestConnectionsByBackend_ScalesToBusiestBackend(t *testing.T) {
+	body := `# pxname,svname,status,weight,check_status,last_chk,scur
+quiet,node1,UP,1,L7OK,,10
+quiet,BACKEND,UP,,,,10
+busy,node1,UP,1,L7OK,,30
+busy,node2,UP,1,L7OK,,10
+busy,BACKEND,UP,,,,40
+`
+	snap, err := Parse(body)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	bars := snap.ConnectionsByBackend()
+	if len(bars) != 2 {
+		t.Fatalf("bars = %d, want 2", len(bars))
+	}
+	byName := map[string]ChartBar{}
+	for _, b := range bars {
+		byName[b.Name] = b
+	}
+	if byName["busy"].Sessions != 40 || byName["busy"].Percent != 100 {
+		t.Errorf("busy backend = %+v, want sessions=40 percent=100", byName["busy"])
+	}
+	if byName["quiet"].Sessions != 10 || byName["quiet"].Percent != 25 {
+		t.Errorf("quiet backend = %+v, want sessions=10 percent=25", byName["quiet"])
+	}
+}
+
+func TestConnectionsByServer_ScalesWithinBackend(t *testing.T) {
+	snap, _ := Parse(`# pxname,svname,status,weight,check_status,last_chk,scur
+http_oms,node1,UP,1,L7OK,,30
+http_oms,node2,UP,1,L7OK,,15
+http_oms,BACKEND,UP,,,,45
+`)
+	b, ok := snap.Backend("http_oms")
+	if !ok {
+		t.Fatal("backend not found")
+	}
+	bars := b.ConnectionsByServer()
+	if len(bars) != 2 {
+		t.Fatalf("bars = %d, want 2", len(bars))
+	}
+	if bars[0].Sessions != 30 || bars[0].Percent != 100 {
+		t.Errorf("node1 = %+v, want sessions=30 percent=100", bars[0])
+	}
+	if bars[1].Sessions != 15 || bars[1].Percent != 50 {
+		t.Errorf("node2 = %+v, want sessions=15 percent=50", bars[1])
+	}
+}
+
+func TestConnectionsByBackend_NoSessionsIsZeroPercentNotDivideByZero(t *testing.T) {
+	snap, _ := Parse(`# pxname,svname,status,weight,check_status,last_chk,scur
+http_oms,node1,UP,1,L7OK,,0
+http_oms,BACKEND,UP,,,,0
+`)
+	bars := snap.ConnectionsByBackend()
+	if len(bars) != 1 || bars[0].Percent != 0 {
+		t.Errorf("bars = %+v, want one bar at 0%%", bars)
+	}
+}

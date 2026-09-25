@@ -194,6 +194,64 @@ func (s Snapshot) Summary() Summary {
 	return sum
 }
 
+// ChartBar is one bar in a connections chart: a name, its raw active-session
+// count, and how full the bar should be (0-100) relative to the largest
+// value among its siblings in the same chart.
+type ChartBar struct {
+	Name     string
+	Sessions int
+	Percent  int
+}
+
+// TotalSessions sums this backend's servers' active session counts.
+func (b Backend) TotalSessions() int {
+	total := 0
+	for _, s := range b.Servers {
+		total += s.Sessions
+	}
+	return total
+}
+
+// ConnectionsByBackend returns one bar per backend, comparing total active
+// connections across backends ("keseluruhan" — the whole-system view).
+func (s Snapshot) ConnectionsByBackend() []ChartBar {
+	bars := make([]ChartBar, len(s.Backends))
+	max := 0
+	for i, b := range s.Backends {
+		bars[i] = ChartBar{Name: b.Name, Sessions: b.TotalSessions()}
+		if bars[i].Sessions > max {
+			max = bars[i].Sessions
+		}
+	}
+	fillPercents(bars, max)
+	return bars
+}
+
+// ConnectionsByServer returns one bar per server in this backend, comparing
+// how connections are distributed within the group ("per kelompok").
+func (b Backend) ConnectionsByServer() []ChartBar {
+	bars := make([]ChartBar, len(b.Servers))
+	max := 0
+	for i, srv := range b.Servers {
+		bars[i] = ChartBar{Name: srv.Name, Sessions: srv.Sessions}
+		if bars[i].Sessions > max {
+			max = bars[i].Sessions
+		}
+	}
+	fillPercents(bars, max)
+	return bars
+}
+
+func fillPercents(bars []ChartBar, max int) {
+	for i := range bars {
+		if max <= 0 {
+			bars[i].Percent = 0
+			continue
+		}
+		bars[i].Percent = bars[i].Sessions * 100 / max
+	}
+}
+
 // Backend looks up one backend by name.
 func (s Snapshot) Backend(name string) (Backend, bool) {
 	for _, b := range s.Backends {

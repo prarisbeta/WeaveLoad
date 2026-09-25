@@ -173,6 +173,16 @@ textarea { width: 100%; min-height: 58vh; font: 13px/1.5 ui-monospace, "SFMono-R
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .field-inline { display: inline-flex; align-items: center; gap: 6px; }
 
+.chart-row { display: flex; align-items: center; gap: 12px; margin-bottom: 9px; }
+.chart-row:last-child { margin-bottom: 0; }
+.chart-label { width: 150px; flex: none; font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
+.chart-label .muted { font-variant-numeric: tabular-nums; }
+.chart-track { flex: 1; height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.chart-fill { height: 100%; background: var(--accent); border-radius: 999px; min-width: 2px; }
+@media (max-width: 520px) {
+  .chart-label { width: 96px; font-size: 12px; }
+}
+
 @media (max-width: 900px) {
   .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 40; transform: translateX(-100%); transition: transform .18s ease; box-shadow: 0 0 0 9999px transparent; }
   .topbar { display: flex; }
