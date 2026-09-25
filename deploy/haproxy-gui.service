@@ -15,11 +15,17 @@ RestartSec=2s
 # Hardening: this process only needs its own DB/staging dir, the HAProxy
 # runtime socket (via group membership on 'haproxy'), and read access to
 # /etc/haproxy for the config editor and cert listing.
+#
+# CentOS 7 ships systemd 219. ProtectSystem=strict and ReadWritePaths=/
+# ReadOnlyPaths= all need systemd 231+ and are silently ignored (with a
+# warning) on this host — using them here would just be decoration that
+# looks like protection but isn't. ProtectSystem=true (the older boolean
+# form, systemd 214+) is what 219 actually understands: read-only /usr and
+# /boot, nothing finer-grained. If this ever runs on a newer systemd, the
+# stricter directives above are worth reinstating.
 NoNewPrivileges=true
-ProtectSystem=strict
+ProtectSystem=true
 ProtectHome=true
-ReadWritePaths=/var/lib/haproxy-gui
-ReadOnlyPaths=/etc/haproxy
 PrivateTmp=true
 
 [Install]
