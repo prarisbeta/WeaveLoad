@@ -51,22 +51,27 @@
 {{if .CanAdmin}}
 <div class="panel">
   <h3>Tambah anggota</h3>
-  <p class="hint">Pengaturan SSL, SNI, dan pemeriksaan kesehatan disalin dari anggota contoh, jadi cukup isi alamat dan port. Setelah diterapkan, HAProxy dimuat ulang tanpa memutus koneksi yang sedang berjalan.</p>
+  <p class="hint">Anggota baru = satu node yang ditambahkan ke kelompok ini. Pengaturan SSL, SNI, dan pemeriksaan kesehatan disalin otomatis dari anggota contoh, jadi biasanya cukup isi nama dan alamat. Setelah diterapkan, HAProxy dimuat ulang tanpa memutus koneksi yang sedang berjalan.</p>
   <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/members/preview" hx-target="#pool-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
     <label>Nama anggota<input type="text" name="name" value="{{.Suggested}}" required maxlength="64"></label>
     <label>Alamat node (IP / host)<input type="text" name="host" value="{{.Prefill}}" list="known-hosts" required placeholder="192.168.200.120"></label>
     <label>Port<input type="text" name="port" value="{{.Pool.FirstPort}}" required size="5" inputmode="numeric"></label>
-    <label>Bobot <span class="muted">(opsional, 0-256)</span><input type="text" name="weight" size="4" inputmode="numeric"></label>
-    <label>Batas koneksi <span class="muted">(opsional)</span><input type="text" name="maxconn" size="6" inputmode="numeric"></label>
-    {{if .Pool.Members}}
-    <label>Salin pengaturan dari
-      <select name="clone_from">
-        {{range .Pool.Members}}<option value="{{.Name}}">{{.Name}} ({{.Address}})</option>{{end}}
-      </select>
-    </label>
-    {{end}}
-    <label class="check"><input type="checkbox" name="backup" value="1"> Cadangan (hanya dipakai saat anggota utama mati)</label>
-    <label class="check"><input type="checkbox" name="disabled" value="1"> Mulai dalam keadaan nonaktif</label>
+    <details class="advanced-toggle">
+      <summary>Pengaturan lanjutan (opsional)</summary>
+      <div class="member-form">
+        <label>Bobot <span class="muted">(0-256)</span><input type="text" name="weight" size="4" inputmode="numeric"></label>
+        <label>Batas koneksi<input type="text" name="maxconn" size="6" inputmode="numeric"></label>
+        {{if .Pool.Members}}
+        <label>Salin pengaturan dari
+          <select name="clone_from">
+            {{range .Pool.Members}}<option value="{{.Name}}">{{.Name}} ({{.Address}})</option>{{end}}
+          </select>
+        </label>
+        {{end}}
+        <label class="check"><input type="checkbox" name="backup" value="1"> Cadangan (hanya dipakai saat anggota utama mati)</label>
+        <label class="check"><input type="checkbox" name="disabled" value="1"> Mulai dalam keadaan nonaktif</label>
+      </div>
+    </details>
     <div><button type="submit">Pratinjau</button></div>
   </form>
   <datalist id="known-hosts">{{range .KnownHosts}}<option value="{{.}}">{{end}}</datalist>

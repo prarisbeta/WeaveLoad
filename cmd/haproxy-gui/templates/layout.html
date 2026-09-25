@@ -210,6 +210,22 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
 .member-form input[type=text], .member-form select { width: 100%; }
 .preview-box { margin-top: 16px; margin-bottom: 0; box-shadow: none; }
 
+.advanced-toggle {
+  grid-column: 1 / -1; border: 1px dashed var(--border); border-radius: var(--radius-control);
+  padding: 4px 12px; background: var(--surface-2);
+}
+.advanced-toggle > summary {
+  cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--ink-muted); padding: 8px 0; list-style: none;
+}
+.advanced-toggle > summary::-webkit-details-marker { display: none; }
+.advanced-toggle > summary::before { content: "▸ "; }
+.advanced-toggle[open] > summary::before { content: "▾ "; }
+.advanced-toggle .member-form { padding-top: 4px; padding-bottom: 10px; }
+
+.add-to-pool-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.add-to-pool-form select { min-width: 140px; }
+.add-to-pool-form button { white-space: nowrap; }
+
 .node-uses { display: flex; flex-wrap: wrap; gap: 6px; }
 .node-use { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; text-decoration: none; color: var(--ink); }
 .node-use:hover { border-color: var(--accent); color: var(--accent); }

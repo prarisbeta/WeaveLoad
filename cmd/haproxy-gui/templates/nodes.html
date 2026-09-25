@@ -2,7 +2,7 @@
 
 {{define "nodes_content"}}
 <h1>Node</h1>
-<p class="hint">Daftar mesin server di belakang gateway dan kelompok mana saja yang memakainya. Satu node bisa menjadi anggota banyak kelompok.</p>
+<p class="hint">Node = satu mesin/server aplikasi (misalnya 192.168.200.108). Tabel ini menunjukkan setiap node dan kelompok server (pool) mana saja yang memakainya — satu node bisa dipakai di lebih dari satu kelompok sekaligus.</p>
 {{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
 <div class="panel">
   {{if not .Nodes}}
@@ -10,7 +10,7 @@
   {{else}}
   <div class="table-scroll">
   <table>
-    <tr><th>Node</th><th>Aktif</th><th>Dipakai di</th>{{if .CanAdmin}}<th>Tambahkan ke kelompok</th>{{end}}</tr>
+    <tr><th>Node</th><th>Aktif</th><th>Dipakai di</th>{{if .CanAdmin}}<th>Tambahkan ke kelompok server</th>{{end}}</tr>
     {{range .Nodes}}
     <tr>
       <td><strong>{{.Host}}</strong></td>
@@ -26,12 +26,12 @@
       </td>
       {{if $.CanAdmin}}
       <td>
-        <form class="field-inline" method="get" action="/nodes/add-to-pool">
+        <form class="add-to-pool-form" method="get" action="/nodes/add-to-pool">
           <input type="hidden" name="node" value="{{.Host}}">
-          <select name="pool" aria-label="Kelompok tujuan untuk {{.Host}}">
+          <select name="pool" aria-label="Pilih kelompok server tujuan untuk {{.Host}}">
             {{range $.Pools}}<option value="{{.}}">{{.}}</option>{{end}}
           </select>
-          <button type="submit">Tambah</button>
+          <button type="submit" class="primary">+ Tambahkan</button>
         </form>
       </td>
       {{end}}
