@@ -30,9 +30,12 @@ tuning/              haproxy.cfg tuning work (separate from this app)
 Requires Docker (no local Go needed):
 
 ```
-make test    # go vet + go test ./... -cover, in a Go container
-make build   # cross-compiles bin/haproxy-gui (linux/amd64, static, CGO_ENABLED=0)
+make test      # go vet + go test ./... -cover, in a Go container
+make build     # cross-compiles bin/haproxy-gui (linux/amd64, static, CGO_ENABLED=0)
+make release   # build + pack into dist/haproxy-gui-<sha>.tar.gz + .sha256
 ```
+
+No `make` on Windows Git Bash? Run `bash release.sh` instead — same steps.
 
 ## Deploying to haproxy-cni
 
@@ -42,15 +45,15 @@ make build   # cross-compiles bin/haproxy-gui (linux/amd64, static, CGO_ENABLED=
    whoever administers the SSO module — this repo doesn't have access to do
    it. Note the client ID and secret.
 
-2. **Copy the release to the server:**
+2. **Build the release and copy it to the server** (`bash release.sh`, then):
    ```
-   scp -P 2212 bin/haproxy-gui deploy/* programmer@103.31.159.8:/tmp/haproxy-gui-deploy/
+   scp -P 2212 dist/haproxy-gui-*.tar.gz dist/haproxy-gui-*.tar.gz.sha256 programmer@103.31.159.8:/tmp/
    ```
 
-3. **Install** (as root on haproxy-cni):
+3. **Verify the checksum and install** (as root on haproxy-cni):
    ```
-   mkdir -p ~/haproxy-gui-deploy/bin && mv /tmp/haproxy-gui-deploy/haproxy-gui ~/haproxy-gui-deploy/bin/
-   cd ~/haproxy-gui-deploy && bash install.sh
+   cd /tmp && sha256sum -c haproxy-gui-*.tar.gz.sha256 && tar xzf haproxy-gui-*.tar.gz
+   cd haproxy-gui-* && bash install.sh
    ```
    This creates the `haproxy-gui` service user (in group `haproxy`, so it
    can reach the runtime socket the same way the tuning work already
