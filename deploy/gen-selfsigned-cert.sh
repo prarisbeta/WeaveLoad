@@ -6,9 +6,15 @@
 # self-signed cert and is unrelated to VPN/IP-allowlist enforcement, which
 # still runs at the HAProxy layer regardless of what the browser shows.
 #
-# Uses an OpenSSL config file (-extensions) for the SAN instead of the
-# newer `-addext` flag, since CentOS 7's system openssl is 1.0.2 and
-# doesn't have it (only HAProxy's own statically-linked build is 1.1.1w).
+# Two things here work around CentOS 7's system openssl (1.0.2, separate
+# from HAProxy's own statically-linked 1.1.1w build):
+#   - no -addext (added in 1.1.1); SAN goes through a config file instead
+#   - the EC key is generated via `openssl ecparam -param_enc named_curve`
+#     explicitly. `openssl req -newkey ec -pkeyopt ec_paramgen_curve:...`
+#     defaults to *explicit* curve parameters on some OpenSSL builds, which
+#     TLS 1.2 rejects during signature algorithm negotiation:
+#       error:1414D17A:SSL routines:tls12_check_peer_sigalg:wrong curve
+#     — not actually the wrong curve, just the wrong encoding of it.
 set -euo pipefail
 
 IP="${1:-103.31.159.8}"
@@ -36,8 +42,8 @@ CN = $IP
 subjectAltName = IP:$IP
 EOF
 
-openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
-  -keyout "$TMPDIR/key.pem" -out "$TMPDIR/cert.pem" -days "$DAYS" \
+openssl ecparam -name prime256v1 -genkey -noout -param_enc named_curve -out "$TMPDIR/key.pem"
+openssl req -x509 -new -key "$TMPDIR/key.pem" -out "$TMPDIR/cert.pem" -days "$DAYS" \
   -config "$TMPDIR/req.cnf" -extensions v3_req
 
 cat "$TMPDIR/cert.pem" "$TMPDIR/key.pem" > "$OUT"
