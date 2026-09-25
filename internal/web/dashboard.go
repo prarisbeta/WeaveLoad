@@ -41,6 +41,7 @@ type dashboardData struct {
 	Chrome
 	Snapshot   stats.Snapshot
 	CanOperate bool
+	CanAdmin   bool
 	Sys        sysinfo.Snapshot
 }
 
@@ -84,6 +85,7 @@ func (h *DashboardHandler) buildData(r *http.Request) (dashboardData, *statusErr
 		Chrome:     NewChrome(r, "dashboard"),
 		Snapshot:   snap,
 		CanOperate: u.Role.Allows(store.RoleOperator),
+		CanAdmin:   u.Role.Allows(store.RoleAdmin),
 		Sys:        sys,
 	}, nil
 }
@@ -221,6 +223,7 @@ func (h *ServerActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		Chrome:     NewChrome(r, "dashboard"),
 		Snapshot:   snap,
 		CanOperate: u.Role.Allows(store.RoleOperator),
+		CanAdmin:   u.Role.Allows(store.RoleAdmin),
 		Sys:        sys,
 	})
 }

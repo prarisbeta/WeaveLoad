@@ -33,6 +33,11 @@ func (f fileConfig) Apply(string) (cfgfile.ApplyResult, error) {
 }
 func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) { return nil, nil }
 
+type fixedSettings struct{ redis store.RedisSettings }
+
+func (f fixedSettings) GetRedisSettings() (store.RedisSettings, error) { return f.redis, nil }
+func (f fixedSettings) SetRedisSettings(store.RedisSettings) error     { return nil }
+
 type fixedStats string
 
 func (s fixedStats) ShowStat() (string, error) { return string(s), nil }
@@ -79,6 +84,8 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("POST /api/pools/{name}/members/preview", &web.PoolMemberPreview{PoolService: svc})
 	mux.Handle("POST /api/pools/{name}/members/edit/preview", &web.PoolMemberEditPreview{PoolService: svc})
 	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
+	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
+	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t)})
 
 	pages := []struct {
 		file, method, target string
@@ -99,6 +106,8 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"pool_edit_preview.html", http.MethodPost, "/api/pools/https_oms/members/edit/preview",
 			url.Values{"current_name": {"node01"}, "name": {"node01"}, "host": {"192.168.200.108"}, "port": {"443"}, "weight": {"50"}},
 			"weight 50"},
+		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
+		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
 	}
 	for _, p := range pages {
 		var req *http.Request

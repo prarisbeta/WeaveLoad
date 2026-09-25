@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 	detail     TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
+
+CREATE TABLE IF NOT EXISTS settings (
+	key   TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
 `
 
 func (s *Store) migrate() error {

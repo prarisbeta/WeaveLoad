@@ -1,0 +1,29 @@
+{{define "settings.html"}}{{template "chrome_header" .}}{{template "settings_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "settings_content"}}
+<h1>Pengaturan</h1>
+<p class="hint">Pengaturan tingkat aplikasi ini terpisah dari konfigurasi HAProxy — perubahan di sini tidak memuat ulang HAProxy.</p>
+
+<div class="panel">
+  <h3>Koneksi Redis (untuk antrean/queue)</h3>
+  <p class="hint">Alamat server Redis yang dipakai fitur antrean latar belakang. Selalu tekan "Uji Koneksi" dulu — kalau berhasil, baru tekan "Simpan".</p>
+  <form id="redis-form" class="member-form">
+    <label>Host<input type="text" name="host" value="{{.Redis.Host}}" required placeholder="127.0.0.1"></label>
+    <label>Port<input type="text" name="port" value="{{if .Redis.Port}}{{.Redis.Port}}{{else}}6379{{end}}" required size="6" inputmode="numeric"></label>
+    <label>Password <span class="muted">(kosongkan jika tidak ada)</span><input type="password" name="password" value="{{.Redis.Password}}" autocomplete="new-password"></label>
+    <label>Nomor database <span class="muted">(0-15, biasanya 0)</span><input type="text" name="db" value="{{.Redis.DB}}" size="4" inputmode="numeric"></label>
+    <label class="check"><input type="checkbox" name="tls" value="1" {{if .Redis.TLS}}checked{{end}}> Gunakan TLS</label>
+    <div class="row-actions">
+      <button type="button" hx-post="/api/settings/redis/test" hx-include="#redis-form" hx-target="#redis-test-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Uji Koneksi</button>
+      <button type="button" class="primary" hx-post="/api/settings/redis" hx-include="#redis-form" hx-target="#redis-test-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Simpan pengaturan Redis ini?">Simpan</button>
+    </div>
+  </form>
+  <div id="redis-test-out"></div>
+</div>
+{{end}}
+
+{{define "redis_test_result.html"}}
+<div class="panel {{if .OK}}notice-ok{{else}}notice-bad{{end}}">
+  <strong>{{.Message}}</strong>
+</div>
+{{end}}

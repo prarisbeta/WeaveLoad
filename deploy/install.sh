@@ -28,8 +28,9 @@ install -d -o root -g root -m 755 /var/lib/haproxy-gui-state
 echo "==> installing binary"
 install -o root -g root -m 755 "$HERE/../bin/haproxy-gui" /usr/local/bin/haproxy-gui
 
-echo "==> installing root helper + sudoers"
+echo "==> installing root helpers + sudoers"
 install -o root -g root -m 750 "$HERE/haproxy-gui-apply.sh" /usr/local/sbin/haproxy-gui-apply
+install -o root -g root -m 750 "$HERE/haproxy-gui-restart.sh" /usr/local/sbin/haproxy-gui-restart
 visudo -cf "$HERE/sudoers.haproxy-gui" || { echo "sudoers file failed validation, aborting"; exit 1; }
 install -o root -g root -m 440 "$HERE/sudoers.haproxy-gui" /etc/sudoers.d/haproxy-gui
 

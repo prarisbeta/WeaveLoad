@@ -18,6 +18,13 @@
 </div>
 
 <div class="panel">
+  <h3>Layanan HAProxy</h3>
+  <p class="hint">"Simpan &amp; terapkan" di atas sudah memuat ulang HAProxy secara otomatis tanpa memutus koneksi. Gunakan tombol ini hanya jika layanan tampak macet/tidak merespons dan memuat ulang saja tidak membantu — proses HAProxy akan berhenti sesaat lalu menyala kembali, sehingga koneksi yang sedang berjalan akan terputus.</p>
+  <button class="danger" hx-post="/api/haproxy/restart" hx-target="#restart-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Restart layanan HAProxy sekarang? Semua koneksi yang sedang berjalan akan terputus sesaat.">Restart layanan HAProxy</button>
+  <div id="restart-out"></div>
+</div>
+
+<div class="panel">
   <h3>Cadangan sebelumnya</h3>
   <p class="hint">Kembalikan ke salah satu versi berikut jika perubahan terbaru bermasalah.</p>
   {{if not .Backups}}

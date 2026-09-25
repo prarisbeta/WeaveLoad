@@ -163,6 +163,133 @@ func TestApply_CallsApplyScriptWithStagedPath(t *testing.T) {
 	}
 }
 
+// fakeSudo stands in for /usr/bin/sudo: it drops the "-n" flag and execs
+// whatever follows, so tests can verify SudoBin actually gets used without
+// needing real sudoers configured.
+func fakeSudo(t *testing.T, dir string) string {
+	t.Helper()
+	path := filepath.Join(dir, "fake-sudo.sh")
+	body := "#!/bin/sh\nshift\nexec \"$@\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("requires POSIX shell")
+		}
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestApply_WrapsWithSudoWhenConfigured(t *testing.T) {
+	s := newTestStore(t)
+	draft, err := s.SaveDraft("root", "global\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	script := filepath.Join(dir, "apply.sh")
+	logFile := filepath.Join(dir, "called-with.txt")
+	body := "#!/bin/sh\necho \"$1\" > " + logFile + "\necho applied\nexit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("requires POSIX shell")
+		}
+		t.Fatal(err)
+	}
+	s.ApplyScript = script
+	s.SudoBin = fakeSudo(t, dir)
+
+	res, err := s.Apply(draft)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if !res.OK {
+		t.Errorf("OK = false, output: %s", res.Output)
+	}
+	got, _ := os.ReadFile(logFile)
+	if string(got) != draft+"\n" {
+		t.Errorf("apply script called with %q via sudo, want %q — SudoBin was not actually used", got, draft)
+	}
+}
+
+func TestRestart_CallsRestartScript(t *testing.T) {
+	s := newTestStore(t)
+	dir := t.TempDir()
+	script := filepath.Join(dir, "restart.sh")
+	logFile := filepath.Join(dir, "called.txt")
+	body := "#!/bin/sh\necho called > " + logFile + "\necho restarted\nexit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("requires POSIX shell")
+		}
+		t.Fatal(err)
+	}
+	s.RestartScript = script
+
+	res, err := s.Restart()
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if !res.OK {
+		t.Errorf("OK = false, output: %s", res.Output)
+	}
+	if _, err := os.Stat(logFile); err != nil {
+		t.Errorf("restart script was not called: %v", err)
+	}
+}
+
+func TestRestart_WrapsWithSudoWhenConfigured(t *testing.T) {
+	dir := t.TempDir()
+	s := newTestStore(t)
+	script := filepath.Join(dir, "restart.sh")
+	logFile := filepath.Join(dir, "called.txt")
+	body := "#!/bin/sh\necho called > " + logFile + "\necho restarted\nexit 0\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("requires POSIX shell")
+		}
+		t.Fatal(err)
+	}
+	s.RestartScript = script
+	s.SudoBin = fakeSudo(t, dir)
+
+	res, err := s.Restart()
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if !res.OK {
+		t.Errorf("OK = false, output: %s", res.Output)
+	}
+	if _, err := os.Stat(logFile); err != nil {
+		t.Errorf("restart script was not called via sudo: %v", err)
+	}
+}
+
+func TestRestart_ReportsFailureWithoutError(t *testing.T) {
+	s := newTestStore(t)
+	dir := t.TempDir()
+	script := filepath.Join(dir, "restart.sh")
+	body := "#!/bin/sh\necho \"systemctl: haproxy.service failed\" >&2\nexit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skip("requires POSIX shell")
+		}
+		t.Fatal(err)
+	}
+	s.RestartScript = script
+
+	res, err := s.Restart()
+	if err != nil {
+		t.Fatalf("Restart returned Go error (should report via OK instead): %v", err)
+	}
+	if res.OK {
+		t.Error("OK = true for a script that exited non-zero")
+	}
+	if res.Output == "" {
+		t.Error("expected non-empty diagnostic output")
+	}
+}
+
 func TestListBackups_SortedNewestFirst(t *testing.T) {
 	s := newTestStore(t)
 	older := filepath.Join(s.BackupDir, "haproxy.cfg.bak-100")

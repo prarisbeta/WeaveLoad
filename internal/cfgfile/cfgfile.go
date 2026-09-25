@@ -18,11 +18,19 @@ import (
 
 // Store manages one haproxy.cfg and its backups/staging area.
 type Store struct {
-	ActivePath  string // e.g. /etc/haproxy/haproxy.cfg
-	BackupDir   string // e.g. /etc/haproxy (backups sit next to the active file)
-	StagingDir  string // e.g. /var/lib/haproxy-gui/staging
-	HAProxyBin  string // e.g. /usr/sbin/haproxy
-	ApplyScript string // e.g. /usr/local/sbin/haproxy-gui-apply
+	ActivePath    string // e.g. /etc/haproxy/haproxy.cfg
+	BackupDir     string // e.g. /etc/haproxy (backups sit next to the active file)
+	StagingDir    string // e.g. /var/lib/haproxy-gui/staging
+	HAProxyBin    string // e.g. /usr/sbin/haproxy
+	ApplyScript   string // e.g. /usr/local/sbin/haproxy-gui-apply
+	RestartScript string // e.g. /usr/local/sbin/haproxy-gui-restart
+
+	// SudoBin, when non-empty, is prepended to ApplyScript/RestartScript
+	// invocations (as "<SudoBin> -n <script> [args...]") so the unprivileged
+	// haproxy-gui process can reach a root-owned helper via the sudoers rule
+	// in deploy/sudoers.haproxy-gui. Left empty in tests, which point
+	// ApplyScript/RestartScript at a plain executable script they own.
+	SudoBin string
 
 	// Now is overridable in tests so backup filenames are deterministic.
 	Now func() time.Time
@@ -30,13 +38,23 @@ type Store struct {
 
 func New(activePath string) *Store {
 	return &Store{
-		ActivePath:  activePath,
-		BackupDir:   filepath.Dir(activePath),
-		StagingDir:  filepath.Dir(activePath),
-		HAProxyBin:  "haproxy",
-		ApplyScript: "/usr/local/sbin/haproxy-gui-apply",
-		Now:         time.Now,
+		ActivePath:    activePath,
+		BackupDir:     filepath.Dir(activePath),
+		StagingDir:    filepath.Dir(activePath),
+		HAProxyBin:    "haproxy",
+		ApplyScript:   "/usr/local/sbin/haproxy-gui-apply",
+		RestartScript: "/usr/local/sbin/haproxy-gui-restart",
+		Now:           time.Now,
 	}
+}
+
+// helperCommand builds the exec.Cmd for a root helper script, wrapping it in
+// SudoBin when one is configured.
+func (s *Store) helperCommand(script string, args ...string) *exec.Cmd {
+	if s.SudoBin != "" {
+		return exec.Command(s.SudoBin, append([]string{"-n", script}, args...)...)
+	}
+	return exec.Command(script, args...)
 }
 
 // Active returns the currently-live config's contents.
@@ -130,7 +148,7 @@ func (s *Store) Apply(stagedPath string) (ApplyResult, error) {
 		return ApplyResult{}, fmt.Errorf("staged path %q is outside staging dir %q", stagedPath, s.StagingDir)
 	}
 
-	cmd := exec.Command(s.ApplyScript, abs)
+	cmd := s.helperCommand(s.ApplyScript, abs)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ApplyResult{OK: false, Output: string(out)}, nil
@@ -138,7 +156,20 @@ func (s *Store) Apply(stagedPath string) (ApplyResult, error) {
 	return ApplyResult{OK: true, Output: string(out)}, nil
 }
 
-// ApplyResult is the outcome of running ApplyScript.
+// Restart restarts the haproxy systemd service via RestartScript, a root
+// helper separate from ApplyScript (see deploy/haproxy-gui-restart.sh) —
+// unlike Apply/reload this briefly drops in-flight connections, so it's a
+// distinct, explicit action rather than something config changes trigger.
+func (s *Store) Restart() (ApplyResult, error) {
+	cmd := s.helperCommand(s.RestartScript)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return ApplyResult{OK: false, Output: string(out)}, nil
+	}
+	return ApplyResult{OK: true, Output: string(out)}, nil
+}
+
+// ApplyResult is the outcome of running ApplyScript or RestartScript.
 type ApplyResult struct {
 	OK     bool
 	Output string

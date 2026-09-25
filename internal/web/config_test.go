@@ -41,6 +41,17 @@ func (f *fakeConfigStore) Apply(stagedPath string) (cfgfile.ApplyResult, error) 
 }
 func (f *fakeConfigStore) ListBackups() ([]cfgfile.Backup, error) { return f.backups, f.backupsErr }
 
+type fakeServiceRestarter struct {
+	res      cfgfile.ApplyResult
+	err      error
+	restarts int
+}
+
+func (f *fakeServiceRestarter) Restart() (cfgfile.ApplyResult, error) {
+	f.restarts++
+	return f.res, f.err
+}
+
 func testConfigTemplates(t *testing.T) *template.Template {
 	t.Helper()
 	return mustParse(t, `
@@ -200,6 +211,45 @@ func TestRollbackAction_KnownBackup_Applies(t *testing.T) {
 		t.Errorf("applied path = %q", cs.appliedPath)
 	}
 	if len(au.entries) != 1 || au.entries[0].Action != "config.rollback" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestRestartServiceAction_Success_Audited(t *testing.T) {
+	svc := &fakeServiceRestarter{res: cfgfile.ApplyResult{OK: true, Output: "restarted"}}
+	au := &fakeAudit{}
+	h := &RestartServiceAction{Service: svc, Audit: au, Templates: testConfigTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/haproxy/restart", nil)
+	req = withUser(req, store.User{Email: "admin@example.com"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if svc.restarts != 1 {
+		t.Errorf("Restart called %d times, want 1", svc.restarts)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "haproxy.restart" || au.entries[0].Detail != "restarted" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestRestartServiceAction_Failure_502AndAudited(t *testing.T) {
+	svc := &fakeServiceRestarter{res: cfgfile.ApplyResult{OK: false, Output: "systemctl: haproxy.service failed"}}
+	au := &fakeAudit{}
+	h := &RestartServiceAction{Service: svc, Audit: au, Templates: testConfigTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/haproxy/restart", nil)
+	req = withUser(req, store.User{Email: "admin@example.com"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+	if len(au.entries) != 1 || !strings.Contains(au.entries[0].Detail, "restart failed") {
 		t.Errorf("audit entries = %+v", au.entries)
 	}
 }

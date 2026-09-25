@@ -19,6 +19,14 @@ type ConfigStore interface {
 	ListBackups() ([]cfgfile.Backup, error)
 }
 
+// ServiceRestarter is the subset of *cfgfile.Store the "restart HAProxy"
+// action needs — kept separate from ConfigStore since it's a different,
+// more disruptive action (drops in-flight connections) than anything else
+// on the config page.
+type ServiceRestarter interface {
+	Restart() (cfgfile.ApplyResult, error)
+}
+
 // ConfigHandler serves the config editor page and its actions
 // (view/validate/save/apply). Apply must be wired behind
 // auth.RequireRole(store.RoleAdmin) — this is the most powerful action in
@@ -192,6 +200,44 @@ func (h *RollbackAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Action: "config.rollback", Target: path, Detail: detail,
 	}); err != nil {
 		http.Error(w, "rollback outcome could not be audit-logged: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !res.OK {
+		http.Error(w, res.Output, http.StatusBadGateway)
+		return
+	}
+	renderTemplate(w, h.Templates, "apply_result.html", res)
+}
+
+// RestartServiceAction restarts the haproxy systemd service directly —
+// unlike apply/rollback, which reload, this briefly drops in-flight
+// connections. Meant for cases a reload alone can't fix (a wedged worker,
+// config applied outside the GUI). Always audit-logged, success or failure.
+type RestartServiceAction struct {
+	Service   ServiceRestarter
+	Audit     AuditRecorder
+	Templates *template.Template
+}
+
+func (h *RestartServiceAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+
+	res, err := h.Service.Restart()
+	if err != nil {
+		http.Error(w, "failed to run restart helper: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	detail := "restarted"
+	if !res.OK {
+		detail = "restart failed: " + res.Output
+	}
+	if err := h.Audit.Record(store.AuditEntry{
+		UserEmail: u.Email, RemoteIP: clientIP(r),
+		Action: "haproxy.restart", Detail: detail,
+	}); err != nil {
+		http.Error(w, "restart outcome could not be audit-logged: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

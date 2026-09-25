@@ -62,6 +62,8 @@ func run() error {
 	cf.HAProxyBin = cfg.HAProxyBin
 	cf.StagingDir = cfg.StagingDir
 	cf.ApplyScript = cfg.ApplyScript
+	cf.RestartScript = cfg.RestartScript
+	cf.SudoBin = cfg.SudoBin
 
 	certStore := certs.New(cfg.SSLDir)
 	dirClient := omsdir.New(cfg.OMSDirBaseURL, cfg.OMSDirClientID, cfg.OMSDirClientSecret)

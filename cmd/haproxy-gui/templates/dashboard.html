@@ -144,6 +144,7 @@
 {{end}}
 
 {{$canOperate := .CanOperate}}
+{{$canAdmin := .CanAdmin}}
 {{range .Snapshot.Backends}}
 <div class="panel">
   <h3>{{.Name}} <span class="badge {{if eq .Status "UP"}}badge-up{{else if eq .Status "DOWN"}}badge-down{{else}}badge-maint{{end}}">{{if eq .Status "UP"}}Sehat{{else if eq .Status "DOWN"}}Bermasalah{{else}}{{.Status}}{{end}}</span></h3>
@@ -154,7 +155,7 @@
     {{$backend := .Name}}
     {{range .Servers}}
     <tr>
-      <td>{{.Name}}</td>
+      <td>{{.Name}}{{if $canAdmin}} <a href="/pools/{{$backend}}#member-{{.Name}}" title="Ubah nama/alamat/port/bobot server ini">Ubah</a>{{end}}</td>
       <td>
         <span class="badge {{if .Up}}badge-up{{else if .Down}}badge-down{{else}}badge-maint{{end}}">{{if .Up}}Aktif{{else if .Down}}Tidak merespons{{else}}{{.Status}}{{end}}</span>
       </td>

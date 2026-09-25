@@ -95,7 +95,7 @@
 <table>
   <tr><th>Anggota</th><th>Alamat</th><th>Status</th><th>Pemeriksaan</th><th>Bobot</th><th>Koneksi</th>{{if .CanOperate}}<th>Tindakan</th>{{end}}</tr>
   {{range .Pool.Members}}
-  <tr>
+  <tr id="member-{{.Name}}">
     <td>{{.Name}}{{if .Backup}} <span class="badge badge-nocheck">cadangan</span>{{end}}</td>
     <td class="muted">{{.Address}}</td>
     <td>{{if .HasLive}}<span class="badge {{if .Live.Up}}badge-up{{else if .Live.Down}}badge-down{{else}}badge-maint{{end}}">{{if .Live.Up}}Aktif{{else if .Live.Down}}Tidak merespons{{else}}{{.Live.Status}}{{end}}</span>{{else}}<span class="badge badge-nocheck">Belum dimuat</span>{{end}}</td>

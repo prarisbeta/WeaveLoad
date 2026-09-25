@@ -130,6 +130,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/config/rollback", chain(&web.RollbackAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/haproxy/restart", chain(&web.RestartServiceAction{Service: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 
 	// Adding/removing pool members rewrites haproxy.cfg and reloads, so it
 	// sits with the config editor at admin level; state/weight stay operator.
@@ -150,6 +151,10 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireAdmin))
+
+	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireAdmin))
+	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 
 	return securityHeaders(mux)
 }

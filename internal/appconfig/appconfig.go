@@ -20,6 +20,8 @@ type Config struct {
 	HAProxyCfg    string // e.g. /etc/haproxy/haproxy.cfg
 	StagingDir    string // e.g. /var/lib/haproxy-gui/staging
 	ApplyScript   string // e.g. /usr/local/sbin/haproxy-gui-apply
+	RestartScript string // e.g. /usr/local/sbin/haproxy-gui-restart
+	SudoBin       string // e.g. sudo — set to "" only for local dev without sudoers configured
 	SSLDir        string // e.g. /etc/haproxy/ssl
 	LogPath       string // e.g. /var/log/haproxy.log (where rsyslog writes the "log local2" traffic in haproxy.cfg)
 
@@ -83,6 +85,8 @@ func Load() (Config, error) {
 		HAProxyCfg:    getenv("HAPROXY_CFG", "/etc/haproxy/haproxy.cfg"),
 		StagingDir:    getenv("STAGING_DIR", "/var/lib/haproxy-gui/staging"),
 		ApplyScript:   getenv("APPLY_SCRIPT", "/usr/local/sbin/haproxy-gui-apply"),
+		RestartScript: getenv("RESTART_SCRIPT", "/usr/local/sbin/haproxy-gui-restart"),
+		SudoBin:       getenv("SUDO_BIN", "sudo"),
 		SSLDir:        getenv("SSL_DIR", "/etc/haproxy/ssl"),
 		LogPath:       getenv("HAPROXY_LOG_PATH", "/var/log/haproxy.log"),
 
