@@ -1,0 +1,44 @@
+{{define "nodes.html"}}{{template "chrome_header" .}}{{template "nodes_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "nodes_content"}}
+<h1>Node</h1>
+<p class="hint">Daftar mesin server di belakang gateway dan kelompok mana saja yang memakainya. Satu node bisa menjadi anggota banyak kelompok.</p>
+{{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
+<div class="panel">
+  {{if not .Nodes}}
+  <div class="empty-state"><h3>Belum ada node</h3><p>Belum ada server yang terdaftar di kelompok mana pun.</p></div>
+  {{else}}
+  <div class="table-scroll">
+  <table>
+    <tr><th>Node</th><th>Aktif</th><th>Dipakai di</th>{{if .CanAdmin}}<th>Tambahkan ke kelompok</th>{{end}}</tr>
+    {{range .Nodes}}
+    <tr>
+      <td><strong>{{.Host}}</strong></td>
+      <td><span class="badge {{if eq .Up .Total}}badge-up{{else if eq .Up 0}}badge-down{{else}}badge-maint{{end}}">{{.Up}}/{{.Total}}</span></td>
+      <td>
+        <div class="node-uses">
+        {{range .Uses}}
+        <a class="node-use" href="/pools/{{.Pool}}" title="{{.Server}}{{if .HasLive}} — {{.Live.Status}}{{end}}">
+          <span class="dot {{if not .HasLive}}dot-unknown{{else if .Live.Up}}dot-up{{else if .Live.Down}}dot-down{{else}}dot-maint{{end}}"></span>{{.Pool}}{{if .Port}}:{{.Port}}{{end}}{{if .Backup}} <span class="muted">(cadangan)</span>{{end}}
+        </a>
+        {{end}}
+        </div>
+      </td>
+      {{if $.CanAdmin}}
+      <td>
+        <form class="field-inline" method="get" action="/nodes/add-to-pool">
+          <input type="hidden" name="node" value="{{.Host}}">
+          <select name="pool" aria-label="Kelompok tujuan untuk {{.Host}}">
+            {{range $.Pools}}<option value="{{.}}">{{.}}</option>{{end}}
+          </select>
+          <button type="submit">Tambah</button>
+        </form>
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+</div>
+{{end}}

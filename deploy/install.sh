@@ -18,6 +18,12 @@ echo "==> creating directories"
 install -d -o haproxy-gui -g haproxy -m 750 /var/lib/haproxy-gui
 install -d -o haproxy-gui -g haproxy -m 750 /var/lib/haproxy-gui/staging
 install -d -o root -g root -m 750 /etc/haproxy-gui
+# root:root 0755, not haproxy-gui-writable: the apply helper (root) dumps
+# HAProxy server state here before every reload. It must stay outside
+# /var/lib/haproxy (the HAProxy worker's chroot) and outside anything the
+# unprivileged haproxy-gui user/group can write to, or a compromised
+# haproxy-gui process could pre-plant a symlink for root to follow.
+install -d -o root -g root -m 755 /var/lib/haproxy-gui-state
 
 echo "==> installing binary"
 install -o root -g root -m 755 "$HERE/../bin/haproxy-gui" /usr/local/bin/haproxy-gui

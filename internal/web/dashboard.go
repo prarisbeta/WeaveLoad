@@ -194,6 +194,9 @@ func (h *ServerActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, actionErr.Error(), http.StatusBadGateway)
 		return
 	}
+	// Lets the pool page (which posts here with hx-swap="none") refresh its
+	// own members table; harmless on the dashboard, which swaps the body.
+	w.Header().Set("HX-Trigger", memberChangedEvent)
 
 	if h.Refresh == nil || h.Templates == nil {
 		w.WriteHeader(http.StatusOK)

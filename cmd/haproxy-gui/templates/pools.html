@@ -1,0 +1,144 @@
+{{define "pools.html"}}{{template "chrome_header" .}}{{template "pools_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "pools_content"}}
+<h1>Kelompok Server</h1>
+<p class="hint">Setiap kelompok (pool) berisi server-server yang bergantian melayani satu situs atau layanan. Klik nama kelompok untuk melihat anggotanya, menambah, atau melepas server.</p>
+{{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
+<div class="panel">
+  {{if not .Pools}}
+  <div class="empty-state"><h3>Belum ada kelompok server</h3><p>Konfigurasi belum memiliki bagian backend.</p></div>
+  {{else}}
+  <div class="table-scroll">
+  <table>
+    <tr><th>Kelompok</th><th>Status</th><th>Anggota aktif</th><th>Metode pembagian</th><th>Koneksi</th></tr>
+    {{range .Pools}}
+    <tr>
+      <td><a href="/pools/{{.Name}}">{{.Name}}</a></td>
+      <td>{{template "pool_status_badge" .LiveStatus}}</td>
+      <td>{{.Up}}/{{len .Members}}{{if .Down}} <span class="badge badge-down">{{.Down}} bermasalah</span>{{end}}</td>
+      <td class="muted">{{.Balance}}</td>
+      <td>{{.Sessions}}</td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{define "pool_status_badge"}}{{if eq . "UP"}}<span class="badge badge-up">Sehat</span>{{else if eq . "DOWN"}}<span class="badge badge-down">Bermasalah</span>{{else if .}}<span class="badge badge-maint">{{.}}</span>{{else}}<span class="badge badge-nocheck">Tidak diketahui</span>{{end}}{{end}}
+
+{{define "pool_detail.html"}}{{template "chrome_header" .}}{{template "pool_detail_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "pool_detail_content"}}
+<p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; Semua kelompok</a></p>
+<h1>{{.Pool.Name}} {{template "pool_status_badge" .Pool.LiveStatus}}</h1>
+<p class="hint">Metode <strong>{{.Pool.Balance}}</strong>
+  · Pemeriksaan kesehatan: {{if .Pool.HealthCheck}}<code>{{.Pool.HealthCheck}}</code>{{else}}bawaan{{end}}
+  · Sesi lengket (cookie): {{if .Pool.Cookie}}ya{{else}}tidak{{end}}</p>
+{{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
+
+<div id="pool-result"></div>
+
+<div class="panel">
+  <h3>Anggota</h3>
+  <p class="hint">Server yang menerima trafik kelompok ini. Status diperbarui otomatis. Untuk melepas server, nonaktifkan atau kosongkan dulu, lalu hapus.</p>
+  <div id="pool-members" hx-get="/pools/{{.Pool.Name}}" hx-trigger="every 5s, memberChanged from:body" hx-swap="innerHTML">
+  {{template "pool_members.html" .}}
+  </div>
+</div>
+
+{{if .CanAdmin}}
+<div class="panel">
+  <h3>Tambah anggota</h3>
+  <p class="hint">Pengaturan SSL, SNI, dan pemeriksaan kesehatan disalin dari anggota contoh, jadi cukup isi alamat dan port. Setelah diterapkan, HAProxy dimuat ulang tanpa memutus koneksi yang sedang berjalan.</p>
+  <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/members/preview" hx-target="#pool-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
+    <label>Nama anggota<input type="text" name="name" value="{{.Suggested}}" required maxlength="64"></label>
+    <label>Alamat node (IP / host)<input type="text" name="host" value="{{.Prefill}}" list="known-hosts" required placeholder="192.168.200.120"></label>
+    <label>Port<input type="text" name="port" value="{{.Pool.FirstPort}}" required size="5" inputmode="numeric"></label>
+    <label>Bobot <span class="muted">(opsional, 0-256)</span><input type="text" name="weight" size="4" inputmode="numeric"></label>
+    <label>Batas koneksi <span class="muted">(opsional)</span><input type="text" name="maxconn" size="6" inputmode="numeric"></label>
+    {{if .Pool.Members}}
+    <label>Salin pengaturan dari
+      <select name="clone_from">
+        {{range .Pool.Members}}<option value="{{.Name}}">{{.Name}} ({{.Address}})</option>{{end}}
+      </select>
+    </label>
+    {{end}}
+    <label class="check"><input type="checkbox" name="backup" value="1"> Cadangan (hanya dipakai saat anggota utama mati)</label>
+    <label class="check"><input type="checkbox" name="disabled" value="1"> Mulai dalam keadaan nonaktif</label>
+    <div><button type="submit">Pratinjau</button></div>
+  </form>
+  <datalist id="known-hosts">{{range .KnownHosts}}<option value="{{.}}">{{end}}</datalist>
+  <div id="pool-preview"></div>
+</div>
+{{end}}
+{{end}}
+
+{{define "pool_members.html"}}
+{{$pool := .Pool.Name}}
+{{if not .Pool.Members}}
+<div class="empty-state"><p>Kelompok ini belum punya anggota.</p></div>
+{{else}}
+<div class="table-scroll">
+<table>
+  <tr><th>Anggota</th><th>Alamat</th><th>Status</th><th>Pemeriksaan</th><th>Bobot</th><th>Koneksi</th>{{if .CanOperate}}<th>Tindakan</th>{{end}}</tr>
+  {{range .Pool.Members}}
+  <tr>
+    <td>{{.Name}}{{if .Backup}} <span class="badge badge-nocheck">cadangan</span>{{end}}</td>
+    <td class="muted">{{.Address}}</td>
+    <td>{{if .HasLive}}<span class="badge {{if .Live.Up}}badge-up{{else if .Live.Down}}badge-down{{else}}badge-maint{{end}}">{{if .Live.Up}}Aktif{{else if .Live.Down}}Tidak merespons{{else}}{{.Live.Status}}{{end}}</span>{{else}}<span class="badge badge-nocheck">Belum dimuat</span>{{end}}</td>
+    <td class="muted">{{if .HasLive}}{{.Live.CheckStatus}} {{.Live.LastCheck}}{{end}}</td>
+    <td>{{if .HasLive}}{{.Live.Weight}}{{else}}{{.Weight}}{{end}}</td>
+    <td>{{if .HasLive}}{{.Live.Sessions}}{{end}}</td>
+    {{if $.CanOperate}}
+    <td>
+      <div class="row-actions">
+      {{if .HasLive}}
+      <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$pool}}","server":"{{.Name}}","action":"ready"}' hx-swap="none" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Kembalikan ke jalur trafik normal">Aktifkan</button>
+      <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$pool}}","server":"{{.Name}}","action":"drain"}' hx-swap="none" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Habiskan koneksi berjalan, tolak koneksi baru">Kosongkan</button>
+      <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$pool}}","server":"{{.Name}}","action":"maint"}' hx-swap="none" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan {{.Name}} di {{$pool}} sekarang? Trafik ke server ini langsung dihentikan." title="Hentikan trafik ke server ini sekarang">Nonaktifkan</button>
+      {{end}}
+      {{if $.CanAdmin}}
+      <button class="danger" hx-post="/api/pools/{{$pool}}/members/remove" hx-vals='{"server":"{{.Name}}"}' hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus {{.Name}} ({{.Address}}) dari {{$pool}}? Baris server-nya dihapus dari konfigurasi dan HAProxy dimuat ulang." title="Hapus dari konfigurasi (harus nonaktif/kosong dulu)">Hapus</button>
+      {{end}}
+      </div>
+    </td>
+    {{end}}
+  </tr>
+  {{end}}
+</table>
+</div>
+{{end}}
+{{end}}
+
+{{define "pool_preview.html"}}
+<div class="panel preview-box">
+  <p><strong>Baris yang akan ditambahkan ke {{.Pool}}:</strong></p>
+  <pre>{{.Line}}</pre>
+  {{if .Validation.OK}}
+  <p style="color:var(--ok)"><strong>Konfigurasi valid.</strong></p>
+  <form hx-post="/api/pools/{{.Pool}}/members/add" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Tambahkan {{.Spec.Name}} ke {{.Pool}} dan muat ulang HAProxy sekarang?">
+    <input type="hidden" name="name" value="{{.Spec.Name}}">
+    <input type="hidden" name="host" value="{{.Spec.Host}}">
+    <input type="hidden" name="port" value="{{.Spec.Port}}">
+    <input type="hidden" name="weight" value="{{.Spec.Weight}}">
+    <input type="hidden" name="maxconn" value="{{.Spec.Maxconn}}">
+    <input type="hidden" name="clone_from" value="{{.Spec.CloneFrom}}">
+    {{if .Spec.Backup}}<input type="hidden" name="backup" value="1">{{end}}
+    {{if .Spec.Disabled}}<input type="hidden" name="disabled" value="1">{{end}}
+    <button type="submit" class="primary">Terapkan</button>
+  </form>
+  {{else}}
+  <p style="color:var(--bad)"><strong>Konfigurasi hasil perubahan tidak valid, tidak bisa diterapkan.</strong></p>
+  <pre>{{.Validation.Output}}</pre>
+  {{end}}
+</div>
+{{end}}
+
+{{define "pool_result.html"}}
+<div class="panel {{if .OK}}notice-ok{{else}}notice-bad{{end}}">
+  <strong>{{.Message}}</strong>
+  {{if .Output}}<pre>{{.Output}}</pre>{{end}}
+</div>
+{{end}}

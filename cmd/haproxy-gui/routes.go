@@ -85,6 +85,12 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /{$}", chain(dashboard, requireAuth))
 	mux.Handle("GET /api/dashboard", chain(dashboard, requireAuth))
 
+	pools := &web.PoolService{Config: d.cfgfile, Stats: d.runtime, Audit: d.store, Templates: d.templates}
+	mux.Handle("GET /pools", chain(&web.PoolsHandler{PoolService: pools}, requireAuth))
+	mux.Handle("GET /pools/{name}", chain(&web.PoolDetailHandler{PoolService: pools}, requireAuth))
+	mux.Handle("GET /nodes", chain(&web.NodesHandler{PoolService: pools}, requireAuth))
+	mux.Handle("GET /nodes/add-to-pool", chain(http.HandlerFunc(web.NodeAddRedirect), requireAuth, requireAdmin))
+
 	auditHandler := &web.AuditHandler{Store: d.store, Templates: d.templates}
 	mux.Handle("GET /audit", chain(auditHandler, requireAuth, requireOperator))
 	mux.Handle("GET /audit/export", chain(&web.AuditExportHandler{Store: d.store}, requireAuth, requireOperator))
@@ -121,6 +127,12 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/config/rollback", chain(&web.RollbackAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+
+	// Adding/removing pool members rewrites haproxy.cfg and reloads, so it
+	// sits with the config editor at admin level; state/weight stay operator.
+	mux.Handle("POST /api/pools/{name}/members/preview", chain(&web.PoolMemberPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/add", chain(&web.PoolMemberAdd{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/remove", chain(&web.PoolMemberRemove{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,
