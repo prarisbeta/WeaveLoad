@@ -6,26 +6,34 @@
 
 <div class="panel">
   <h3>Tambah pengguna dari SSO OMS CNI</h3>
-  <p class="hint">Daftarkan email akun SSO kantornya lebih dulu dan tentukan perannya sekarang — orang tersebut tidak perlu login dulu. Begitu dia login dengan SSO, akun ini otomatis tersambung dan perannya tetap seperti yang dipilih di sini.</p>
-  <form hx-post="/api/users/create" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
-    <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="new-email">Email SSO</label>
-      <input type="text" id="new-email" name="email" placeholder="nama@cni.net.id" required>
-    </div>
-    <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="new-name">Nama (opsional)</label>
-      <input type="text" id="new-name" name="name" placeholder="Nama tampilan">
-    </div>
-    <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="new-role">Peran</label>
-      <select id="new-role" name="role" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
-        <option value="viewer">Pengamat</option>
-        <option value="operator">Operator</option>
-        <option value="admin">Administrator</option>
-      </select>
-    </div>
-    <button type="submit" class="primary">Tambah pengguna</button>
-  </form>
+  <p class="hint">Cari nama atau email di direktori SSO kantor, lalu pilih perannya dan tambahkan — orang tersebut tidak perlu login dulu. Begitu dia login dengan SSO nanti, akun ini otomatis tersambung dan perannya tetap seperti yang dipilih di sini.</p>
+  <input type="text" name="q" placeholder="Ketik nama atau email untuk mencari..."
+    hx-get="/api/users/search" hx-target="#user-search-results" hx-trigger="keyup changed delay:400ms, search"
+    aria-label="Cari pengguna di direktori SSO">
+  <div id="user-search-results" style="margin-top:12px"></div>
+
+  <details style="margin-top:14px">
+    <summary style="cursor:pointer; color: var(--ink-muted); font-size:13px;">Tidak ditemukan di SSO? Tambahkan manual</summary>
+    <form hx-post="/api/users/create" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
+      <div>
+        <label class="hint" style="margin:0 0 4px; display:block;" for="new-email">Email SSO</label>
+        <input type="text" id="new-email" name="email" placeholder="nama@cni.net.id" required>
+      </div>
+      <div>
+        <label class="hint" style="margin:0 0 4px; display:block;" for="new-name">Nama (opsional)</label>
+        <input type="text" id="new-name" name="name" placeholder="Nama tampilan">
+      </div>
+      <div>
+        <label class="hint" style="margin:0 0 4px; display:block;" for="new-role">Peran</label>
+        <select id="new-role" name="role" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
+          <option value="viewer">Pengamat</option>
+          <option value="operator">Operator</option>
+          <option value="admin">Administrator</option>
+        </select>
+      </div>
+      <button type="submit" class="primary">Tambah pengguna</button>
+    </form>
+  </details>
 </div>
 
 <div id="users-panel">
@@ -42,13 +50,14 @@
 <table>
   <tr><th>Email</th><th>Nama</th><th>Peran</th><th>Status</th><th>Tindakan</th></tr>
   {{range .Users}}
+  {{$isSelf := eq .ID $.User.ID}}
   <tr>
-    <td>{{.Email}}</td>
+    <td>{{.Email}}{{if $isSelf}} <span class="muted">(Anda)</span>{{end}}</td>
     <td>{{.Name}}</td>
-    <td>{{if eq .Role "admin"}}Administrator{{else if eq .Role "operator"}}Operator{{else}}Pengamat{{end}}</td>
-    <td>{{if .Enabled}}<span class="badge badge-up">Aktif</span>{{else}}<span class="badge badge-down">Nonaktif</span>{{end}}</td>
     <td>
-      <div class="row-actions">
+      {{if $isSelf}}
+      Administrator
+      {{else}}
       <form class="field-inline" hx-post="/api/users/update" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
         <input type="hidden" name="user_id" value="{{.ID}}">
         <input type="hidden" name="action" value="set_role">
@@ -58,12 +67,21 @@
           <option value="admin" {{if eq .Role "admin"}}selected{{end}}>Administrator</option>
         </select>
       </form>
+      {{end}}
+    </td>
+    <td>{{if .Enabled}}<span class="badge badge-up">Aktif</span>{{else}}<span class="badge badge-down">Nonaktif</span>{{end}}</td>
+    <td>
+      {{if $isSelf}}
+      <span class="muted">Tidak bisa mengubah akun sendiri</span>
+      {{else}}
+      <div class="row-actions">
       {{if .Enabled}}
       <button class="danger" hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"disable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan akun {{.Email}}? Pengguna ini tidak akan bisa masuk lagi sampai diaktifkan kembali.">Nonaktifkan</button>
       {{else}}
       <button hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"enable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Aktifkan</button>
       {{end}}
       </div>
+      {{end}}
     </td>
   </tr>
   {{end}}

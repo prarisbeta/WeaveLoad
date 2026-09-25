@@ -16,6 +16,7 @@ import (
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/stats"
 	"haproxy-gui/internal/store"
+	"haproxy-gui/internal/sysinfo"
 )
 
 // StatsSource is the subset of *runtime.Client the dashboard needs.
@@ -28,30 +29,71 @@ type AuditRecorder interface {
 	Record(store.AuditEntry) error
 }
 
-// DashboardHandler renders the live frontend/backend/server table.
+// SysSampler is the subset of *sysinfo.Sampler the dashboard needs.
+type SysSampler interface {
+	Read(diskPaths []string) sysinfo.Snapshot
+}
+
+// dashboardData is what both dashboard.html and dashboard_table.html render
+// — shared by the initial page load, the htmx poll, and the post-action
+// refresh, so all three always agree on what fields the templates can use.
+type dashboardData struct {
+	Chrome
+	Snapshot   stats.Snapshot
+	CanOperate bool
+	Sys        sysinfo.Snapshot
+}
+
+// DashboardHandler renders the live frontend/backend/server table plus host
+// resource usage (CPU/RAM/disk/network).
 type DashboardHandler struct {
 	Stats     StatsSource
+	Sys       SysSampler
+	DiskPaths []string
 	Templates *template.Template
 }
 
-func (h *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// statusError pairs a user-facing message with the HTTP status it should
+// produce, so buildData's two failure modes (upstream unreachable vs. our
+// own parser choking on what it returned) keep their distinct status codes
+// through the shared helper both DashboardHandler and ServerActionHandler
+// use.
+type statusError struct {
+	status int
+	msg    string
+}
+
+func (e *statusError) Error() string { return e.msg }
+
+func (h *DashboardHandler) buildData(r *http.Request) (dashboardData, *statusError) {
 	raw, err := h.Stats.ShowStat()
 	if err != nil {
-		http.Error(w, "Tidak bisa terhubung ke sistem gateway: "+err.Error(), http.StatusBadGateway)
-		return
+		return dashboardData{}, &statusError{http.StatusBadGateway, "Tidak bisa terhubung ke sistem gateway: " + err.Error()}
 	}
 	snap, err := stats.Parse(raw)
 	if err != nil {
-		http.Error(w, "Data trafik tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
-		return
+		return dashboardData{}, &statusError{http.StatusInternalServerError, "Data trafik tidak bisa dibaca: " + err.Error()}
 	}
 
 	u, _ := auth.UserFromContext(r.Context())
-	data := struct {
-		Chrome
-		Snapshot   stats.Snapshot
-		CanOperate bool
-	}{Chrome: NewChrome(r, "dashboard"), Snapshot: snap, CanOperate: u.Role.Allows(store.RoleOperator)}
+	var sys sysinfo.Snapshot
+	if h.Sys != nil {
+		sys = h.Sys.Read(h.DiskPaths)
+	}
+	return dashboardData{
+		Chrome:     NewChrome(r, "dashboard"),
+		Snapshot:   snap,
+		CanOperate: u.Role.Allows(store.RoleOperator),
+		Sys:        sys,
+	}, nil
+}
+
+func (h *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	data, statusErr := h.buildData(r)
+	if statusErr != nil {
+		http.Error(w, statusErr.msg, statusErr.status)
+		return
+	}
 
 	if isHTMXRequest(r) {
 		renderTemplate(w, h.Templates, "dashboard_table.html", data)
@@ -88,7 +130,9 @@ type ServerActionHandler struct {
 	// Refresh re-fetches stats for the fragment re-render after a
 	// successful action, so the dashboard row updates without a full
 	// page reload. Same signature as DashboardHandler's dependency.
-	Refresh StatsSource
+	Refresh   StatsSource
+	Sys       SysSampler
+	DiskPaths []string
 }
 
 type serverActionRequest struct {
@@ -166,11 +210,16 @@ func (h *ServerActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Aksi berhasil, tapi data trafik terbaru tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderTemplate(w, h.Templates, "dashboard_table.html", struct {
-		Chrome
-		Snapshot   stats.Snapshot
-		CanOperate bool
-	}{Chrome: NewChrome(r, "dashboard"), Snapshot: snap, CanOperate: u.Role.Allows(store.RoleOperator)})
+	var sys sysinfo.Snapshot
+	if h.Sys != nil {
+		sys = h.Sys.Read(h.DiskPaths)
+	}
+	renderTemplate(w, h.Templates, "dashboard_table.html", dashboardData{
+		Chrome:     NewChrome(r, "dashboard"),
+		Snapshot:   snap,
+		CanOperate: u.Role.Allows(store.RoleOperator),
+		Sys:        sys,
+	})
 }
 
 func parseRequest(r *http.Request, out *serverActionRequest) error {

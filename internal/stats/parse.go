@@ -5,6 +5,7 @@ package stats
 import (
 	"encoding/csv"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -212,19 +213,53 @@ func (b Backend) TotalSessions() int {
 	return total
 }
 
-// ConnectionsByBackend returns one bar per backend, comparing total active
-// connections across backends ("keseluruhan" — the whole-system view).
-func (s Snapshot) ConnectionsByBackend() []ChartBar {
-	bars := make([]ChartBar, len(s.Backends))
-	max := 0
-	for i, b := range s.Backends {
-		bars[i] = ChartBar{Name: b.Name, Sessions: b.TotalSessions()}
-		if bars[i].Sessions > max {
-			max = bars[i].Sessions
-		}
+// pieColors cycles through a fixed, colorblind-considerate palette so
+// PieSlice never needs a template-side color decision (Go's html/template
+// has no arithmetic to compute a palette index itself).
+var pieColors = []string{"#0e7c86", "#2563eb", "#f59e0b", "#dc2626", "#7c3aed", "#059669", "#db2777", "#4b5563"}
+
+// PieSlice is one wedge of a connections pie chart: StartPct/EndPct are
+// pre-computed cumulative percentages (0-100) suitable for a single CSS
+// conic-gradient stop list, so the template only ever prints numbers it
+// didn't have to compute itself.
+type PieSlice struct {
+	Name     string
+	Sessions int
+	Percent  float64
+	StartPct float64
+	EndPct   float64
+	Color    string
+}
+
+// ConnectionsPie returns one slice per backend, comparing each one's share
+// of total active connections across the whole system ("keseluruhan").
+func (s Snapshot) ConnectionsPie() []PieSlice {
+	total := 0
+	for _, b := range s.Backends {
+		total += b.TotalSessions()
 	}
-	fillPercents(bars, max)
-	return bars
+
+	slices := make([]PieSlice, len(s.Backends))
+	acc := 0.0
+	for i, b := range s.Backends {
+		sessions := b.TotalSessions()
+		pct := 0.0
+		if total > 0 {
+			pct = math.Round(float64(sessions)*10000/float64(total)) / 100 // 2 decimal places
+		}
+		slices[i] = PieSlice{
+			Name: b.Name, Sessions: sessions, Percent: pct,
+			StartPct: acc, EndPct: acc + pct,
+			Color: pieColors[i%len(pieColors)],
+		}
+		acc += pct
+	}
+	// Floating-point rounding can leave the last slice a hair short of
+	// 100%; stretch it so the gradient has no unpainted sliver at the seam.
+	if len(slices) > 0 && slices[len(slices)-1].EndPct < 100 {
+		slices[len(slices)-1].EndPct = 100
+	}
+	return slices
 }
 
 // ConnectionsByServer returns one bar per server in this backend, comparing

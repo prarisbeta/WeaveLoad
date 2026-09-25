@@ -7,8 +7,22 @@ import (
 	"strings"
 	"testing"
 
+	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/store"
 )
+
+type fakeDirectory struct {
+	enabled bool
+	results []omsdir.User
+	err     error
+	lastQ   string
+}
+
+func (f *fakeDirectory) Enabled() bool { return f.enabled }
+func (f *fakeDirectory) Search(q string) ([]omsdir.User, error) {
+	f.lastQ = q
+	return f.results, f.err
+}
 
 type fakeUserAdmin struct {
 	users     []store.User
@@ -45,6 +59,7 @@ func usersTemplates(t *testing.T) *template.Template {
 	return mustParse(t, `
 {{define "users.html"}}{{template "users_table.html" .}}{{end}}
 {{define "users_table.html"}}{{range .Users}}{{.Email}}:{{.Role}} {{end}}{{end}}
+{{define "user_search_results.html"}}{{if not .Enabled}}DISABLED{{else if .Error}}ERR:{{.Error}}{{else}}{{range .Results}}{{.Email}}({{.Name}}){{end}}{{end}}{{end}}
 `)
 }
 
@@ -225,6 +240,73 @@ func TestUserCreateHandler_DuplicateEmail_409(t *testing.T) {
 	}
 	if len(au.entries) != 1 {
 		t.Errorf("a failed create should still be audit-logged, got %+v", au.entries)
+	}
+}
+
+func TestUserSearchHandler_DisabledDirectory(t *testing.T) {
+	h := &UserSearchHandler{Directory: &fakeDirectory{enabled: false}, Templates: usersTemplates(t)}
+	req := httptest.NewRequest(http.MethodGet, "/api/users/search?q=budi", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "DISABLED") {
+		t.Errorf("body = %q, want the disabled branch", rec.Body.String())
+	}
+}
+
+func TestUserSearchHandler_NilDirectoryIsTreatedAsDisabled(t *testing.T) {
+	h := &UserSearchHandler{Directory: nil, Templates: usersTemplates(t)}
+	req := httptest.NewRequest(http.MethodGet, "/api/users/search?q=budi", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "DISABLED") {
+		t.Errorf("body = %q, want the disabled branch for a nil Directory", rec.Body.String())
+	}
+}
+
+func TestUserSearchHandler_ReturnsResults(t *testing.T) {
+	dir := &fakeDirectory{enabled: true, results: []omsdir.User{{Name: "Budi", Email: "budi@cni.net.id"}}}
+	h := &UserSearchHandler{Directory: dir, Templates: usersTemplates(t)}
+	req := httptest.NewRequest(http.MethodGet, "/api/users/search?q=budi", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if dir.lastQ != "budi" {
+		t.Errorf("query passed to Search = %q", dir.lastQ)
+	}
+	if !strings.Contains(rec.Body.String(), "budi@cni.net.id(Budi)") {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestUserSearchHandler_EmptyQuerySkipsSearch(t *testing.T) {
+	dir := &fakeDirectory{enabled: true}
+	h := &UserSearchHandler{Directory: dir, Templates: usersTemplates(t)}
+	req := httptest.NewRequest(http.MethodGet, "/api/users/search?q=", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if dir.lastQ != "" {
+		t.Error("Search should not be called for an empty query")
+	}
+}
+
+func TestUserSearchHandler_DirectoryError(t *testing.T) {
+	dir := &fakeDirectory{enabled: true, err: assertErr("upstream timeout")}
+	h := &UserSearchHandler{Directory: dir, Templates: usersTemplates(t)}
+	req := httptest.NewRequest(http.MethodGet, "/api/users/search?q=budi", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (the fragment itself reports the error)", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "ERR:") {
+		t.Errorf("body = %q, want the error branch", rec.Body.String())
 	}
 }
 

@@ -23,33 +23,40 @@
     {{if .HasValue}}<tr><th>Domain</th><th>Diarahkan ke</th><th></th></tr>{{else}}<tr><th>Entri</th><th></th></tr>{{end}}
     {{$path := .Path}}
     {{$hasValue := .HasValue}}
+    {{$canOperate := $.User.Role.Allows "operator"}}
     {{range .Entries}}
     <tr>
       <td>{{.Key}}</td>
       {{if $hasValue}}
       <td>
+        {{if $canOperate}}
         <form class="field-inline" hx-post="/api/acl/edit" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
           <input type="hidden" name="path" value="{{$path}}">
           <input type="hidden" name="key" value="{{.Key}}">
           <input type="text" name="value" value="{{.Value}}" aria-label="Tujuan baru untuk {{.Key}}" required>
           <button type="submit" title="Simpan tujuan baru untuk {{.Key}}">Simpan</button>
         </form>
+        {{else}}{{.Value}}{{end}}
       </td>
       {{end}}
       <td>
+        {{if $canOperate}}
         <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus &quot;{{.Key}}&quot; dari daftar ini?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}'>Hapus</button>
+        {{end}}
       </td>
     </tr>
     {{end}}
   </table>
   </div>
   {{end}}
+  {{if $.User.Role.Allows "operator"}}
   <form style="margin-top:12px" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
     <input type="hidden" name="path" value="{{.Path}}">
     <input type="text" name="key" placeholder="{{if .HasValue}}domain, misalnya app.contoh.id{{else}}nilai, misalnya alamat IP{{end}}" required>
     {{if .HasValue}}<input type="text" name="value" placeholder="nama tujuan" required>{{end}}
     <button type="submit" class="primary">Tambah entri</button>
   </form>
+  {{end}}
 </div>
 {{end}}
 {{end}}

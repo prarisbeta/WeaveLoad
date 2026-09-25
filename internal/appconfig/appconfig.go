@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config is everything main() needs to wire the app together.
@@ -20,6 +21,7 @@ type Config struct {
 	StagingDir    string // e.g. /var/lib/haproxy-gui/staging
 	ApplyScript   string // e.g. /usr/local/sbin/haproxy-gui-apply
 	SSLDir        string // e.g. /etc/haproxy/ssl
+	LogPath       string // e.g. /var/log/haproxy.log (where rsyslog writes the "log local2" traffic in haproxy.cfg)
 
 	DBPath string // e.g. /var/lib/haproxy-gui/app.db
 
@@ -27,6 +29,20 @@ type Config struct {
 	OIDCClientID     string
 	OIDCClientSecret string
 	OIDCRedirectURL  string
+
+	// OMSDir* configure the separate OMS CNI employee directory API (used to
+	// search/pre-register users on the Pengguna page), distinct from the
+	// OIDC login flow above. Client ID/secret default to the OIDC ones
+	// since OMS CNI issues one client registration that's valid for both —
+	// set OMS_DIR_CLIENT_ID/OMS_DIR_CLIENT_SECRET only if a separate
+	// registration was issued for directory access.
+	OMSDirBaseURL      string
+	OMSDirClientID     string
+	OMSDirClientSecret string
+
+	// SysDiskPaths lists the mount points shown in the dashboard's resource
+	// panel (comma-separated in SYS_DISK_PATHS), e.g. "/,/var".
+	SysDiskPaths []string
 
 	CookieSecure bool // true in production (HTTPS); false only for local dev
 }
@@ -68,6 +84,7 @@ func Load() (Config, error) {
 		StagingDir:    getenv("STAGING_DIR", "/var/lib/haproxy-gui/staging"),
 		ApplyScript:   getenv("APPLY_SCRIPT", "/usr/local/sbin/haproxy-gui-apply"),
 		SSLDir:        getenv("SSL_DIR", "/etc/haproxy/ssl"),
+		LogPath:       getenv("HAPROXY_LOG_PATH", "/var/log/haproxy.log"),
 
 		DBPath: getenv("DB_PATH", "/var/lib/haproxy-gui/app.db"),
 
@@ -75,6 +92,16 @@ func Load() (Config, error) {
 		OIDCClientID:     must("OIDC_CLIENT_ID"),
 		OIDCClientSecret: must("OIDC_CLIENT_SECRET"),
 		OIDCRedirectURL:  must("OIDC_REDIRECT_URL"),
+
+		OMSDirBaseURL: getenv("OMS_DIR_BASE_URL", "https://oms.cni.net.id"),
+	}
+	cfg.OMSDirClientID = getenv("OMS_DIR_CLIENT_ID", cfg.OIDCClientID)
+	cfg.OMSDirClientSecret = getenv("OMS_DIR_CLIENT_SECRET", cfg.OIDCClientSecret)
+
+	for _, p := range strings.Split(getenv("SYS_DISK_PATHS", "/"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			cfg.SysDiskPaths = append(cfg.SysDiskPaths, p)
+		}
 	}
 
 	secure, err := strconv.ParseBool(getenv("COOKIE_SECURE", "true"))

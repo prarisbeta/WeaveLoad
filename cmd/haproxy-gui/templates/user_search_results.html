@@ -1,0 +1,35 @@
+{{define "user_search_results.html"}}
+{{if not .Enabled}}
+<p class="hint" style="margin:0">Pencarian direktori SSO belum dikonfigurasi di server ini — gunakan tambah manual di bawah.</p>
+{{else if .Error}}
+<p class="hint" style="margin:0; color:var(--bad)">{{.Error}} — coba lagi, atau gunakan tambah manual di bawah.</p>
+{{else if not .Query}}
+{{else if not .Results}}
+<p class="hint" style="margin:0">Tidak ditemukan "{{.Query}}" di direktori SSO. Coba kata kunci lain, atau gunakan tambah manual di bawah.</p>
+{{else}}
+<div class="table-scroll">
+<table>
+  <tr><th>Nama</th><th>Email</th><th>Bagian</th><th>Peran</th><th></th></tr>
+  {{range .Results}}
+  <tr>
+    <td>{{.Name}}</td>
+    <td>{{.Email}}</td>
+    <td class="muted">{{.Department}}{{if .Position}} — {{.Position}}{{end}}</td>
+    <td>
+      <form class="field-inline" hx-post="/api/users/create" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+        <input type="hidden" name="email" value="{{.Email}}">
+        <input type="hidden" name="name" value="{{.Name}}">
+        <select name="role" aria-label="Peran untuk {{.Email}}" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
+          <option value="viewer">Pengamat</option>
+          <option value="operator">Operator</option>
+          <option value="admin">Administrator</option>
+        </select>
+        <button type="submit" class="primary">Tambah</button>
+      </form>
+    </td>
+  </tr>
+  {{end}}
+</table>
+</div>
+{{end}}
+{{end}}

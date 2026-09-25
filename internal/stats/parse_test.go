@@ -128,7 +128,7 @@ https_ixcni,BACKEND,UP,,,,0
 	}
 }
 
-func TestConnectionsByBackend_ScalesToBusiestBackend(t *testing.T) {
+func TestConnectionsPie_SharesSumToWholeAndAreCumulative(t *testing.T) {
 	body := `# pxname,svname,status,weight,check_status,last_chk,scur
 quiet,node1,UP,1,L7OK,,10
 quiet,BACKEND,UP,,,,10
@@ -140,19 +140,44 @@ busy,BACKEND,UP,,,,40
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	bars := snap.ConnectionsByBackend()
-	if len(bars) != 2 {
-		t.Fatalf("bars = %d, want 2", len(bars))
+	slices := snap.ConnectionsPie()
+	if len(slices) != 2 {
+		t.Fatalf("slices = %d, want 2", len(slices))
 	}
-	byName := map[string]ChartBar{}
-	for _, b := range bars {
-		byName[b.Name] = b
+	byName := map[string]PieSlice{}
+	for _, s := range slices {
+		byName[s.Name] = s
 	}
-	if byName["busy"].Sessions != 40 || byName["busy"].Percent != 100 {
-		t.Errorf("busy backend = %+v, want sessions=40 percent=100", byName["busy"])
+	quiet, busy := byName["quiet"], byName["busy"]
+	if quiet.Percent != 20 || busy.Percent != 80 {
+		t.Errorf("percents = quiet:%v busy:%v, want 20/80", quiet.Percent, busy.Percent)
 	}
-	if byName["quiet"].Sessions != 10 || byName["quiet"].Percent != 25 {
-		t.Errorf("quiet backend = %+v, want sessions=10 percent=25", byName["quiet"])
+	if quiet.StartPct != 0 || quiet.EndPct != 20 {
+		t.Errorf("quiet cumulative range = %v-%v, want 0-20", quiet.StartPct, quiet.EndPct)
+	}
+	if busy.StartPct != 20 || busy.EndPct != 100 {
+		t.Errorf("busy cumulative range = %v-%v, want 20-100", busy.StartPct, busy.EndPct)
+	}
+	if quiet.Color == "" || quiet.Color == busy.Color {
+		t.Errorf("expected distinct, non-empty colors, got %q and %q", quiet.Color, busy.Color)
+	}
+}
+
+func TestConnectionsPie_NoSessionsIsAllZeroNotDivideByZero(t *testing.T) {
+	snap, _ := Parse(`# pxname,svname,status,weight,check_status,last_chk,scur
+http_oms,node1,UP,1,L7OK,,0
+http_oms,BACKEND,UP,,,,0
+`)
+	slices := snap.ConnectionsPie()
+	if len(slices) != 1 || slices[0].Percent != 0 {
+		t.Errorf("slices = %+v, want one slice at 0%%", slices)
+	}
+}
+
+func TestConnectionsPie_EmptySnapshotReturnsNoSlices(t *testing.T) {
+	var snap Snapshot
+	if slices := snap.ConnectionsPie(); len(slices) != 0 {
+		t.Errorf("slices = %+v, want none", slices)
 	}
 }
 
@@ -175,16 +200,5 @@ http_oms,BACKEND,UP,,,,45
 	}
 	if bars[1].Sessions != 15 || bars[1].Percent != 50 {
 		t.Errorf("node2 = %+v, want sessions=15 percent=50", bars[1])
-	}
-}
-
-func TestConnectionsByBackend_NoSessionsIsZeroPercentNotDivideByZero(t *testing.T) {
-	snap, _ := Parse(`# pxname,svname,status,weight,check_status,last_chk,scur
-http_oms,node1,UP,1,L7OK,,0
-http_oms,BACKEND,UP,,,,0
-`)
-	bars := snap.ConnectionsByBackend()
-	if len(bars) != 1 || bars[0].Percent != 0 {
-		t.Errorf("bars = %+v, want one bar at 0%%", bars)
 	}
 }

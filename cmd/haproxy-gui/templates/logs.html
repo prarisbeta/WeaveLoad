@@ -1,0 +1,45 @@
+{{define "logs.html"}}{{template "chrome_header" .}}{{template "logs_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "logs_content"}}
+<h1>Log Trafik</h1>
+<p class="hint">Catatan mentah setiap permintaan yang melewati sistem — gunakan untuk menelusuri masalah spesifik (mis. kenapa satu pengguna mendapat error). Defaultnya menampilkan 500 baris terbaru.</p>
+
+<div class="panel">
+  <form method="get" action="/logs" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="log-date">Tanggal</label>
+      <input type="date" id="log-date" name="date" value="{{.Date}}" max="{{.Today}}">
+    </div>
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="log-q">Cari kata kunci</label>
+      <input type="text" id="log-q" name="q" value="{{.Keyword}}" placeholder="IP, path, kode status...">
+    </div>
+    <button type="submit" class="primary">Terapkan</button>
+    {{if or .Date .Keyword}}<a class="btn" href="/logs">Bersihkan filter</a>{{end}}
+  </form>
+</div>
+
+<div class="panel">
+  {{if not .Lines}}
+  <div class="empty-state"><h3>Tidak ada log yang cocok</h3><p>Coba ubah tanggal atau kata kunci pencarian.</p></div>
+  {{else}}
+  <p class="hint" style="margin-bottom:10px">Menampilkan {{len .Lines}} baris terbaru yang cocok, terbaru di atas.</p>
+  <div class="table-scroll">
+  <table>
+    <tr><th>Waktu</th><th>Status</th><th>Baris log</th></tr>
+    {{range .Lines}}
+    <tr>
+      <td class="muted" style="white-space:nowrap">{{if .Time.IsZero}}—{{else}}{{.Time.Format "15:04:05"}}{{end}}</td>
+      <td>
+        {{if .StatusCode}}
+        <span class="badge {{if lt .StatusCode 300}}badge-up{{else if lt .StatusCode 400}}badge-nocheck{{else if lt .StatusCode 500}}badge-maint{{else}}badge-down{{end}}">{{.StatusCode}}</span>
+        {{else}}<span class="muted">—</span>{{end}}
+      </td>
+      <td style="font: 12px/1.4 ui-monospace, monospace; word-break: break-all;">{{.Raw}}</td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+</div>
+{{end}}

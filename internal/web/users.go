@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"haproxy-gui/internal/auth"
+	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/store"
 )
 
@@ -72,7 +73,7 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "set_role":
 		role := store.Role(r.FormValue("role"))
 		if actor.ID == id && role != store.RoleAdmin {
-			http.Error(w, "you cannot demote your own account", http.StatusForbidden)
+			http.Error(w, "Anda tidak bisa menurunkan peran akun sendiri.", http.StatusForbidden)
 			return
 		}
 		actionErr = h.Store.SetRole(id, role)
@@ -82,7 +83,7 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		auditAction = "user.enable"
 	case "disable":
 		if actor.ID == id {
-			http.Error(w, "you cannot disable your own account", http.StatusForbidden)
+			http.Error(w, "Anda tidak bisa menonaktifkan akun sendiri.", http.StatusForbidden)
 			return
 		}
 		actionErr = h.Store.SetEnabled(id, false)
@@ -118,6 +119,47 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Chrome
 		Users []store.User
 	}{Chrome: NewChrome(r, "users"), Users: users})
+}
+
+// DirectorySearcher is the subset of *omsdir.Client the search box needs.
+type DirectorySearcher interface {
+	Enabled() bool
+	Search(query string) ([]omsdir.User, error)
+}
+
+// UserSearchHandler looks up candidates in the OMS CNI SSO directory as an
+// admin types, so a user can be pre-registered by picking them from a
+// search result instead of typing their email by hand. Directory may be
+// nil or report Enabled()==false (no client credentials configured), in
+// which case the fragment just says so — manual entry always still works.
+type UserSearchHandler struct {
+	Directory DirectorySearcher
+	Templates *template.Template
+}
+
+func (h *UserSearchHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	data := struct {
+		Chrome
+		Query   string
+		Enabled bool
+		Results []omsdir.User
+		Error   string
+	}{
+		Chrome:  NewChrome(r, "users"),
+		Query:   query,
+		Enabled: h.Directory != nil && h.Directory.Enabled(),
+	}
+
+	if data.Enabled && query != "" {
+		results, err := h.Directory.Search(query)
+		if err != nil {
+			data.Error = "Pencarian ke direktori SSO gagal: " + err.Error()
+		} else {
+			data.Results = results
+		}
+	}
+	renderTemplate(w, h.Templates, "user_search_results.html", data)
 }
 
 // UserCreateHandler pre-registers an account by email — for granting an

@@ -29,6 +29,51 @@
   </div>
 </div>
 
+{{$sys := .Sys}}
+<div class="two-col">
+  <div class="panel">
+    <h3>Sumber daya server</h3>
+    <p class="hint">Kondisi mesin yang menjalankan gateway ini — bukan trafik jaringan, tapi perangkat kerasnya sendiri.</p>
+    <div class="chart-row">
+      <div class="chart-label"><span>CPU</span><span class="muted">{{printf "%.0f" $sys.CPU.UsedPercent}}%</span></div>
+      <div class="chart-track"><div class="chart-fill" style="width:{{printf "%.0f" $sys.CPU.UsedPercent}}%"></div></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-label"><span>RAM</span><span class="muted">{{bytes $sys.Mem.UsedBytes}} / {{bytes $sys.Mem.TotalBytes}}</span></div>
+      <div class="chart-track"><div class="chart-fill" style="width:{{printf "%.0f" $sys.Mem.UsedPercent}}%"></div></div>
+    </div>
+    {{range $sys.Disks}}
+    <div class="chart-row">
+      <div class="chart-label"><span>Disk {{.Path}}</span><span class="muted">{{bytes .UsedBytes}} / {{bytes .TotalBytes}}</span></div>
+      <div class="chart-track"><div class="chart-fill" style="width:{{printf "%.0f" .UsedPercent}}%"></div></div>
+    </div>
+    {{end}}
+  </div>
+
+  <div class="panel">
+    <h3>Antarmuka jaringan</h3>
+    <p class="hint">Kartu jaringan fisik/virtual di server ini dan total lalu lintas sejak server terakhir menyala.</p>
+    {{if not $sys.Nets}}
+    <div class="empty-state"><p>Tidak ada antarmuka jaringan yang terdeteksi.</p></div>
+    {{else}}
+    <div class="table-scroll">
+    <table>
+      <tr><th>Antarmuka</th><th>Status</th><th>Alamat</th><th>Terkirim / Diterima</th></tr>
+      {{range $sys.Nets}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td><span class="badge {{if .Up}}badge-up{{else}}badge-down{{end}}">{{if .Up}}Aktif{{else}}Nonaktif{{end}}</span></td>
+        <td class="muted">{{range .Addrs}}{{.}} {{end}}</td>
+        <td class="muted">{{bytes .TxBytes}} / {{bytes .RxBytes}}</td>
+      </tr>
+      {{end}}
+    </table>
+    </div>
+    {{end}}
+  </div>
+</div>
+
+{{if not .Snapshot.Backends}}
 <div class="panel">
   <h3>Pintu masuk trafik</h3>
   <p class="hint">Ini adalah alamat yang menerima permintaan dari pengguna sebelum diteruskan ke server tujuan.</p>
@@ -48,19 +93,53 @@
   </div>
   {{end}}
 </div>
-
-{{if not .Snapshot.Backends}}
 <div class="panel"><div class="empty-state"><h3>Belum ada kelompok server</h3><p>Belum ada backend yang terdaftar untuk menerima trafik.</p></div></div>
 {{else}}
-<div class="panel">
-  <h3>Koneksi keseluruhan per kelompok</h3>
-  <p class="hint">Perbandingan jumlah koneksi aktif antar kelompok server saat ini — batang terpanjang adalah kelompok tersibuk.</p>
-  {{range .Snapshot.ConnectionsByBackend}}
-  <div class="chart-row">
-    <div class="chart-label"><span>{{.Name}}</span><span class="muted">{{.Sessions}}</span></div>
-    <div class="chart-track"><div class="chart-fill" style="width:{{.Percent}}%"></div></div>
+<div class="two-col">
+  <div class="panel">
+    <h3>Pintu masuk trafik</h3>
+    <p class="hint">Ini adalah alamat yang menerima permintaan dari pengguna sebelum diteruskan ke server tujuan.</p>
+    {{if not .Snapshot.Frontends}}
+    <div class="empty-state"><h3>Belum ada data</h3><p>Sistem belum melaporkan pintu masuk trafik apa pun.</p></div>
+    {{else}}
+    <div class="table-scroll">
+    <table>
+      <tr><th>Nama</th><th>Status</th></tr>
+      {{range .Snapshot.Frontends}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{if eq .Status "OPEN"}}Aktif{{else}}{{.Status}}{{end}}</span></td>
+      </tr>
+      {{end}}
+    </table>
+    </div>
+    {{end}}
   </div>
-  {{end}}
+
+  <div class="panel">
+    <h3>Koneksi keseluruhan per kelompok</h3>
+    <p class="hint">Porsi koneksi aktif yang ditangani tiap kelompok server saat ini.</p>
+    {{$pie := .Snapshot.ConnectionsPie}}
+    {{if $.Snapshot.Summary.Sessions}}
+    <div class="pie-row">
+      <div class="pie" style="background: conic-gradient({{range $pie}}{{.Color}} {{.StartPct}}% {{.EndPct}}%, {{end}}transparent 100% 100%);"></div>
+      <div class="pie-legend">
+        {{range $pie}}
+        <div class="pie-legend-item">
+          <span class="pie-swatch" style="background:{{.Color}}"></span>
+          <span>{{.Name}}</span>
+          <span class="muted">{{.Sessions}} ({{.Percent}}%)</span>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{else}}
+    <div class="pie-row">
+      <div class="pie pie-empty"></div>
+      <div class="pie-legend"><p class="hint" style="margin:0">Belum ada koneksi aktif untuk ditampilkan.</p></div>
+    </div>
+    {{end}}
+  </div>
 </div>
 {{end}}
 

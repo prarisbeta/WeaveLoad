@@ -9,8 +9,10 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/store"
+	"haproxy-gui/internal/sysinfo"
 	"haproxy-gui/internal/web"
 )
 
@@ -24,6 +26,8 @@ type routeDeps struct {
 	cfgfile   *cfgfile.Store
 	certs     *certs.Store
 	provider  *auth.Provider
+	dir       *omsdir.Client
+	sys       *sysinfo.Sampler
 	cfg       appconfig.Config
 }
 
@@ -52,7 +56,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
 
 	// --- viewer (read-only) ---
-	dashboard := &web.DashboardHandler{Stats: d.runtime, Templates: d.templates}
+	dashboard := &web.DashboardHandler{Stats: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths, Templates: d.templates}
 	mux.Handle("GET /{$}", chain(dashboard, requireAuth))
 	mux.Handle("GET /api/dashboard", chain(dashboard, requireAuth))
 
@@ -62,6 +66,9 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	certsHandler := &web.CertsHandler{Certs: d.certs, Templates: d.templates}
 	mux.Handle("GET /certs", chain(certsHandler, requireAuth))
+
+	logHandler := &web.LogHandler{Path: d.cfg.LogPath, Templates: d.templates}
+	mux.Handle("GET /logs", chain(logHandler, requireAuth, requireOperator))
 
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
@@ -77,7 +84,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /acl", chain(aclHandler, requireAuth))
 
 	// --- operator (runtime control) ---
-	serverAction := &web.ServerActionHandler{Runtime: d.runtime, Audit: d.store, Refresh: d.runtime, Templates: d.templates}
+	serverAction := &web.ServerActionHandler{Runtime: d.runtime, Audit: d.store, Refresh: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths, Templates: d.templates}
 	mux.Handle("POST /api/servers/action", chain(serverAction, requireAuth, requireOperator, auth.RequireCSRF))
 	mux.Handle("POST /api/acl/add", chain(&web.AclAddHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
 	mux.Handle("POST /api/acl/edit", chain(&web.AclEditHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
@@ -98,6 +105,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /users", chain(usersHandler, requireAuth, requireAdmin))
 	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireAdmin))
 
 	return securityHeaders(mux)
 }

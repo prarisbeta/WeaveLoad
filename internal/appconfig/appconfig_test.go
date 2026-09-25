@@ -91,6 +91,77 @@ func TestLoad_ExplicitValuesOverrideDefaults(t *testing.T) {
 	}
 }
 
+func TestLoad_OMSDirDefaultsToOIDCCredentials(t *testing.T) {
+	setRequiredOIDCEnv(t)
+	clearEnv(t, "OMS_DIR_BASE_URL", "OMS_DIR_CLIENT_ID", "OMS_DIR_CLIENT_SECRET")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.OMSDirBaseURL != "https://oms.cni.net.id" {
+		t.Errorf("OMSDirBaseURL = %q", cfg.OMSDirBaseURL)
+	}
+	if cfg.OMSDirClientID != cfg.OIDCClientID {
+		t.Errorf("OMSDirClientID = %q, want it to default to OIDCClientID %q", cfg.OMSDirClientID, cfg.OIDCClientID)
+	}
+	if cfg.OMSDirClientSecret != cfg.OIDCClientSecret {
+		t.Errorf("OMSDirClientSecret = %q, want it to default to OIDCClientSecret", cfg.OMSDirClientSecret)
+	}
+}
+
+func TestLoad_OMSDirExplicitCredentialsOverrideOIDCDefault(t *testing.T) {
+	setRequiredOIDCEnv(t)
+	os.Setenv("OMS_DIR_CLIENT_ID", "separate-dir-client")
+	os.Setenv("OMS_DIR_CLIENT_SECRET", "separate-dir-secret")
+	os.Setenv("OMS_DIR_BASE_URL", "https://directory.internal")
+	t.Cleanup(func() { clearEnv(t, "OMS_DIR_CLIENT_ID", "OMS_DIR_CLIENT_SECRET", "OMS_DIR_BASE_URL") })
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.OMSDirClientID != "separate-dir-client" || cfg.OMSDirClientSecret != "separate-dir-secret" {
+		t.Errorf("OMSDir credentials = %q/%q, want explicit overrides to win", cfg.OMSDirClientID, cfg.OMSDirClientSecret)
+	}
+	if cfg.OMSDirBaseURL != "https://directory.internal" {
+		t.Errorf("OMSDirBaseURL = %q", cfg.OMSDirBaseURL)
+	}
+}
+
+func TestLoad_SysDiskPathsDefaultsToRoot(t *testing.T) {
+	setRequiredOIDCEnv(t)
+	clearEnv(t, "SYS_DISK_PATHS")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.SysDiskPaths) != 1 || cfg.SysDiskPaths[0] != "/" {
+		t.Errorf("SysDiskPaths = %+v, want [\"/\"]", cfg.SysDiskPaths)
+	}
+}
+
+func TestLoad_SysDiskPathsSplitsCommaList(t *testing.T) {
+	setRequiredOIDCEnv(t)
+	os.Setenv("SYS_DISK_PATHS", "/, /var , /var/lib/haproxy-gui")
+	t.Cleanup(func() { clearEnv(t, "SYS_DISK_PATHS") })
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"/", "/var", "/var/lib/haproxy-gui"}
+	if len(cfg.SysDiskPaths) != len(want) {
+		t.Fatalf("SysDiskPaths = %+v, want %+v", cfg.SysDiskPaths, want)
+	}
+	for i := range want {
+		if cfg.SysDiskPaths[i] != want[i] {
+			t.Errorf("SysDiskPaths[%d] = %q, want %q", i, cfg.SysDiskPaths[i], want[i])
+		}
+	}
+}
+
 func TestLoad_InvalidCookieSecure_Fails(t *testing.T) {
 	setRequiredOIDCEnv(t)
 	os.Setenv("COOKIE_SECURE", "maybe")

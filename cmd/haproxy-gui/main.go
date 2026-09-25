@@ -21,8 +21,10 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/store"
+	"haproxy-gui/internal/sysinfo"
 )
 
 //go:embed templates/*.html
@@ -40,7 +42,10 @@ func run() error {
 		return err
 	}
 
-	tpl, err := template.New("").Funcs(template.FuncMap{"upper": strings.ToUpper}).ParseFS(templatesFS, "templates/*.html")
+	tpl, err := template.New("").Funcs(template.FuncMap{
+		"upper": strings.ToUpper,
+		"bytes": sysinfo.FormatBytes,
+	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return err
 	}
@@ -59,6 +64,8 @@ func run() error {
 	cf.ApplyScript = cfg.ApplyScript
 
 	certStore := certs.New(cfg.SSLDir)
+	dirClient := omsdir.New(cfg.OMSDirBaseURL, cfg.OMSDirClientID, cfg.OMSDirClientSecret)
+	sysSampler := sysinfo.NewSampler()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	provider, err := auth.NewProvider(ctx, auth.Config{
@@ -80,6 +87,8 @@ func run() error {
 		cfgfile:   cf,
 		certs:     certStore,
 		provider:  provider,
+		dir:       dirClient,
+		sys:       sysSampler,
 		cfg:       cfg,
 	})
 
