@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"html/template"
+	"mime"
 	"net/http"
 
 	"haproxy-gui/internal/appconfig"
@@ -18,6 +19,16 @@ import (
 
 //go:embed static/*
 var staticFS embed.FS
+
+func init() {
+	// Some hosts ship a /etc/mime.types that Go's mime package reads before
+	// falling back to its own table, and that file doesn't always map ".js"
+	// correctly (seen serving "text/plain" on the CentOS 7 target). Register
+	// it explicitly so the static handler never depends on host mime config —
+	// otherwise the browser refuses to run the script under our
+	// X-Content-Type-Options: nosniff policy.
+	mime.AddExtensionType(".js", "text/javascript; charset=utf-8")
+}
 
 type routeDeps struct {
 	templates *template.Template
