@@ -16,6 +16,7 @@ import (
 // MapRuntime is the subset of *runtime.Client the ACL/map handlers need.
 type MapRuntime interface {
 	AddMapEntry(mapFile, key, value string) error
+	SetMapEntry(mapFile, key, value string) error
 	DelMapEntry(mapFile, key string) error
 }
 
@@ -195,6 +196,110 @@ func appendLine(path, line string) error {
 	defer f.Close()
 	_, err = f.WriteString(line + "\n")
 	return err
+}
+
+// AclEditHandler changes the value of an existing "key value" entry (host
+// routing maps and similar), both at runtime (immediate effect) and on
+// disk. It only makes sense for MapFile.HasValue files — a plain allow/deny
+// list has nothing to edit but the key itself, which is a delete-then-add.
+type AclEditHandler struct {
+	AclHandler *AclHandler
+}
+
+func (h *AclEditHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	path := r.FormValue("path")
+	key := strings.TrimSpace(r.FormValue("key"))
+	value := strings.TrimSpace(r.FormValue("value"))
+
+	mf, ok := h.AclHandler.findFile(path)
+	if !ok {
+		http.Error(w, "unknown map file", http.StatusBadRequest)
+		return
+	}
+	if !mf.HasValue {
+		http.Error(w, "this list has no value to edit — delete and re-add instead", http.StatusBadRequest)
+		return
+	}
+	if key == "" {
+		http.Error(w, "key must be non-empty", http.StatusBadRequest)
+		return
+	}
+	if value == "" || strings.ContainsAny(value, " \t\n") {
+		http.Error(w, "value must be non-empty and contain no whitespace", http.StatusBadRequest)
+		return
+	}
+
+	u, _ := auth.UserFromContext(r.Context())
+	target := path + ":" + key
+
+	if err := h.AclHandler.Runtime.SetMapEntry(path, key, value); err != nil {
+		_ = h.AclHandler.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email, RemoteIP: clientIP(r),
+			Action: "acl.edit", Target: target, Detail: "runtime update failed: " + err.Error(),
+		})
+		http.Error(w, "failed to update at runtime: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	if err := updateLine(path, key, value); err != nil {
+		_ = h.AclHandler.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email, RemoteIP: clientIP(r),
+			Action: "acl.edit", Target: target,
+			Detail: "updated at runtime but FAILED to persist to file (old value will return on the next reload): " + err.Error(),
+		})
+		http.Error(w, "updated at runtime but failed to update the file — the old value will come back on the next reload: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.AclHandler.Audit.Record(store.AuditEntry{
+		UserEmail: u.Email, RemoteIP: clientIP(r),
+		Action: "acl.edit", Target: target, Detail: "value=" + value,
+	}); err != nil {
+		http.Error(w, "updated but failed to audit-log: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.AclHandler.ServeHTTP(w, r)
+}
+
+// updateLine rewrites the "<key> <value>" line matching key (by its first
+// whitespace-separated field) to use newValue instead, leaving every other
+// line untouched. It is a no-op if the key isn't found.
+func updateLine(path, key, newValue string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var kept []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		trimmed := strings.TrimSpace(line)
+		fields := strings.Fields(trimmed)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || len(fields) == 0 || fields[0] != key {
+			kept = append(kept, line)
+			continue
+		}
+		kept = append(kept, key+" "+newValue)
+	}
+	if err := sc.Err(); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(strings.Join(kept, "\n")+"\n"), 0o640); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // AclDeleteHandler removes one entry from a managed map/list file, both at

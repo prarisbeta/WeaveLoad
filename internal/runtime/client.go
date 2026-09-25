@@ -136,6 +136,22 @@ func (c *Client) AddMapEntry(mapFile, key, value string) error {
 	return wrapIfError(out, err)
 }
 
+// SetMapEntry replaces the value of an existing "<key> <value>" pair in a
+// runtime map, leaving the key's position/other entries untouched. Unlike
+// AddMapEntry, this updates an entry in place rather than appending a
+// duplicate. It does not touch the map file on disk (callers should also
+// rewrite the file so the change survives a reload).
+func (c *Client) SetMapEntry(mapFile, key, value string) error {
+	if strings.ContainsAny(mapFile, "\n\r") || !strings.HasPrefix(mapFile, "/") {
+		return fmt.Errorf("invalid map file path: %q", mapFile)
+	}
+	if strings.ContainsAny(key, "\n\r ") || strings.ContainsAny(value, "\n\r ") {
+		return fmt.Errorf("map key/value must not contain whitespace or newlines")
+	}
+	out, err := c.run(fmt.Sprintf("set map %s %s %s", mapFile, key, value))
+	return wrapIfError(out, err)
+}
+
 // DelMapEntry removes every entry matching key from a runtime map. It does
 // not touch the map file on disk (callers should also rewrite the file so
 // the removal survives a reload).

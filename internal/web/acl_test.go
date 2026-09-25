@@ -30,6 +30,14 @@ func (f *fakeMapRuntime) AddMapEntry(mapFile, key, value string) error {
 	return nil
 }
 
+func (f *fakeMapRuntime) SetMapEntry(mapFile, key, value string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.added[mapFile] = [2]string{key, value}
+	return nil
+}
+
 func (f *fakeMapRuntime) DelMapEntry(mapFile, key string) error {
 	if f.err != nil {
 		return f.err
@@ -142,6 +150,104 @@ func TestAclAddHandler_UnknownMapFile_400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 for a path not in the managed file list", rec.Code)
+	}
+}
+
+func TestAclEditHandler_UpdatesRuntimeAndFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts_http.map")
+	os.WriteFile(path, []byte("app.example.id http_old\nother.example.id http_keep\n"), 0o640)
+
+	rt := newFakeMapRuntime()
+	au := &fakeAudit{}
+	base := &AclHandler{
+		Files:     []MapFile{{Label: "HTTP routing", Path: path, HasValue: true}},
+		Runtime:   rt,
+		Audit:     au,
+		Templates: aclTemplates(t),
+	}
+	h := &AclEditHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/edit", strings.NewReader("path="+path+"&key=app.example.id&value=http_new"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{Email: "admin@example.com"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rt.added[path] != [2]string{"app.example.id", "http_new"} {
+		t.Errorf("runtime not called correctly: %+v", rt.added)
+	}
+	got, _ := os.ReadFile(path)
+	if !strings.Contains(string(got), "app.example.id http_new") {
+		t.Errorf("file not updated: %q", got)
+	}
+	if strings.Contains(string(got), "http_old") {
+		t.Errorf("old value should be gone: %q", got)
+	}
+	if !strings.Contains(string(got), "other.example.id http_keep") {
+		t.Errorf("unrelated entry should survive: %q", got)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "acl.edit" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestAclEditHandler_RejectsListsWithoutValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "list.lst")
+	os.WriteFile(path, []byte("1.2.3.4\n"), 0o640)
+	base := &AclHandler{Files: []MapFile{{Label: "L", Path: path, HasValue: false}}, Runtime: newFakeMapRuntime(), Audit: &fakeAudit{}, Templates: aclTemplates(t)}
+	h := &AclEditHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/edit", strings.NewReader("path="+path+"&key=1.2.3.4&value=x"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for a value-less list", rec.Code)
+	}
+}
+
+func TestAclEditHandler_RejectsWhitespaceInValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts_http.map")
+	base := &AclHandler{Files: []MapFile{{Label: "L", Path: path, HasValue: true}}, Runtime: newFakeMapRuntime(), Audit: &fakeAudit{}, Templates: aclTemplates(t)}
+	h := &AclEditHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/edit", strings.NewReader("path="+path+"&key=app.example.id&value=has space"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestAclEditHandler_RuntimeFailure_502(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts_http.map")
+	os.WriteFile(path, []byte("app.example.id http_old\n"), 0o640)
+	rt := &fakeMapRuntime{added: map[string][2]string{}, err: assertErr("no such entry")}
+	au := &fakeAudit{}
+	base := &AclHandler{Files: []MapFile{{Label: "L", Path: path, HasValue: true}}, Runtime: rt, Audit: au, Templates: aclTemplates(t)}
+	h := &AclEditHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/edit", strings.NewReader("path="+path+"&key=app.example.id&value=http_new"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+	got, _ := os.ReadFile(path)
+	if !strings.Contains(string(got), "http_old") {
+		t.Error("file should be unchanged when the runtime call failed")
 	}
 }
 

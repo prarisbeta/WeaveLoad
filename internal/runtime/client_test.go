@@ -172,6 +172,37 @@ func TestAddMapEntry_RejectsWhitespaceInValue(t *testing.T) {
 	}
 }
 
+func TestSetMapEntry_SendsExactCommand(t *testing.T) {
+	var got string
+	c := New(fakeSocket(t, func(cmd string) string {
+		got = cmd
+		return ""
+	}))
+	if err := c.SetMapEntry("/etc/haproxy/maps/hosts_http.map", "app.example.id", "http_new"); err != nil {
+		t.Fatalf("SetMapEntry: %v", err)
+	}
+	want := "set map /etc/haproxy/maps/hosts_http.map app.example.id http_new"
+	if got != want {
+		t.Errorf("command = %q, want %q", got, want)
+	}
+}
+
+func TestSetMapEntry_RejectsWhitespaceInValue(t *testing.T) {
+	c := New(fakeSocket(t, func(string) string { return "" }))
+	err := c.SetMapEntry("/etc/haproxy/maps/hosts_http.map", "app.example.id", "http new")
+	if err == nil {
+		t.Fatal("expected error for value containing whitespace")
+	}
+}
+
+func TestSetMapEntry_ErrorReplyBecomesGoError(t *testing.T) {
+	c := New(fakeSocket(t, func(string) string { return "No such entry.\n" }))
+	err := c.SetMapEntry("/etc/haproxy/maps/hosts_http.map", "ghost.example.id", "http_new")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestDelMapEntry_SendsExactCommand(t *testing.T) {
 	var got string
 	c := New(fakeSocket(t, func(cmd string) string {

@@ -26,7 +26,16 @@
     {{range .Entries}}
     <tr>
       <td>{{.Key}}</td>
-      {{if $hasValue}}<td>{{.Value}}</td>{{end}}
+      {{if $hasValue}}
+      <td>
+        <form class="field-inline" hx-post="/api/acl/edit" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+          <input type="hidden" name="path" value="{{$path}}">
+          <input type="hidden" name="key" value="{{.Key}}">
+          <input type="text" name="value" value="{{.Value}}" aria-label="Tujuan baru untuk {{.Key}}" required>
+          <button type="submit" title="Simpan tujuan baru untuk {{.Key}}">Simpan</button>
+        </form>
+      </td>
+      {{end}}
       <td>
         <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus &quot;{{.Key}}&quot; dari daftar ini?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}'>Hapus</button>
       </td>
