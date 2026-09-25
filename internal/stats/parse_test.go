@@ -1,6 +1,10 @@
 package stats
 
-import "testing"
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
 
 // fixture is a trimmed but real-shaped "show stat" CSV: one frontend, one
 // backend with two servers (one UP with a check, one with no check
@@ -152,11 +156,13 @@ busy,BACKEND,UP,,,,40
 	if quiet.Percent != 20 || busy.Percent != 80 {
 		t.Errorf("percents = quiet:%v busy:%v, want 20/80", quiet.Percent, busy.Percent)
 	}
-	if quiet.StartPct != 0 || quiet.EndPct != 20 {
-		t.Errorf("quiet cumulative range = %v-%v, want 0-20", quiet.StartPct, quiet.EndPct)
+	// Slices are ordered busiest-first, so busy (80%) occupies the first
+	// cumulative range and quiet (20%) the second.
+	if busy.StartPct != 0 || busy.EndPct != 80 {
+		t.Errorf("busy cumulative range = %v-%v, want 0-80", busy.StartPct, busy.EndPct)
 	}
-	if busy.StartPct != 20 || busy.EndPct != 100 {
-		t.Errorf("busy cumulative range = %v-%v, want 20-100", busy.StartPct, busy.EndPct)
+	if quiet.StartPct != 80 || quiet.EndPct != 100 {
+		t.Errorf("quiet cumulative range = %v-%v, want 80-100", quiet.StartPct, quiet.EndPct)
 	}
 	if quiet.Color == "" || quiet.Color == busy.Color {
 		t.Errorf("expected distinct, non-empty colors, got %q and %q", quiet.Color, busy.Color)
@@ -178,6 +184,38 @@ func TestConnectionsPie_EmptySnapshotReturnsNoSlices(t *testing.T) {
 	var snap Snapshot
 	if slices := snap.ConnectionsPie(); len(slices) != 0 {
 		t.Errorf("slices = %+v, want none", slices)
+	}
+}
+
+func TestConnectionsPie_CapsAtEightSlicesPlusOthers(t *testing.T) {
+	var body strings.Builder
+	body.WriteString("# pxname,svname,status,weight,check_status,last_chk,scur\n")
+	// 10 backends, sessions 100 down to 10 in steps of 10 (b1=100 ... b10=10).
+	for i := 1; i <= 10; i++ {
+		sessions := (11 - i) * 10
+		fmt.Fprintf(&body, "b%d,node1,UP,1,L7OK,,%d\n", i, sessions)
+		fmt.Fprintf(&body, "b%d,BACKEND,UP,,,,%d\n", i, sessions)
+	}
+	snap, err := Parse(body.String())
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	slices := snap.ConnectionsPie()
+	if len(slices) != 9 {
+		t.Fatalf("slices = %d, want 9 (8 busiest + Lainnya)", len(slices))
+	}
+	for i := 0; i < 8; i++ {
+		wantName := fmt.Sprintf("b%d", i+1)
+		if slices[i].Name != wantName {
+			t.Errorf("slices[%d].Name = %q, want %q", i, slices[i].Name, wantName)
+		}
+	}
+	last := slices[8]
+	if last.Name != "Lainnya" || last.Sessions != 20+10 {
+		t.Errorf("last slice = %+v, want Lainnya with sessions=30 (b9=20 + b10=10)", last)
+	}
+	if last.EndPct != 100 {
+		t.Errorf("last slice EndPct = %v, want 100", last.EndPct)
 	}
 }
 

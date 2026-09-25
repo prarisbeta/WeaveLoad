@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -231,28 +232,55 @@ type PieSlice struct {
 	Color    string
 }
 
+// maxPieSlices caps how many backends get their own wedge — beyond this,
+// a long tail of small backends turns the pie into unreadable confetti, and
+// there are exactly this many colors in pieColors to draw from.
+const maxPieSlices = 8
+
 // ConnectionsPie returns one slice per backend, comparing each one's share
-// of total active connections across the whole system ("keseluruhan").
+// of total active connections across the whole system ("keseluruhan"). Only
+// the maxPieSlices busiest backends get a wedge; the rest are folded into a
+// single "Lainnya" slice so the wedges still add up to the true total.
 func (s Snapshot) ConnectionsPie() []PieSlice {
 	total := 0
 	for _, b := range s.Backends {
 		total += b.TotalSessions()
 	}
 
-	slices := make([]PieSlice, len(s.Backends))
+	ranked := make([]Backend, len(s.Backends))
+	copy(ranked, s.Backends)
+	sort.SliceStable(ranked, func(i, j int) bool {
+		return ranked[i].TotalSessions() > ranked[j].TotalSessions()
+	})
+
+	shown := ranked
+	var others int
+	if len(ranked) > maxPieSlices {
+		shown = ranked[:maxPieSlices]
+		for _, b := range ranked[maxPieSlices:] {
+			others += b.TotalSessions()
+		}
+	}
+
+	slices := make([]PieSlice, 0, len(shown)+1)
 	acc := 0.0
-	for i, b := range s.Backends {
-		sessions := b.TotalSessions()
+	addSlice := func(name string, sessions int, colorIdx int) {
 		pct := 0.0
 		if total > 0 {
 			pct = math.Round(float64(sessions)*10000/float64(total)) / 100 // 2 decimal places
 		}
-		slices[i] = PieSlice{
-			Name: b.Name, Sessions: sessions, Percent: pct,
+		slices = append(slices, PieSlice{
+			Name: name, Sessions: sessions, Percent: pct,
 			StartPct: acc, EndPct: acc + pct,
-			Color: pieColors[i%len(pieColors)],
-		}
+			Color: pieColors[colorIdx%len(pieColors)],
+		})
 		acc += pct
+	}
+	for i, b := range shown {
+		addSlice(b.Name, b.TotalSessions(), i)
+	}
+	if others > 0 {
+		addSlice("Lainnya", others, len(pieColors)-1)
 	}
 	// Floating-point rounding can leave the last slice a hair short of
 	// 100%; stretch it so the gradient has no unpainted sliver at the seam.
