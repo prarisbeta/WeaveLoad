@@ -1,6 +1,6 @@
-{{define "audit.html"}}{{template "layout.html" .}}{{end}}
+{{define "audit.html"}}{{template "chrome_header" .}}{{template "audit_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "content"}}
+{{define "audit_content"}}
 <div class="panel">
   <h3>Audit Log</h3>
   <table>

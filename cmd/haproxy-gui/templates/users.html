@@ -1,6 +1,6 @@
-{{define "users.html"}}{{template "layout.html" .}}{{end}}
+{{define "users.html"}}{{template "chrome_header" .}}{{template "users_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "content"}}
+{{define "users_content"}}
 <div class="panel" id="users-panel">
 {{template "users_table.html" .}}
 </div>

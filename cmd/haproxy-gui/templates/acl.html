@@ -1,6 +1,6 @@
-{{define "acl.html"}}{{template "layout.html" .}}{{end}}
+{{define "acl.html"}}{{template "chrome_header" .}}{{template "acl_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "content"}}
+{{define "acl_content"}}
 {{range .Files}}
 <div class="panel">
   <h3>{{.Label}} <span class="muted">({{.Path}})</span></h3>

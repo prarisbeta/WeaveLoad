@@ -1,6 +1,6 @@
-{{define "config.html"}}{{template "layout.html" .}}{{end}}
+{{define "config.html"}}{{template "chrome_header" .}}{{template "config_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "content"}}
+{{define "config_content"}}
 <div class="panel">
   <h3>Editor Config</h3>
   <form id="cfg-form">

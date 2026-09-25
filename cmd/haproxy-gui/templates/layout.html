@@ -1,9 +1,18 @@
-{{define "layout.html"}}<!doctype html>
+{{/*
+  chrome_header / chrome_footer wrap each page's own uniquely-named content
+  template (e.g. "dashboard_content", "users_content"). They are NOT called
+  "layout.html" + a shared {{block "content" .}} on purpose: html/template
+  parses every *.html file into one shared namespace, so two files defining
+  a block with the same name ("content") silently overwrite each other —
+  whichever file is parsed last wins for every page. Each page must define
+  its own distinctly-named content template instead.
+*/}}
+{{define "chrome_header"}}<!doctype html>
 <html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{block "title" .}}haproxy-gui{{end}}</title>
+<title>haproxy-gui</title>
 <style>
 :root {
   --bg: #0f1115; --panel: #161922; --border: #262b38; --text: #e6e8ee;
@@ -45,8 +54,9 @@ textarea { width: 100%; min-height: 60vh; background: var(--panel); color: var(-
   </nav>
 </header>
 <main>
-{{block "content" .}}{{end}}
-</main>
+{{end}}
+
+{{define "chrome_footer"}}</main>
 </body>
 </html>
 {{end}}

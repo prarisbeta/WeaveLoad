@@ -1,6 +1,6 @@
-{{define "dashboard.html"}}{{template "layout.html" .}}{{end}}
+{{define "dashboard.html"}}{{template "chrome_header" .}}{{template "dashboard_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "content"}}
+{{define "dashboard_content"}}
 <div id="dashboard-root" hx-get="/api/dashboard" hx-trigger="every 3s" hx-swap="innerHTML">
 {{template "dashboard_table.html" .}}
 </div>

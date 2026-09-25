@@ -1,6 +1,6 @@
-{{define "certs.html"}}{{template "layout.html" .}}{{end}}
+{{define "certs.html"}}{{template "chrome_header" .}}{{template "certs_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "content"}}
+{{define "certs_content"}}
 <div class="panel">
   <h3>Sertifikat SSL</h3>
   <table>
