@@ -66,11 +66,21 @@ func AddMember(content, pool string, spec MemberSpec) (string, string, error) {
 	return insertLine(content, after, indent+line), line, nil
 }
 
+// validateSpec checks a brand-new member: no name in the pool may match it,
+// and no member's address may match it.
 func validateSpec(p Pool, s MemberSpec) error {
+	return validateMemberSpec(p, s, "")
+}
+
+// validateMemberSpec is the shared field/uniqueness validation for adding or
+// editing a member. exclude is the current name of the member being edited
+// (empty for a brand-new one) — its own name and address don't count as
+// conflicts against the very row being changed.
+func validateMemberSpec(p Pool, s MemberSpec, exclude string) error {
 	if !nameRE.MatchString(s.Name) {
 		return fmt.Errorf("nama anggota hanya boleh huruf, angka, titik, garis bawah, dan tanda minus (maks. 64)")
 	}
-	if p.hasMember(s.Name) {
+	if s.Name != exclude && p.hasMember(s.Name) {
 		return fmt.Errorf("nama %q sudah dipakai di kelompok %s", s.Name, p.Name)
 	}
 	if ip := net.ParseIP(s.Host); ip != nil {
@@ -90,11 +100,42 @@ func validateSpec(p Pool, s MemberSpec) error {
 		return err
 	}
 	for _, m := range p.Members {
+		if m.Name == exclude {
+			continue
+		}
 		if m.Host == s.Host && m.Port == s.Port {
 			return fmt.Errorf("%s:%s sudah menjadi anggota (%s)", s.Host, s.Port, m.Name)
 		}
 	}
 	return nil
+}
+
+// EditMember replaces the pool's member currently named currentName with a
+// new server line built from spec, in place — same line number, same
+// indent. Every setting the edit form doesn't expose (ssl, sni, check,
+// check-sni, inter/rise/fall, ...) is kept exactly as it was on that
+// member's own line, using the member itself as its own template. spec.Name
+// may differ from currentName to rename the member.
+func EditMember(content, pool, currentName string, spec MemberSpec) (string, string, error) {
+	p, ok := Parse(content).Pool(pool)
+	if !ok {
+		return "", "", fmt.Errorf("kelompok %q tidak ditemukan di konfigurasi", pool)
+	}
+	var current *Member
+	for i := range p.Members {
+		if p.Members[i].Name == currentName {
+			current = &p.Members[i]
+			break
+		}
+	}
+	if current == nil {
+		return "", "", fmt.Errorf("anggota %q tidak ada di kelompok %s", currentName, pool)
+	}
+	if err := validateMemberSpec(p, spec, currentName); err != nil {
+		return "", "", err
+	}
+	line := buildLine(p, spec, current)
+	return replaceLine(content, current.Line, current.Indent+line), line, nil
 }
 
 // digitsRE requires a plain unsigned decimal number: no leading "+"/"-", no
@@ -175,6 +216,77 @@ func inheritedParams(params []string) []string {
 	return out
 }
 
+// PoolSpec is what the "create new pool" wizard submits: a brand-new
+// backend section with exactly one starting member. Anything beyond
+// balance/health-check-path/the first member (SSL, sticky sessions, ACLs,
+// ...) isn't exposed here — add it afterwards through the config editor.
+type PoolSpec struct {
+	Name string
+	// Balance is "roundrobin" (HAProxy's own default, so empty and
+	// "roundrobin" both omit the directive) or "leastconn".
+	Balance string
+	// HealthCheckPath, if set, adds an HTTP health check (GET this path).
+	// Empty means a plain TCP connect check, HAProxy's simplest option.
+	HealthCheckPath string
+	Member          MemberSpec
+}
+
+// AddPool returns content with one new backend section appended at the end,
+// containing spec.Member as its only server, plus the block itself (as
+// plain "\n"-joined lines, regardless of the file's own line endings) for
+// previews and audit logs.
+func AddPool(content string, spec PoolSpec) (string, string, error) {
+	cfg := Parse(content)
+	if !nameRE.MatchString(spec.Name) {
+		return "", "", fmt.Errorf("nama pool hanya boleh huruf, angka, titik, garis bawah, dan tanda minus (maks. 64)")
+	}
+	if sectionKeywords[spec.Name] {
+		return "", "", fmt.Errorf("%q adalah kata kunci HAProxy, tidak bisa dipakai sebagai nama pool", spec.Name)
+	}
+	if _, ok := cfg.Pool(spec.Name); ok {
+		return "", "", fmt.Errorf("pool %q sudah ada", spec.Name)
+	}
+	spec.Member.CloneFrom = ""
+	if err := validateMemberSpec(Pool{Name: spec.Name}, spec.Member, ""); err != nil {
+		return "", "", err
+	}
+
+	balance := strings.TrimSpace(spec.Balance)
+
+	var lines []string
+	lines = append(lines, "backend "+spec.Name)
+	if balance != "" && balance != "roundrobin" {
+		lines = append(lines, "        balance "+balance)
+	}
+	if spec.HealthCheckPath != "" {
+		lines = append(lines, "        option httpchk")
+		lines = append(lines, "        http-check send meth GET uri "+spec.HealthCheckPath)
+	}
+	memberLine := "server " + spec.Member.Name + " " + spec.Member.Host + ":" + spec.Member.Port
+	if spec.Member.Weight != "" {
+		memberLine += " weight " + spec.Member.Weight
+	}
+	if spec.Member.Maxconn != "" {
+		memberLine += " maxconn " + spec.Member.Maxconn
+	}
+	memberLine += " check"
+	if spec.Member.Backup {
+		memberLine += " backup"
+	}
+	if spec.Member.Disabled {
+		memberLine += " disabled"
+	}
+	lines = append(lines, "        "+memberLine)
+	block := strings.Join(lines, "\n")
+
+	nl := "\n"
+	if strings.Contains(content, "\r\n") {
+		nl = "\r\n"
+	}
+	updated := strings.TrimRight(content, "\r\n") + nl + nl + strings.Join(lines, nl) + nl
+	return updated, block, nil
+}
+
 // RemoveMember returns content without pool's server line for member, plus
 // the removed line. It refuses to empty a pool: a backend with no servers
 // answers every request with 503, which is never what "remove" means.
@@ -205,6 +317,15 @@ func insertLine(content string, after int, text string) string {
 	out = append(out, text)
 	out = append(out, lines[after+1:]...)
 	return strings.Join(out, "\n")
+}
+
+func replaceLine(content string, idx int, text string) string {
+	lines := strings.Split(content, "\n")
+	if idx < len(lines) && strings.HasSuffix(lines[idx], "\r") {
+		text += "\r"
+	}
+	lines[idx] = text
+	return strings.Join(lines, "\n")
 }
 
 func deleteLine(content string, idx int) string {

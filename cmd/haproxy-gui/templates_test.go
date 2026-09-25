@@ -72,9 +72,13 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /pools", &web.PoolsHandler{PoolService: svc})
+	mux.Handle("GET /pools/new", &web.PoolNewFormHandler{PoolService: svc})
 	mux.Handle("GET /pools/{name}", &web.PoolDetailHandler{PoolService: svc})
+	mux.Handle("GET /pools/{name}/members/{member}/edit", &web.PoolMemberEditForm{PoolService: svc})
 	mux.Handle("GET /nodes", &web.NodesHandler{PoolService: svc})
 	mux.Handle("POST /api/pools/{name}/members/preview", &web.PoolMemberPreview{PoolService: svc})
+	mux.Handle("POST /api/pools/{name}/members/edit/preview", &web.PoolMemberEditPreview{PoolService: svc})
+	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
 
 	pages := []struct {
 		file, method, target string
@@ -87,6 +91,14 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"preview.html", http.MethodPost, "/api/pools/https_oms/members/preview",
 			url.Values{"name": {"node03"}, "host": {"192.168.200.120"}, "port": {"443"}, "clone_from": {"node01"}},
 			"server node03 192.168.200.120:443"},
+		{"pool_new.html", http.MethodGet, "/pools/new", nil, "Buat Pool Baru"},
+		{"pool_new_preview.html", http.MethodPost, "/api/pools/new/preview",
+			url.Values{"pool_name": {"http_wizardtest"}, "name": {"n1"}, "host": {"10.0.0.9"}, "port": {"80"}},
+			"backend http_wizardtest"},
+		{"pool_edit_form.html", http.MethodGet, "/pools/https_oms/members/node01/edit", nil, "Ubah anggota"},
+		{"pool_edit_preview.html", http.MethodPost, "/api/pools/https_oms/members/edit/preview",
+			url.Values{"current_name": {"node01"}, "name": {"node01"}, "host": {"192.168.200.108"}, "port": {"443"}, "weight": {"50"}},
+			"weight 50"},
 	}
 	for _, p := range pages {
 		var req *http.Request

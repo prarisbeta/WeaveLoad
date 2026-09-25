@@ -30,6 +30,11 @@ type poolPreviewData struct {
 	Validation poolResult
 	Spec       haproxycfg.MemberSpec
 	CSRFToken  string
+	// Action picks which endpoint the confirm button submits to: "add" (the
+	// default, zero value) or "edit". CurrentName is only set for "edit" —
+	// the member's name before this edit, since Spec.Name may rename it.
+	Action      string
+	CurrentName string
 }
 
 // PoolMemberPreview builds the server line a new member would get and runs
@@ -96,6 +101,116 @@ func (h *PoolMemberAdd) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.applyChange(w, r, "pool.member.add", pool+"/"+spec.Name, line, updated,
 		"Anggota "+spec.Name+" ditambahkan ke "+pool+" dan HAProxy dimuat ulang.")
+}
+
+// poolEditFormData prefills the edit form with a member's current settings.
+type poolEditFormData struct {
+	Pool      string
+	Member    haproxycfg.Member
+	CSRFToken string
+}
+
+// PoolMemberEditForm returns the pre-filled "edit member" form fragment for
+// one existing member, loaded into the pool page in place when its "Edit"
+// button is clicked.
+type PoolMemberEditForm struct{ *PoolService }
+
+func (h *PoolMemberEditForm) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	pool := r.PathValue("name")
+	member := r.PathValue("member")
+
+	cfg, _, _, err := h.load()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	p, ok := cfg.Pool(pool)
+	if !ok {
+		http.Error(w, "Kelompok server tidak ditemukan", http.StatusNotFound)
+		return
+	}
+	for _, m := range p.Members {
+		if m.Name != member {
+			continue
+		}
+		sess, _ := auth.SessionFromContext(r.Context())
+		renderTemplate(w, h.Templates, "pool_edit_form.html", poolEditFormData{
+			Pool: pool, Member: m, CSRFToken: sess.CSRFToken,
+		})
+		return
+	}
+	http.Error(w, "Anggota tidak ditemukan", http.StatusNotFound)
+}
+
+// PoolMemberEditPreview builds the replacement server line for an existing
+// member and runs "haproxy -c" on the result, changing nothing yet — same
+// preview-then-confirm pattern as adding a member.
+type PoolMemberEditPreview struct{ *PoolService }
+
+func (h *PoolMemberEditPreview) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	pool := r.PathValue("name")
+	currentName := strings.TrimSpace(r.FormValue("current_name"))
+	spec := memberSpecFromForm(r)
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, line, err := haproxycfg.EditMember(content, pool, currentName, spec)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+	v, err := h.Config.Validate(updated)
+	if err != nil {
+		http.Error(w, "Validator tidak bisa dijalankan: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sess, _ := auth.SessionFromContext(r.Context())
+	renderTemplate(w, h.Templates, "pool_preview.html", poolPreviewData{
+		Pool: pool, Line: line, Spec: spec, CSRFToken: sess.CSRFToken,
+		Action: "edit", CurrentName: currentName,
+		Validation: poolResult{OK: v.OK, Output: v.Output},
+	})
+}
+
+// PoolMemberEditApply applies an edit built by PoolMemberEditPreview through
+// the same validate-stage-apply-audit pipeline as every other config change.
+type PoolMemberEditApply struct{ *PoolService }
+
+func (h *PoolMemberEditApply) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	pool := r.PathValue("name")
+	currentName := strings.TrimSpace(r.FormValue("current_name"))
+	spec := memberSpecFromForm(r)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, line, err := haproxycfg.EditMember(content, pool, currentName, spec)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+	msg := "Pengaturan " + currentName + " diperbarui"
+	if spec.Name != currentName {
+		msg += " (nama baru: " + spec.Name + ")"
+	}
+	msg += " di " + pool + " dan HAProxy dimuat ulang."
+	h.applyChange(w, r, "pool.member.edit", pool+"/"+currentName, line, updated, msg)
 }
 
 // PoolMemberRemove removes one member, but only once it's been taken out

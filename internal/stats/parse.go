@@ -47,6 +47,26 @@ func (s Server) Down() bool {
 	return strings.HasPrefix(s.Status, "DOWN")
 }
 
+// IsReady reports whether the server's *administrative* state is already
+// "ready" (i.e. nobody has drained or disabled it) — regardless of whether
+// its health check currently passes. The UI uses this to grey out the
+// "Aktifkan" (ready) button when clicking it would be a no-op: a server
+// that's UP, "no check", or even DOWN-but-not-MAINT/DRAIN is already in the
+// ready state, just failing its check.
+func (s Server) IsReady() bool {
+	return !s.IsDraining() && !s.IsMaint()
+}
+
+// IsDraining reports whether the server is administratively in DRAIN.
+func (s Server) IsDraining() bool {
+	return strings.HasPrefix(s.Status, "DRAIN")
+}
+
+// IsMaint reports whether the server is administratively in MAINT.
+func (s Server) IsMaint() bool {
+	return strings.HasPrefix(s.Status, "MAINT")
+}
+
 // Backend is one backend section with its member servers.
 type Backend struct {
 	Name    string

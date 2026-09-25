@@ -16,6 +16,33 @@ http_oms,node2,0,0,0,1,,10,1000,2000,,,,0,0,0,0,no check,1,1,0,,,,,,1,2,2,,10,,2
 http_oms,BACKEND,0,0,0,4,,60,6000,11000,0,0,,0,0,0,0,UP,,1,0,0,0,120000,0,,1,2,0,,60,,1,0,,2,,,,,,,,,,,,,,,,,,,,,,,,,,
 `
 
+func TestServer_IsReadyDrainingMaint(t *testing.T) {
+	cases := []struct {
+		status              string
+		ready, draining, ma bool
+	}{
+		{"UP", true, false, false},
+		{"no check", true, false, false},
+		{"DOWN", true, false, false}, // failing its check, but not administratively touched
+		{"DOWN (agent)", true, false, false},
+		{"DRAIN", false, true, false},
+		{"MAINT", false, false, true},
+		{"MAINT (via API)", false, false, true},
+	}
+	for _, c := range cases {
+		s := Server{Status: c.status}
+		if got := s.IsReady(); got != c.ready {
+			t.Errorf("Server{Status:%q}.IsReady() = %v, want %v", c.status, got, c.ready)
+		}
+		if got := s.IsDraining(); got != c.draining {
+			t.Errorf("Server{Status:%q}.IsDraining() = %v, want %v", c.status, got, c.draining)
+		}
+		if got := s.IsMaint(); got != c.ma {
+			t.Errorf("Server{Status:%q}.IsMaint() = %v, want %v", c.status, got, c.ma)
+		}
+	}
+}
+
 func TestParse_Frontend(t *testing.T) {
 	snap, err := Parse(fixture)
 	if err != nil {

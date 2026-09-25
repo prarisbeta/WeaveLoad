@@ -40,8 +40,11 @@ func poolTemplates(t *testing.T) *template.Template {
 {{define "pool_detail.html"}}DETAIL {{.Pool.Name}} next={{.Suggested}} prefill={{.Prefill}} admin={{.CanAdmin}} {{template "pool_members.html" .}}{{end}}
 {{define "pool_members.html"}}{{range .Pool.Members}}({{.Name}}:{{.Live.Status}}){{end}}{{end}}
 {{define "nodes.html"}}{{range .Nodes}}[{{.Host}} {{.Up}}/{{.Total}}]{{end}}{{end}}
-{{define "pool_preview.html"}}LINE={{.Line}} OK={{.Validation.OK}}{{end}}
+{{define "pool_preview.html"}}LINE={{.Line}} OK={{.Validation.OK}} action={{.Action}} current={{.CurrentName}}{{end}}
 {{define "pool_result.html"}}RESULT ok={{.OK}} msg={{.Message}}{{end}}
+{{define "pool_edit_form.html"}}EDITFORM name={{.Member.Name}} host={{.Member.Host}} port={{.Member.Port}} weight={{.Member.Weight}}{{end}}
+{{define "pool_new.html"}}NEWPOOLFORM{{end}}
+{{define "pool_new_preview.html"}}NEWPOOL block={{.Block}} OK={{.Validation.OK}}{{end}}
 `)
 }
 
@@ -141,7 +144,7 @@ func TestPoolMemberPreview_ShowsLineAndValidates(t *testing.T) {
 	svc := newPoolService(t, cs, &fakeAudit{})
 	rec := serve(&PoolMemberPreview{svc}, "POST /api/pools/{name}/members/preview",
 		adminReq(http.MethodPost, "/api/pools/web/members/preview", memberForm()))
-	want := "LINE=server node03 10.0.0.3:443 cookie node03 ssl verify none check OK=true"
+	want := "LINE=server node03 10.0.0.3:443 cookie node03 ssl verify none check OK=true action= current="
 	if rec.Body.String() != want {
 		t.Errorf("body = %q", rec.Body.String())
 	}
@@ -274,5 +277,163 @@ func TestPoolMemberRemove_StatsDownRefuses(t *testing.T) {
 		adminReq(http.MethodPost, "/api/pools/web/members/remove", url.Values{"server": {"node02"}}))
 	if !strings.Contains(rec.Body.String(), "ok=false") || cs.appliedPath != "" {
 		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestPoolMemberEditForm_PrefillsCurrentValues(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	rec := serve(&PoolMemberEditForm{svc}, "GET /pools/{name}/members/{member}/edit",
+		adminReq(http.MethodGet, "/pools/web/members/node01/edit", nil))
+	want := "EDITFORM name=node01 host=10.0.0.1 port=443 weight="
+	if rec.Body.String() != want {
+		t.Errorf("body = %q, want %q", rec.Body.String(), want)
+	}
+}
+
+func TestPoolMemberEditForm_UnknownMember_404(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	rec := serve(&PoolMemberEditForm{svc}, "GET /pools/{name}/members/{member}/edit",
+		adminReq(http.MethodGet, "/pools/web/members/ghost/edit", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("code = %d", rec.Code)
+	}
+}
+
+func editForm() url.Values {
+	return url.Values{"current_name": {"node01"}, "name": {"node01"}, "host": {"10.0.0.1"}, "port": {"443"}, "weight": {"75"}}
+}
+
+func TestPoolMemberEditPreview_ShowsLineAndValidates(t *testing.T) {
+	cs := &fakeConfigStore{active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true}}
+	svc := newPoolService(t, cs, &fakeAudit{})
+	rec := serve(&PoolMemberEditPreview{svc}, "POST /api/pools/{name}/members/edit/preview",
+		adminReq(http.MethodPost, "/api/pools/web/members/edit/preview", editForm()))
+	want := "LINE=server node01 10.0.0.1:443 weight 75 cookie node01 ssl verify none check OK=true action=edit current=node01"
+	if rec.Body.String() != want {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+	if cs.appliedPath != "" || len(cs.savedDrafts) != 0 {
+		t.Error("preview must not stage or apply anything")
+	}
+}
+
+func TestPoolMemberEditPreview_UnknownMemberShowsReason(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	form := editForm()
+	form.Set("current_name", "ghost")
+	rec := serve(&PoolMemberEditPreview{svc}, "POST /api/pools/{name}/members/edit/preview",
+		adminReq(http.MethodPost, "/api/pools/web/members/edit/preview", form))
+	if !strings.Contains(rec.Body.String(), "RESULT ok=false") {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestPoolMemberEditApply_AppliesAndAudits(t *testing.T) {
+	cs := &fakeConfigStore{
+		active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true},
+		draftPath: "/staging/d.cfg", applyRes: cfgfile.ApplyResult{OK: true},
+	}
+	audit := &fakeAudit{}
+	svc := newPoolService(t, cs, audit)
+	rec := serve(&PoolMemberEditApply{svc}, "POST /api/pools/{name}/members/edit/apply",
+		adminReq(http.MethodPost, "/api/pools/web/members/edit/apply", editForm()))
+
+	if !strings.Contains(rec.Body.String(), "RESULT ok=true") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if rec.Header().Get("HX-Trigger") != memberChangedEvent {
+		t.Error("success should trigger a members refresh")
+	}
+	if len(cs.savedDrafts) != 1 || !strings.Contains(cs.savedDrafts[0], "weight 75") {
+		t.Errorf("draft = %v", cs.savedDrafts)
+	}
+	if len(audit.entries) != 1 || audit.entries[0].Action != "pool.member.edit" || audit.entries[0].Target != "web/node01" {
+		t.Errorf("audit = %+v", audit.entries)
+	}
+}
+
+func TestPoolMemberEditApply_RenamesMember(t *testing.T) {
+	cs := &fakeConfigStore{
+		active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true},
+		draftPath: "/staging/d.cfg", applyRes: cfgfile.ApplyResult{OK: true},
+	}
+	svc := newPoolService(t, cs, &fakeAudit{})
+	form := editForm()
+	form.Set("name", "node01b")
+	rec := serve(&PoolMemberEditApply{svc}, "POST /api/pools/{name}/members/edit/apply",
+		adminReq(http.MethodPost, "/api/pools/web/members/edit/apply", form))
+	if !strings.Contains(rec.Body.String(), "RESULT ok=true") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if len(cs.savedDrafts) != 1 || !strings.Contains(cs.savedDrafts[0], "server node01b") {
+		t.Errorf("draft = %v", cs.savedDrafts)
+	}
+}
+
+func newPoolForm() url.Values {
+	return url.Values{"pool_name": {"http_new"}, "name": {"n1"}, "host": {"10.0.0.9"}, "port": {"80"}}
+}
+
+func TestPoolNewFormHandler_Renders(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	rec := serve(&PoolNewFormHandler{svc}, "GET /pools/new", adminReq(http.MethodGet, "/pools/new", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != "NEWPOOLFORM" {
+		t.Errorf("code=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPoolNewPreview_ShowsBlockAndValidates(t *testing.T) {
+	cs := &fakeConfigStore{active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true}}
+	svc := newPoolService(t, cs, &fakeAudit{})
+	rec := serve(&PoolNewPreview{svc}, "POST /api/pools/new/preview",
+		adminReq(http.MethodPost, "/api/pools/new/preview", newPoolForm()))
+	if !strings.Contains(rec.Body.String(), "backend http_new") || !strings.Contains(rec.Body.String(), "OK=true") {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+	if cs.appliedPath != "" {
+		t.Error("preview must not apply anything")
+	}
+}
+
+func TestPoolNewPreview_DuplicateNameShowsReason(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	form := newPoolForm()
+	form.Set("pool_name", "web") // already exists in poolCfg
+	rec := serve(&PoolNewPreview{svc}, "POST /api/pools/new/preview",
+		adminReq(http.MethodPost, "/api/pools/new/preview", form))
+	if !strings.Contains(rec.Body.String(), "RESULT ok=false") {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestPoolNewApply_CreatesAndAudits(t *testing.T) {
+	cs := &fakeConfigStore{
+		active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true},
+		draftPath: "/staging/d.cfg", applyRes: cfgfile.ApplyResult{OK: true},
+	}
+	audit := &fakeAudit{}
+	svc := newPoolService(t, cs, audit)
+	rec := serve(&PoolNewApply{svc}, "POST /api/pools/new/apply",
+		adminReq(http.MethodPost, "/api/pools/new/apply", newPoolForm()))
+
+	if !strings.Contains(rec.Body.String(), "RESULT ok=true") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if len(cs.savedDrafts) != 1 || !strings.Contains(cs.savedDrafts[0], "backend http_new") {
+		t.Errorf("draft = %v", cs.savedDrafts)
+	}
+	if len(audit.entries) != 1 || audit.entries[0].Action != "pool.create" || audit.entries[0].Target != "http_new" {
+		t.Errorf("audit = %+v", audit.entries)
+	}
+}
+
+func TestPoolNewApply_InvalidConfigNotApplied(t *testing.T) {
+	cs := &fakeConfigStore{active: poolCfg, validateRes: cfgfile.ValidateResult{OK: false, Output: "bad"}}
+	audit := &fakeAudit{}
+	svc := newPoolService(t, cs, audit)
+	rec := serve(&PoolNewApply{svc}, "POST /api/pools/new/apply",
+		adminReq(http.MethodPost, "/api/pools/new/apply", newPoolForm()))
+	if !strings.Contains(rec.Body.String(), "RESULT ok=false") || cs.appliedPath != "" {
+		t.Errorf("body=%q applied=%q", rec.Body.String(), cs.appliedPath)
 	}
 }

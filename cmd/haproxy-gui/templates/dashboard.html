@@ -164,9 +164,15 @@
       {{if $canOperate}}
       <td>
         <div class="row-actions">
+        {{if not .IsReady}}
         <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"ready"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Kembalikan server ini ke jalur trafik normal">Aktifkan</button>
+        {{end}}
+        {{if .IsReady}}
         <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"drain"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Habiskan koneksi yang sedang berjalan dulu, lalu berhenti menerima trafik baru">Kosongkan bertahap</button>
+        {{end}}
+        {{if not .IsMaint}}
         <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"maint"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan {{.Name}} di {{$backend}} sekarang? Semua trafik ke server ini akan langsung dihentikan." title="Hentikan server ini menerima trafik sama sekali, mulai sekarang">Nonaktifkan</button>
+        {{end}}
         <form class="field-inline" hx-post="/api/servers/action" hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
           <input type="hidden" name="backend" value="{{$backend}}">
           <input type="hidden" name="server" value="{{.Name}}">

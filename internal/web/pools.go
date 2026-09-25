@@ -108,7 +108,8 @@ func (h *PoolsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Chrome
 		Pools    []poolView
 		StatsErr string
-	}{NewChrome(r, "pools"), pools, statsErr})
+		CanAdmin bool
+	}{NewChrome(r, "pools"), pools, statsErr, userIsAdmin(r)})
 }
 
 type poolDetailData struct {

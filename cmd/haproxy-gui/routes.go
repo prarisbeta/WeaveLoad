@@ -87,7 +87,9 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	pools := &web.PoolService{Config: d.cfgfile, Stats: d.runtime, Audit: d.store, Templates: d.templates}
 	mux.Handle("GET /pools", chain(&web.PoolsHandler{PoolService: pools}, requireAuth))
+	mux.Handle("GET /pools/new", chain(&web.PoolNewFormHandler{PoolService: pools}, requireAuth, requireAdmin))
 	mux.Handle("GET /pools/{name}", chain(&web.PoolDetailHandler{PoolService: pools}, requireAuth))
+	mux.Handle("GET /pools/{name}/members/{member}/edit", chain(&web.PoolMemberEditForm{PoolService: pools}, requireAuth, requireAdmin))
 	mux.Handle("GET /nodes", chain(&web.NodesHandler{PoolService: pools}, requireAuth))
 	mux.Handle("GET /nodes/add-to-pool", chain(http.HandlerFunc(web.NodeAddRedirect), requireAuth, requireAdmin))
 
@@ -133,7 +135,11 @@ func buildRoutes(d routeDeps) http.Handler {
 	// sits with the config editor at admin level; state/weight stay operator.
 	mux.Handle("POST /api/pools/{name}/members/preview", chain(&web.PoolMemberPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/{name}/members/add", chain(&web.PoolMemberAdd{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/edit/preview", chain(&web.PoolMemberEditPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/edit/apply", chain(&web.PoolMemberEditApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/{name}/members/remove", chain(&web.PoolMemberRemove{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/new/preview", chain(&web.PoolNewPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/new/apply", chain(&web.PoolNewApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,

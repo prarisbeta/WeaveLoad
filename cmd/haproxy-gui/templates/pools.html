@@ -1,12 +1,17 @@
 {{define "pools.html"}}{{template "chrome_header" .}}{{template "pools_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "pools_content"}}
-<h1>Kelompok Server</h1>
-<p class="hint">Setiap kelompok (pool) berisi server-server yang bergantian melayani satu situs atau layanan. Klik nama kelompok untuk melihat anggotanya, menambah, atau melepas server.</p>
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
+  <div>
+    <h1>Pools</h1>
+    <p class="hint">Setiap pool berisi server-server yang bergantian melayani satu situs atau layanan. Klik nama pool untuk melihat anggotanya, menambah, atau melepas server.</p>
+  </div>
+  {{if .CanAdmin}}<a class="btn primary" href="/pools/new" style="white-space:nowrap;">+ Buat Pool Baru</a>{{end}}
+</div>
 {{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
 <div class="panel">
   {{if not .Pools}}
-  <div class="empty-state"><h3>Belum ada kelompok server</h3><p>Konfigurasi belum memiliki bagian backend.</p></div>
+  <div class="empty-state"><h3>Belum ada pool</h3><p>Konfigurasi belum memiliki bagian backend.{{if .CanAdmin}} Klik "+ Buat Pool Baru" di atas untuk membuat yang pertama.{{end}}</p></div>
   {{else}}
   <div class="table-scroll">
   <table>
@@ -46,6 +51,7 @@
   <div id="pool-members" hx-get="/pools/{{.Pool.Name}}" hx-trigger="every 5s, memberChanged from:body" hx-swap="innerHTML">
   {{template "pool_members.html" .}}
   </div>
+  <div id="pool-edit-panel"></div>
 </div>
 
 {{if .CanAdmin}}
@@ -100,11 +106,18 @@
     <td>
       <div class="row-actions">
       {{if .HasLive}}
+      {{if not .Live.IsReady}}
       <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$pool}}","server":"{{.Name}}","action":"ready"}' hx-swap="none" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Kembalikan ke jalur trafik normal">Aktifkan</button>
+      {{end}}
+      {{if .Live.IsReady}}
       <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$pool}}","server":"{{.Name}}","action":"drain"}' hx-swap="none" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Habiskan koneksi berjalan, tolak koneksi baru">Kosongkan</button>
+      {{end}}
+      {{if not .Live.IsMaint}}
       <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$pool}}","server":"{{.Name}}","action":"maint"}' hx-swap="none" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan {{.Name}} di {{$pool}} sekarang? Trafik ke server ini langsung dihentikan." title="Hentikan trafik ke server ini sekarang">Nonaktifkan</button>
       {{end}}
+      {{end}}
       {{if $.CanAdmin}}
+      <button hx-get="/pools/{{$pool}}/members/{{.Name}}/edit" hx-target="#pool-edit-panel" hx-swap="innerHTML" title="Ubah bobot, batas koneksi, alamat, atau nama anggota ini">Ubah</button>
       <button class="danger" hx-post="/api/pools/{{$pool}}/members/remove" hx-vals='{"server":"{{.Name}}"}' hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus {{.Name}} ({{.Address}}) dari {{$pool}}? Baris server-nya dihapus dari konfigurasi dan HAProxy dimuat ulang." title="Hapus dari konfigurasi (harus nonaktif/kosong dulu)">Hapus</button>
       {{end}}
       </div>
@@ -118,12 +131,14 @@
 {{end}}
 
 {{define "pool_preview.html"}}
+{{$isEdit := eq .Action "edit"}}
 <div class="panel preview-box">
-  <p><strong>Baris yang akan ditambahkan ke {{.Pool}}:</strong></p>
+  <p><strong>{{if $isEdit}}Baris baru untuk {{.CurrentName}} di {{.Pool}}:{{else}}Baris yang akan ditambahkan ke {{.Pool}}:{{end}}</strong></p>
   <pre>{{.Line}}</pre>
   {{if .Validation.OK}}
   <p style="color:var(--ok)"><strong>Konfigurasi valid.</strong></p>
-  <form hx-post="/api/pools/{{.Pool}}/members/add" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Tambahkan {{.Spec.Name}} ke {{.Pool}} dan muat ulang HAProxy sekarang?">
+  <form hx-post="/api/pools/{{.Pool}}/members/{{if $isEdit}}edit/apply{{else}}add{{end}}" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="{{if $isEdit}}Simpan perubahan {{.CurrentName}} di {{.Pool}} dan muat ulang HAProxy sekarang?{{else}}Tambahkan {{.Spec.Name}} ke {{.Pool}} dan muat ulang HAProxy sekarang?{{end}}">
+    {{if $isEdit}}<input type="hidden" name="current_name" value="{{.CurrentName}}">{{end}}
     <input type="hidden" name="name" value="{{.Spec.Name}}">
     <input type="hidden" name="host" value="{{.Spec.Host}}">
     <input type="hidden" name="port" value="{{.Spec.Port}}">
@@ -139,6 +154,122 @@
   <pre>{{.Validation.Output}}</pre>
   {{end}}
 </div>
+{{end}}
+
+{{define "pool_edit_form.html"}}
+<div class="panel preview-box">
+  <h3>Ubah anggota: {{.Member.Name}}</h3>
+  <p class="hint">Pengaturan lain (SSL, SNI, pemeriksaan kesehatan) pada baris ini tidak berubah — hanya kolom di bawah yang akan diperbarui.</p>
+  <form class="member-form" hx-post="/api/pools/{{.Pool}}/members/edit/preview" hx-target="#pool-edit-panel" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
+    <input type="hidden" name="current_name" value="{{.Member.Name}}">
+    <label>Nama anggota<input type="text" name="name" value="{{.Member.Name}}" required maxlength="64"></label>
+    <label>Alamat node (IP / host)<input type="text" name="host" value="{{.Member.Host}}" required></label>
+    <label>Port<input type="text" name="port" value="{{.Member.Port}}" required size="5" inputmode="numeric"></label>
+    <details class="advanced-toggle" open>
+      <summary>Pengaturan lanjutan (opsional)</summary>
+      <div class="member-form">
+        <label>Bobot <span class="muted">(0-256)</span><input type="text" name="weight" value="{{.Member.Weight}}" size="4" inputmode="numeric"></label>
+        <label>Batas koneksi<input type="text" name="maxconn" value="{{.Member.Maxconn}}" size="6" inputmode="numeric"></label>
+        <label class="check"><input type="checkbox" name="backup" value="1" {{if .Member.Backup}}checked{{end}}> Cadangan (hanya dipakai saat anggota utama mati)</label>
+        <label class="check"><input type="checkbox" name="disabled" value="1" {{if .Member.Disabled}}checked{{end}}> Nonaktif secara permanen</label>
+      </div>
+    </details>
+    <div class="row-actions">
+      <button type="submit" class="primary">Pratinjau perubahan</button>
+      <button type="button" onclick="document.getElementById('pool-edit-panel').innerHTML=''">Batal</button>
+    </div>
+  </form>
+</div>
+{{end}}
+
+{{define "pool_new.html"}}{{template "chrome_header" .}}{{template "pool_new_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "pool_new_content"}}
+<p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; Semua pool</a></p>
+<h1>Buat Pool Baru</h1>
+<p class="hint">Ikuti 3 langkah ini untuk membuat kelompok server baru. Pengaturan lanjutan (SSL, sesi lengket, ACL) tidak ada di sini — tambahkan lewat menu Konfigurasi setelah pool ini jadi, kalau memang perlu.</p>
+
+<form hx-post="/api/pools/new/preview" hx-target="#pool-new-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
+<div class="panel" style="padding:0;">
+  <div class="wizard-step">
+    <div class="wizard-num">1</div>
+    <div class="wizard-body">
+      <h3>Nama &amp; cara membagi trafik</h3>
+      <p class="hint" style="margin-bottom:10px;">Nama ini yang akan muncul di daftar Pools dan dipakai saat mengatur rute domain.</p>
+      <div class="member-form">
+        <label>Nama pool<input type="text" name="pool_name" required maxlength="64" placeholder="misalnya http_aplikasi_baru"></label>
+        <label>Cara membagi trafik
+          <select name="balance">
+            <option value="roundrobin">Bergiliran rata (roundrobin) — cocok untuk kebanyakan situs</option>
+            <option value="leastconn">Ke yang paling sepi (leastconn) — cocok untuk koneksi berdurasi lama</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </div>
+  <div class="wizard-step">
+    <div class="wizard-num">2</div>
+    <div class="wizard-body">
+      <h3>Pemeriksaan kesehatan</h3>
+      <p class="hint" style="margin-bottom:10px;">Kosongkan kalau tidak yakin — HAProxy akan memeriksa server hanya lewat koneksi TCP biasa, yang sudah cukup untuk kebanyakan kasus.</p>
+      <div class="member-form">
+        <label>Path pemeriksaan HTTP <span class="muted">(opsional, misalnya /health.txt)</span><input type="text" name="health_check_path" placeholder="/health.txt"></label>
+      </div>
+    </div>
+  </div>
+  <div class="wizard-step">
+    <div class="wizard-num">3</div>
+    <div class="wizard-body">
+      <h3>Server pertama</h3>
+      <p class="hint" style="margin-bottom:10px;">Pool tidak boleh kosong — isi setidaknya satu server. Anggota lain bisa ditambahkan setelah pool ini dibuat.</p>
+      <div class="member-form">
+        <label>Nama anggota<input type="text" name="name" required maxlength="64" placeholder="node1"></label>
+        <label>Alamat node (IP / host)<input type="text" name="host" required placeholder="192.168.200.120"></label>
+        <label>Port<input type="text" name="port" required size="5" inputmode="numeric" placeholder="80"></label>
+        <details class="advanced-toggle">
+          <summary>Pengaturan lanjutan (opsional)</summary>
+          <div class="member-form">
+            <label>Bobot <span class="muted">(0-256)</span><input type="text" name="weight" size="4" inputmode="numeric"></label>
+            <label>Batas koneksi<input type="text" name="maxconn" size="6" inputmode="numeric"></label>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+  <div class="wizard-step">
+    <div class="wizard-num">&check;</div>
+    <div class="wizard-body">
+      <button type="submit" class="primary">Pratinjau Pool Baru</button>
+    </div>
+  </div>
+</div>
+</form>
+<div id="pool-new-preview"></div>
+{{end}}
+
+{{define "pool_new_preview.html"}}
+<div class="panel preview-box">
+  <p><strong>Yang akan ditambahkan ke konfigurasi:</strong></p>
+  <pre>{{.Block}}</pre>
+  {{if .Validation.OK}}
+  <p style="color:var(--ok)"><strong>Konfigurasi valid.</strong></p>
+  <form hx-post="/api/pools/new/apply" hx-target="#pool-result-new" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Buat pool {{.Spec.Name}} dan muat ulang HAProxy sekarang?">
+    <input type="hidden" name="pool_name" value="{{.Spec.Name}}">
+    <input type="hidden" name="balance" value="{{.Spec.Balance}}">
+    <input type="hidden" name="health_check_path" value="{{.Spec.HealthCheckPath}}">
+    <input type="hidden" name="name" value="{{.Spec.Member.Name}}">
+    <input type="hidden" name="host" value="{{.Spec.Member.Host}}">
+    <input type="hidden" name="port" value="{{.Spec.Member.Port}}">
+    <input type="hidden" name="weight" value="{{.Spec.Member.Weight}}">
+    <input type="hidden" name="maxconn" value="{{.Spec.Member.Maxconn}}">
+    <button type="submit" class="primary">Buat Pool</button>
+  </form>
+  {{else}}
+  <p style="color:var(--bad)"><strong>Konfigurasi hasil perubahan tidak valid, tidak bisa diterapkan.</strong></p>
+  <pre>{{.Validation.Output}}</pre>
+  {{end}}
+</div>
+<div id="pool-result-new"></div>
 {{end}}
 
 {{define "pool_result.html"}}
