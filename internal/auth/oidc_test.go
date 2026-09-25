@@ -44,7 +44,10 @@ func TestCompleteLogin_CreatesUserAndSessionCookie(t *testing.T) {
 	if found == nil {
 		t.Fatal("expected session cookie to be set")
 	}
-	if !found.HttpOnly || !found.Secure || found.SameSite != http.SameSiteStrictMode {
+	// SameSite=None, not Strict/Lax: see the comment on SetSessionCookie —
+	// this cookie is always set from a cross-site redirect landing (the IdP
+	// callback), where Strict/Lax get silently dropped by the browser.
+	if !found.HttpOnly || !found.Secure || found.SameSite != http.SameSiteNoneMode {
 		t.Errorf("session cookie insufficiently locked down: %+v", found)
 	}
 }

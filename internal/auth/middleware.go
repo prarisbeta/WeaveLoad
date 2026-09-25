@@ -1,4 +1,4 @@
-package auth
+﻿package auth
 
 import (
 	"errors"
@@ -19,8 +19,16 @@ type Sessions interface {
 	DeleteSession(id string) error
 }
 
-// SetSessionCookie writes sess as an HttpOnly, Secure, SameSite=Strict
-// cookie. secure should be false only in local development over plain HTTP.
+// SetSessionCookie writes sess as an HttpOnly, Secure cookie. secure should
+// be false only in local development over plain HTTP.
+//
+// SameSite=None, not Strict/Lax: this is always set from the OIDC callback
+// handler, reached via a cross-site redirect from the IdP (oms.cni.net.id).
+// Chrome and Firefox drop a cookie set with SameSite=Strict or Lax when the
+// setting response itself arrived through a cross-site redirect chain
+// (anti bounce-tracking behavior) — login would 302 to "/" but the session
+// would never actually persist. CSRF is enforced separately via
+// RequireCSRF's per-session token, so this doesn't weaken that.
 func SetSessionCookie(w http.ResponseWriter, sess store.Session, secure bool) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
@@ -28,7 +36,7 @@ func SetSessionCookie(w http.ResponseWriter, sess store.Session, secure bool) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteNoneMode,
 		Expires:  sess.ExpiresAt,
 	})
 }
@@ -41,7 +49,7 @@ func ClearSessionCookie(w http.ResponseWriter, secure bool) {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteNoneMode,
 		MaxAge:   -1,
 	})
 }
