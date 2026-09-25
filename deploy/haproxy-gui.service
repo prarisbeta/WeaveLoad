@@ -23,7 +23,13 @@ RestartSec=2s
 # form, systemd 214+) is what 219 actually understands: read-only /usr and
 # /boot, nothing finer-grained. If this ever runs on a newer systemd, the
 # stricter directives above are worth reinstating.
-NoNewPrivileges=true
+#
+# NoNewPrivileges is deliberately NOT set: this service's whole privilege
+# model is "run unprivileged, escalate only through sudo -n to the fixed
+# helper scripts in deploy/sudoers.haproxy-gui" (see cfgfile.Store.SudoBin).
+# NoNewPrivileges blocks setuid at the kernel level (prctl PR_SET_NO_NEW_PRIVS),
+# which breaks sudo entirely regardless of sudo's own permissions — every
+# apply/restart call fails with "sudo: effective uid is not 0".
 ProtectSystem=true
 ProtectHome=true
 PrivateTmp=true
