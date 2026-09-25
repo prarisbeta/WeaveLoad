@@ -72,3 +72,22 @@ func (s *Store) SetRedisSettings(rs RedisSettings) error {
 	}
 	return s.SetSetting(redisSettingsKey, string(b))
 }
+
+const queueAPITokenKey = "queue_api_token"
+
+// GetQueueAPIToken returns the bearer token external systems (or the
+// Incident Management module) must present to the queue consumption API, or
+// "" if none has been generated yet — the endpoint treats that as "not
+// configured" and refuses every request.
+func (s *Store) GetQueueAPIToken() (string, error) {
+	token, err := s.GetSetting(queueAPITokenKey)
+	if errors.Is(err, ErrNotFound) {
+		return "", nil
+	}
+	return token, err
+}
+
+// SetQueueAPIToken saves the queue consumption API's bearer token.
+func (s *Store) SetQueueAPIToken(token string) error {
+	return s.SetSetting(queueAPITokenKey, token)
+}

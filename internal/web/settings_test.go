@@ -13,10 +13,11 @@ import (
 )
 
 type fakeSettingsStore struct {
-	redis  store.RedisSettings
-	getErr error
-	setErr error
-	saved  []store.RedisSettings
+	redis      store.RedisSettings
+	getErr     error
+	setErr     error
+	saved      []store.RedisSettings
+	queueToken string
 }
 
 func (f *fakeSettingsStore) GetRedisSettings() (store.RedisSettings, error) {
@@ -29,6 +30,13 @@ func (f *fakeSettingsStore) SetRedisSettings(rs store.RedisSettings) error {
 	}
 	f.saved = append(f.saved, rs)
 	f.redis = rs
+	return nil
+}
+
+func (f *fakeSettingsStore) GetQueueAPIToken() (string, error) { return f.queueToken, nil }
+
+func (f *fakeSettingsStore) SetQueueAPIToken(token string) error {
+	f.queueToken = token
 	return nil
 }
 

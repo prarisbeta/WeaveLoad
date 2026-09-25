@@ -308,6 +308,10 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h4"/></svg>
         Log Trafik
       </a>
+      <a class="nav-link{{if eq .Active "queue"}} active{{end}}" href="/queue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="12" height="4" rx="1"/><path d="M7 6h10"/></svg>
+        Antrean
+      </a>
       {{end}}
       {{if .User.Role.Allows "admin"}}
       <a class="nav-link{{if eq .Active "users"}} active{{end}}" href="/users">

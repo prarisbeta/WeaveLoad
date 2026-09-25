@@ -1,0 +1,36 @@
+{{define "queue.html"}}{{template "chrome_header" .}}{{template "queue_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "queue_content"}}
+<h1>Antrean</h1>
+<p class="hint">Kejadian Batas Laju (Rate Limit) yang ditolak dikirim ke antrean Redis untuk diproses sistem lain (mis. Incident Management, atau sistem eksternal lewat API konsumsi). Halaman ini hanya mengintip isi antrean — tidak menghapusnya. Konfigurasi koneksi Redis dan token API konsumsi ada di halaman <a href="/settings">Pengaturan</a>.</p>
+
+{{if not .Configured}}
+<div class="panel empty-state">
+  <h3>Antrean belum dikonfigurasi</h3>
+  <p>Simpan koneksi Redis di halaman <a href="/settings">Pengaturan</a> terlebih dahulu untuk mengaktifkan fitur ini.</p>
+</div>
+{{else}}
+<div class="panel">
+  {{if not .Events}}
+  <div class="empty-state"><h3>Antrean kosong</h3><p>Belum ada kejadian rate-limit yang tercatat.</p></div>
+  {{else}}
+  <p class="hint" style="margin-bottom:10px">Menampilkan {{.Shown}} kejadian terbaru dari total {{.Total}} yang ada di antrean, terbaru di atas.</p>
+  <div class="table-scroll">
+  <table>
+    <tr><th>Waktu</th><th>Pool</th><th>Status</th><th>Baris mentah</th></tr>
+    {{range .Events}}
+    <tr>
+      <td class="muted" style="white-space:nowrap">{{if .Time.IsZero}}—{{else}}{{.Time.Format "2006-01-02 15:04:05"}}{{end}}</td>
+      <td>{{if .Pool}}{{.Pool}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td>
+        {{if .Status}}<span class="badge badge-down">{{.Status}}</span>{{else}}<span class="muted">—</span>{{end}}
+      </td>
+      <td style="font: 12px/1.4 ui-monospace, monospace; word-break: break-all;">{{if .Raw}}{{.Raw}}{{else if .RawJSON}}{{.RawJSON}}{{else}}—{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

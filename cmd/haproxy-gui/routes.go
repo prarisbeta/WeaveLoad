@@ -103,6 +103,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	logHandler := &web.LogHandler{Path: d.cfg.LogPath, Templates: d.templates}
 	mux.Handle("GET /logs", chain(logHandler, requireAuth, requireOperator))
 
+	queueHandler := &web.QueueHandler{Store: d.store, Templates: d.templates}
+	mux.Handle("GET /queue", chain(queueHandler, requireAuth, requireOperator))
+
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
 			{Label: "HTTP host routing", Path: "/etc/haproxy/maps/hosts_http.map", HasValue: true, ValueIsPool: true},
@@ -158,6 +161,12 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireAdmin))
 	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+
+	// --- external API (own bearer-token auth, not the browser session/CSRF
+	// flow above — callers here are the Incident Management module or an
+	// external system per the roadmap, not a logged-in browser) ---
+	mux.Handle("POST /api/queue/ratelimit-events/consume", &web.QueueConsumeAction{Store: d.store})
 
 	return securityHeaders(mux)
 }

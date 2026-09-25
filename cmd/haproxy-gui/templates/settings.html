@@ -20,10 +20,27 @@
   </form>
   <div id="redis-test-out"></div>
 </div>
+
+<div class="panel">
+  <h3>Token API Konsumsi Antrean</h3>
+  <p class="hint">Sistem eksternal atau modul Incident Management mengonsumsi antrean lewat <code>POST /api/queue/ratelimit-events/consume</code> dengan header <code>Authorization: Bearer &lt;token&gt;</code> — setiap panggilan mengambil dan menghapus kejadian dari antrean (bukan sekadar melihat, lihat halaman <a href="/queue">Antrean</a> untuk itu). Buat token baru untuk menonaktifkan token lama.</p>
+  <p>Status: {{if .QueueTokenSet}}<span class="badge badge-up">Token aktif</span>{{else}}<span class="badge badge-nocheck">Belum dibuat</span>{{end}}</p>
+  <div class="row-actions">
+    <button type="button" hx-post="/api/settings/queue-token/generate" hx-target="#queue-token-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="{{if .QueueTokenSet}}Token lama akan langsung tidak berlaku. Buat token baru?{{else}}Buat token baru?{{end}}">{{if .QueueTokenSet}}Buat Ulang Token{{else}}Buat Token{{end}}</button>
+  </div>
+  <div id="queue-token-out"></div>
+</div>
 {{end}}
 
 {{define "redis_test_result.html"}}
 <div class="panel {{if .OK}}notice-ok{{else}}notice-bad{{end}}">
   <strong>{{.Message}}</strong>
+</div>
+{{end}}
+
+{{define "queue_token_result.html"}}
+<div class="panel notice-ok">
+  <strong>Token baru dibuat — salin sekarang, tidak akan ditampilkan lagi:</strong>
+  <pre>{{.Token}}</pre>
 </div>
 {{end}}

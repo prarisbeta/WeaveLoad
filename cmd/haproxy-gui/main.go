@@ -183,7 +183,7 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 				continue
 			}
 			opts := redisping.Options{Host: rs.Host, Port: rs.Port, Password: rs.Password, DB: rs.DB, TLS: rs.TLS}
-			if err := redisping.Push(opts, "haproxy:ratelimit:events", string(b)); err != nil {
+			if err := redisping.Push(opts, ratelimitqueue.QueueKey, string(b)); err != nil {
 				log.Printf("push rate-limit event to redis: %v", err)
 			}
 		}

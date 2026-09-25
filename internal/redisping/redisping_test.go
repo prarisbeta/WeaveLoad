@@ -148,3 +148,95 @@ func TestPing_ConnectFailure(t *testing.T) {
 		t.Fatal("expected error connecting to a closed port")
 	}
 }
+
+func TestLLen_ParsesIntegerReply(t *testing.T) {
+	addr := fakeRedis(t, func(cmd []string) string { return ":3\r\n" })
+	host, port := splitHostPort(t, addr)
+
+	n, err := LLen(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events")
+	if err != nil {
+		t.Fatalf("LLen: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("n = %d, want 3", n)
+	}
+}
+
+func TestLRange_ParsesArrayOfBulkStrings(t *testing.T) {
+	var gotCmd []string
+	addr := fakeRedis(t, func(cmd []string) string {
+		gotCmd = cmd
+		return "*2\r\n$5\r\nfirst\r\n$6\r\nsecond\r\n"
+	})
+	host, port := splitHostPort(t, addr)
+
+	got, err := LRange(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", -2, -1)
+	if err != nil {
+		t.Fatalf("LRange: %v", err)
+	}
+	if len(got) != 2 || got[0] != "first" || got[1] != "second" {
+		t.Errorf("got = %v", got)
+	}
+	if len(gotCmd) != 4 || gotCmd[0] != "LRANGE" || gotCmd[1] != "events" || gotCmd[2] != "-2" || gotCmd[3] != "-1" {
+		t.Errorf("command sent = %v", gotCmd)
+	}
+}
+
+func TestLRange_EmptyArrayReply(t *testing.T) {
+	addr := fakeRedis(t, func(cmd []string) string { return "*0\r\n" })
+	host, port := splitHostPort(t, addr)
+
+	got, err := LRange(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", 0, -1)
+	if err != nil {
+		t.Fatalf("LRange: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got = %v, want empty", got)
+	}
+}
+
+func TestPopN_StopsAtNilBulkWhenListRunsDry(t *testing.T) {
+	replies := []string{"$3\r\none\r\n", "$3\r\ntwo\r\n", "$-1\r\n"}
+	i := 0
+	addr := fakeRedis(t, func(cmd []string) string {
+		r := replies[i]
+		i++
+		return r
+	})
+	host, port := splitHostPort(t, addr)
+
+	got, err := PopN(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", 5)
+	if err != nil {
+		t.Fatalf("PopN: %v", err)
+	}
+	if len(got) != 2 || got[0] != "one" || got[1] != "two" {
+		t.Errorf("got = %v, want [one two] (stopping once the list is empty)", got)
+	}
+}
+
+func TestPopN_RespectsLimitWithoutDrainingFurther(t *testing.T) {
+	calls := 0
+	addr := fakeRedis(t, func(cmd []string) string {
+		calls++
+		return "$3\r\none\r\n"
+	})
+	host, port := splitHostPort(t, addr)
+
+	got, err := PopN(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", 2)
+	if err != nil {
+		t.Fatalf("PopN: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("got = %v, want 2 elements", got)
+	}
+	if calls != 2 {
+		t.Errorf("LPOP called %d times, want exactly 2", calls)
+	}
+}
+
+func TestPopN_ZeroOrNegativeReturnsNothingWithoutConnecting(t *testing.T) {
+	got, err := PopN(Options{Host: "127.0.0.1", Port: "1", Timeout: 500 * time.Millisecond}, "events", 0)
+	if err != nil || len(got) != 0 {
+		t.Errorf("PopN with n=0 = %v, %v, want nil, nil (and no connection attempt)", got, err)
+	}
+}

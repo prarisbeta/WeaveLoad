@@ -13,6 +13,11 @@ import (
 	"haproxy-gui/internal/haproxylog"
 )
 
+// QueueKey is the Redis list rate-limit rejections are pushed onto (by
+// main.pushRateLimitEventsPeriodically) and read/drained from (by the queue
+// viewer page and the external consumption API in internal/web).
+const QueueKey = "haproxy:ratelimit:events"
+
 // Event is one rate-limit rejection worth recording.
 type Event struct {
 	Time   time.Time `json:"time"`

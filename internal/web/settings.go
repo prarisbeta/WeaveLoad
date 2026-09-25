@@ -13,10 +13,14 @@ import (
 	"haproxy-gui/internal/store"
 )
 
-// SettingsStore is the subset of *store.Store the Settings page needs.
+// SettingsStore is the subset of *store.Store the Settings page (and the
+// queue viewer/consumption API, which share its Redis connection and API
+// token) needs.
 type SettingsStore interface {
 	GetRedisSettings() (store.RedisSettings, error)
 	SetRedisSettings(store.RedisSettings) error
+	GetQueueAPIToken() (string, error)
+	SetQueueAPIToken(string) error
 }
 
 // SettingsHandler renders the Settings page — currently just the Redis
@@ -32,10 +36,16 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	token, err := h.Store.GetQueueAPIToken()
+	if err != nil {
+		http.Error(w, "failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	renderTemplate(w, h.Templates, "settings.html", struct {
 		Chrome
-		Redis store.RedisSettings
-	}{Chrome: NewChrome(r, "settings"), Redis: rs})
+		Redis         store.RedisSettings
+		QueueTokenSet bool
+	}{Chrome: NewChrome(r, "settings"), Redis: rs, QueueTokenSet: token != ""})
 }
 
 func redisSettingsFromForm(r *http.Request) store.RedisSettings {

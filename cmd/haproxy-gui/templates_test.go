@@ -37,6 +37,8 @@ type fixedSettings struct{ redis store.RedisSettings }
 
 func (f fixedSettings) GetRedisSettings() (store.RedisSettings, error) { return f.redis, nil }
 func (f fixedSettings) SetRedisSettings(store.RedisSettings) error     { return nil }
+func (f fixedSettings) GetQueueAPIToken() (string, error)              { return "", nil }
+func (f fixedSettings) SetQueueAPIToken(string) error                  { return nil }
 
 type fixedStats string
 
@@ -86,6 +88,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
 	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
 	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t)})
+	mux.Handle("GET /queue", &web.QueueHandler{Store: fixedSettings{}, Templates: realTemplates(t)})
 
 	pages := []struct {
 		file, method, target string
@@ -108,6 +111,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 			"weight 50"},
 		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
 		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
+		{"queue.html", http.MethodGet, "/queue", nil, "belum dikonfigurasi"},
 	}
 	for _, p := range pages {
 		var req *http.Request
