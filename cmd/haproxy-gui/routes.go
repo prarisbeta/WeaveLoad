@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 	"html/template"
+	"io/fs"
+	"log"
 	"mime"
 	"net/http"
 
@@ -28,6 +30,18 @@ func init() {
 	// otherwise the browser refuses to run the script under our
 	// X-Content-Type-Options: nosniff policy.
 	mime.AddExtensionType(".js", "text/javascript; charset=utf-8")
+}
+
+// staticFiles roots the embedded FS at "static/" — //go:embed keeps that
+// prefix on every entry, but the "/static/" URL prefix is stripped before
+// the file server ever sees the request, so serving staticFS directly 404s
+// on every asset.
+func staticFiles() fs.FS {
+	sub, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		log.Fatalf("static assets: %v", err)
+	}
+	return sub
 }
 
 type routeDeps struct {
@@ -64,7 +78,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /auth/login", &auth.BeginLoginHandler{Provider: d.provider, CookieSecure: secure})
 	mux.Handle("GET /auth/callback", &auth.CallbackHandler{Provider: d.provider, Store: d.store, CookieSecure: secure})
 	mux.Handle("POST /auth/logout", chain(&auth.LogoutHandler{Store: d.store, CookieSecure: secure}, requireAuth))
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFS)))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticFiles())))
 
 	// --- viewer (read-only) ---
 	dashboard := &web.DashboardHandler{Stats: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths, Templates: d.templates}
