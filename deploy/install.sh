@@ -44,6 +44,7 @@ fi
 echo
 echo "==> done. Next steps:"
 echo "    1. edit /etc/haproxy-gui/env"
-echo "    2. add a frontend for haproxy-gui.cni.net.id in haproxy.cfg (see deploy/frontend.snippet)"
-echo "    3. systemctl enable --now haproxy-gui"
-echo "    4. journalctl -u haproxy-gui -f"
+echo "    2. bash gen-selfsigned-cert.sh   (writes /etc/haproxy/ssl/haproxy-gui.pem)"
+echo "    3. add the frontend from deploy/frontend.snippet to haproxy.cfg"
+echo "    4. systemctl enable --now haproxy-gui"
+echo "    5. journalctl -u haproxy-gui -f"

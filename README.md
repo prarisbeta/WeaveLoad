@@ -37,9 +37,10 @@ make build   # cross-compiles bin/haproxy-gui (linux/amd64, static, CGO_ENABLED=
 ## Deploying to haproxy-cni
 
 1. **Register an OIDC client** with OMS CNI SSO (`https://oms.cni.net.id/sso`)
-   for redirect URL `https://haproxy-gui.cni.net.id/auth/callback`. This has
-   to be done by whoever administers the SSO module — this repo doesn't
-   have access to do it. Note the client ID and secret.
+   for redirect URL `https://103.31.159.8:9443/auth/callback` — accessed by
+   IP, no domain (see "Why IP, not a domain" below). This has to be done by
+   whoever administers the SSO module — this repo doesn't have access to do
+   it. Note the client ID and secret.
 
 2. **Copy the release to the server:**
    ```
@@ -60,21 +61,45 @@ make build   # cross-compiles bin/haproxy-gui (linux/amd64, static, CGO_ENABLED=
 4. **Edit `/etc/haproxy-gui/env`**: fill in `OIDC_CLIENT_SECRET` and confirm
    the issuer/redirect URLs.
 
-5. **Expose it through HAProxy itself**, VPN-only, same IP allowlist as the
+5. **Generate the TLS cert** (self-signed, SAN = the server's IP — see "Why
+   IP, not a domain" below): `bash deploy/gen-selfsigned-cert.sh`.
+
+6. **Expose it through HAProxy itself**, VPN-only, same IP allowlist as the
    stats page (see `deploy/frontend.snippet` — add it via the config editor
    once the service is up, or by hand for the very first bring-up).
 
-6. **Start it:**
+7. **Start it:**
    ```
    systemctl enable --now haproxy-gui
    journalctl -u haproxy-gui -f
    ```
 
-7. First SSO login becomes a **viewer**. Promote it to **admin** directly in
+8. First SSO login becomes a **viewer**. Promote it to **admin** directly in
    the database once, since there's no admin yet to do it through the UI:
    ```
    sqlite3 /var/lib/haproxy-gui/app.db "UPDATE users SET role='admin' WHERE email='you@cni.net.id';"
    ```
+
+## Why IP, not a domain
+
+There's no `haproxy-gui.cni.net.id` (or similar) registered, and the person
+running this deploy chose not to create one — so the GUI is reached at
+`https://103.31.159.8:9443` directly. Two consequences:
+
+- **The TLS cert is self-signed** (`gen-selfsigned-cert.sh`), since a
+  CA-issued cert needs a hostname, not a bare IP. Browsers will warn on
+  first visit; that warning is expected and doesn't weaken the actual
+  access control, which is the IP allowlist in `admin_allow.lst`, enforced
+  by HAProxy before the request ever reaches this app.
+- **The OIDC redirect URI is IP-based.** Whoever registers the client with
+  OMS SSO needs to accept `https://103.31.159.8:9443/auth/callback` as a
+  valid redirect — some OIDC servers restrict redirect URIs to registered
+  domains, so confirm this works before relying on it.
+
+If a domain gets created later: get a real cert for it (skip
+`gen-selfsigned-cert.sh`), update `OIDC_REDIRECT_URL` in
+`/etc/haproxy-gui/env`, re-register the redirect URI with OMS SSO, and swap
+the `crt` line in `frontend.snippet`.
 
 ## Roles
 

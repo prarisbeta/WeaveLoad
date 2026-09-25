@@ -1,15 +1,16 @@
 # Add to /etc/haproxy/haproxy.cfg (via the config editor once haproxy-gui is
 # running, or by hand for the very first bring-up) to expose the GUI at
-# https://haproxy-gui.cni.net.id, reachable only from the same IPs allowed
-# on the stats page.
+# https://103.31.159.8:9443 — accessed by IP, no domain. Reachable only from
+# the same IPs allowed on the stats page (VPN).
 #
-# Needs a certificate for haproxy-gui.cni.net.id — either add a SAN to
-# cni.pem or issue a dedicated one and add it to the https_in bind line's
-# crt list.
+# Uses a dedicated self-signed cert (SAN = the server's own IP, since there's
+# no hostname to put in a normal cert) — see gen-selfsigned-cert.sh. Because
+# there's no Host header worth checking when the client just hits the IP,
+# the source-IP allowlist is the only gate here; don't drop it.
 
 frontend https_gui_in
-        bind :::9443 v4v6 ssl crt /etc/haproxy/ssl/cni.pem alpn h2,http/1.1
-        http-request deny unless { req.hdr(host),lower -i haproxy-gui.cni.net.id } { src -f /etc/haproxy/maps/admin_allow.lst }
+        bind :::9443 v4v6 ssl crt /etc/haproxy/ssl/haproxy-gui.pem alpn h2,http/1.1
+        tcp-request connection reject unless { src -f /etc/haproxy/maps/admin_allow.lst }
         http-request set-header X-Forwarded-Proto https
         default_backend haproxy_gui
 
