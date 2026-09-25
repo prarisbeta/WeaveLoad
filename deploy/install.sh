@@ -33,7 +33,10 @@ systemctl daemon-reload
 
 if [ ! -f /etc/haproxy-gui/env ]; then
   echo "==> writing env template (EDIT THIS before starting the service)"
-  install -o root -g haproxy-gui -m 640 "$HERE/env.example" /etc/haproxy-gui/env
+  # root:root is enough — EnvironmentFile= is read by systemd (root) while
+  # building the unit's environment, before it drops to User=haproxy-gui.
+  # The haproxy-gui process itself never opens this file.
+  install -o root -g root -m 600 "$HERE/env.example" /etc/haproxy-gui/env
   echo
   echo "!! /etc/haproxy-gui/env created from template — fill in OIDC_CLIENT_SECRET"
   echo "   and confirm OIDC_ISSUER_URL / OIDC_REDIRECT_URL before starting."
@@ -44,7 +47,7 @@ fi
 echo
 echo "==> done. Next steps:"
 echo "    1. edit /etc/haproxy-gui/env"
-echo "    2. bash gen-selfsigned-cert.sh   (writes /etc/haproxy/ssl/haproxy-gui.pem)"
-echo "    3. add the frontend from deploy/frontend.snippet to haproxy.cfg"
+echo "    2. bash $HERE/gen-selfsigned-cert.sh   (writes /etc/haproxy/ssl/haproxy-gui.pem)"
+echo "    3. add the frontend from $HERE/frontend.snippet to haproxy.cfg"
 echo "    4. systemctl enable --now haproxy-gui"
 echo "    5. journalctl -u haproxy-gui -f"
