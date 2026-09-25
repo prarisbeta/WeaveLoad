@@ -50,7 +50,21 @@ func okHandler() http.Handler {
 	})
 }
 
-func TestRequireAuth_NoCookie_401(t *testing.T) {
+func TestRequireAuth_NoCookie_HTMX_401(t *testing.T) {
+	f := newFakeSessions()
+	h := RequireAuth(f)(okHandler())
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestRequireAuth_NoCookie_BrowserGET_RedirectsToLogin(t *testing.T) {
 	f := newFakeSessions()
 	h := RequireAuth(f)(okHandler())
 
@@ -58,8 +72,24 @@ func TestRequireAuth_NoCookie_401(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/login" {
+		t.Errorf("Location = %q, want /login", loc)
+	}
+}
+
+func TestRequireAuth_NoCookie_POST_401(t *testing.T) {
+	f := newFakeSessions()
+	h := RequireAuth(f)(okHandler())
+
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want 401", rec.Code)
+		t.Errorf("status = %d, want 401 for non-GET", rec.Code)
 	}
 }
 
@@ -94,6 +124,7 @@ func TestRequireAuth_ExpiredSession_401(t *testing.T) {
 
 	h := RequireAuth(f)(okHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("HX-Request", "true")
 	req.AddCookie(&http.Cookie{Name: SessionCookieName, Value: "tok"})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

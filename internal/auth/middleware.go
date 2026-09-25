@@ -67,13 +67,20 @@ func currentSession(r *http.Request, s Sessions) (store.Session, store.User, err
 	return sess, u, nil
 }
 
-// RequireAuth rejects requests with no valid session (401) before calling
-// next; otherwise it attaches the user/session to the request context.
+// RequireAuth rejects requests with no valid session before calling next;
+// otherwise it attaches the user/session to the request context. A GET
+// request from a normal page navigation (not an htmx fragment request) is
+// redirected to /login instead of getting a bare 401, since a browser
+// landing on a protected page has nothing useful to do with plain text.
 func RequireAuth(s Sessions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			sess, u, err := currentSession(r, s)
 			if err != nil {
+				if r.Method == http.MethodGet && !isHTMXRequest(r) {
+					http.Redirect(w, r, "/login", http.StatusFound)
+					return
+				}
 				http.Error(w, "authentication required", http.StatusUnauthorized)
 				return
 			}
@@ -85,6 +92,10 @@ func RequireAuth(s Sessions) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func isHTMXRequest(r *http.Request) bool {
+	return r.Header.Get("HX-Request") == "true"
 }
 
 // RequireRole rejects (403) authenticated users whose role doesn't meet
