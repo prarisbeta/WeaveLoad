@@ -1,0 +1,35 @@
+{{define "certs.html"}}{{template "layout.html" .}}{{end}}
+
+{{define "content"}}
+<div class="panel">
+  <h3>Sertifikat SSL</h3>
+  <table>
+    <tr><th>File</th><th>Common Name</th><th>SAN</th><th>Berlaku s/d</th><th>Status</th></tr>
+    {{range .Certs}}
+    <tr>
+      <td>{{.FileName}}</td>
+      <td>{{.CommonName}}</td>
+      <td class="muted">{{range .DNSNames}}{{.}} {{end}}</td>
+      <td>{{.NotAfter.Format "2006-01-02"}}</td>
+      <td>
+        {{if .Expired $.Now}}<span class="badge badge-down">Kedaluwarsa</span>
+        {{else if .ExpiresWithin30 $.Now}}<span class="badge badge-maint">&lt; 30 hari</span>
+        {{else}}<span class="badge badge-up">OK</span>{{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+{{if .CanUpload}}
+<div class="panel">
+  <h3>Upload / Ganti Sertifikat</h3>
+  <form hx-encoding="multipart/form-data" hx-post="/api/certs/upload" hx-target="#upload-out">
+    <p>Nama file (harus diakhiri .pem): <input type="text" name="filename" required></p>
+    <p>Bundle PEM (cert + chain + key digabung): <input type="file" name="bundle" required></p>
+    <button type="submit">Upload &amp; Validasi</button>
+  </form>
+  <div id="upload-out"></div>
+</div>
+{{end}}
+{{end}}

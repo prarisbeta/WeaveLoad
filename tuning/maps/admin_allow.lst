@@ -1,0 +1,5 @@
+# IP/subnet yang boleh membuka halaman stats (:8088). Satu entri per baris.
+127.0.0.1
+# ISI: IP publik/subnet VPN kantor (hasil `dig +short vpn.cni.net.id`) dan subnet admin, contoh:
+# 203.0.113.10
+# 192.168.200.0/24

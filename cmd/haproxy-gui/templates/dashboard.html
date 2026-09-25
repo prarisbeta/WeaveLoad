@@ -1,0 +1,51 @@
+{{define "dashboard.html"}}{{template "layout.html" .}}{{end}}
+
+{{define "content"}}
+<div id="dashboard-root" hx-get="/api/dashboard" hx-trigger="every 3s" hx-swap="innerHTML">
+{{template "dashboard_table.html" .}}
+</div>
+{{end}}
+
+{{define "dashboard_table.html"}}
+<div class="panel">
+  <h3>Frontends</h3>
+  <table>
+    <tr><th>Name</th><th>Status</th></tr>
+    {{range .Snapshot.Frontends}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{.Status}}</span></td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+{{$canOperate := .CanOperate}}
+{{range .Snapshot.Backends}}
+<div class="panel">
+  <h3>{{.Name}} <span class="badge {{if eq .Status "UP"}}badge-up{{else if eq .Status "DOWN"}}badge-down{{else}}badge-maint{{end}}">{{.Status}}</span></h3>
+  <table>
+    <tr><th>Server</th><th>Status</th><th>Check</th><th>Weight</th><th>Sessions</th>{{if $canOperate}}<th>Actions</th>{{end}}</tr>
+    {{$backend := .Name}}
+    {{range .Servers}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>
+        <span class="badge {{if .Up}}badge-up{{else if .Down}}badge-down{{else}}badge-maint{{end}}">{{.Status}}</span>
+      </td>
+      <td class="muted">{{.CheckStatus}} {{.LastCheck}}</td>
+      <td>{{.Weight}}</td>
+      <td>{{.Sessions}}</td>
+      {{if $canOperate}}
+      <td>
+        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"ready"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Enable</button>
+        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"drain"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Drain</button>
+        <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"maint"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Disable {{.Name}} in {{$backend}}?">Disable</button>
+      </td>
+      {{end}}
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+{{end}}

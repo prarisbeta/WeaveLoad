@@ -1,0 +1,8 @@
+# Host yang request HTTP-nya dialihkan (301) ke HTTPS oleh frontend http_in.
+# Syarat: versi HTTPS-nya sehat, dan DNS-nya langsung ke 103.31.159.8
+# (bukan Cloudflare mode Flexible -> redirect loop).
+dcam.cni.net.id
+bantuan.cni.net.id
+bantuan.platinum.net.id
+cyberclass.cni.net.id
+ticket.cni.net.id

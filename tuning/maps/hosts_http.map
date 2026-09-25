@@ -1,0 +1,41 @@
+# Host -> backend untuk frontend http_in (port 80)
+# Format: <host huruf kecil tanpa port> <nama backend>
+# Bisa diubah tanpa reload:  echo "add map /etc/haproxy/maps/hosts_http.map <host> <backend>" | socat stdio /var/lib/haproxy/stats
+# (lalu tulis juga ke file ini supaya tetap ada setelah reload)
+oms.cni.net.id              http_oms
+ticket.cni.net.id           http_ticket
+dcam.cni.net.id             http_dcam
+dcim.isc.id                 http_dcim
+appdev.cni.net.id           http_appdev
+bantuan.cni.net.id          http_bantuan_cni
+bantuan.platinum.net.id     http_bantuan_platinum
+notifgw.cni.net.id          http_notifgw_cni
+cyberclass.cni.net.id       http_cyberclass
+cybersoc.cni.net.id         http_cybersoc
+notif.palapacloud.id        http_notifpalapa
+transtelekom.id             http_transtelekom
+rndweb.cnit.net.id          http_rndweb
+platinum.net.id             http_platinum
+palapacloud.id              http_palapacloud
+naibaho.id                  http_naibaho
+jarmp.id                    http_jarmp
+www.jarmp.id                http_jarmp
+ix.cni.net.id               http_ixcni
+iscx.isc.id                 http_iscx
+isc.id                      http_isc
+hdnet.id                    http_hdnet
+www.hdnet.id                http_hdnet
+cybersat.platinum.net.id    http_cybersat
+cybernetworkglobal.com      http_cybernetworkglobal
+cdn.cni.net.id              http_cdncni
+cdn.platinum.net.id         http_cdnplatinum
+cdn.palapacloud.id          http_cdnpalapacloud
+bandung.cni.net.id          http_bandung
+bali.cni.net.id             http_bali
+aplikadata.id               http_aplikadata
+1dataid.id                  http_1dataid
+www.1dataid.id              http_1dataid
+# PERLU KEPUTUSAN: cni.net.id punya backend http_cninetid tapi tidak pernah dirutekan (sekarang 503).
+# cni.net.id                http_cninetid
+# PERLU KEPUTUSAN: www.aplikadata.id ada di HTTPS tapi tidak di HTTP.
+# www.aplikadata.id         http_aplikadata

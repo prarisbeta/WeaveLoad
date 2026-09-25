@@ -1,0 +1,8 @@
+/bin/
+/dist/
+*.db
+*.env
+.env
+tuning/haproxy.cfg.stage1
+tuning/haproxy.cfg.v1-chk_nodes
+/tmp/

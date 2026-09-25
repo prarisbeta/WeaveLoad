@@ -1,0 +1,6 @@
+# /etc/sudoers.d/haproxy-gui — install with: visudo -cf then cp, mode 440.
+# Grants the haproxy-gui service user exactly one command, with no arguments
+# substitution beyond what haproxy-gui-apply.sh itself restricts to the
+# staging directory. NOPASSWD because this runs from an unattended web
+# process, not an interactive shell.
+haproxy-gui ALL=(root) NOPASSWD: /usr/local/sbin/haproxy-gui-apply

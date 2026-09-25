@@ -1,0 +1,41 @@
+# Host -> backend untuk frontend https_in (port 443)
+# Format: <host huruf kecil tanpa port> <nama backend>
+# Catatan: beberapa host HTTPS memang diteruskan ke backend http_* (TLS berakhir di HAProxy, ke origin lewat port 80).
+oms.cni.net.id              https_oms
+ticket.cni.net.id           https_ticket
+dcam.cni.net.id             https_dcam
+dcim.isc.id                 https_dcim
+appdev.cni.net.id           https_appdev
+bantuan.cni.net.id          https_bantuan_cni
+clientzone.palapacloud.id   https_cz_palapacloud
+bantuan.platinum.net.id     https_bantuan_platinum
+notifgw.cni.net.id          https_notifgw_cni
+cyberclass.cni.net.id       https_cyberclass
+cybersoc.cni.net.id         https_cybersoc
+notif.palapacloud.id        https_notifpalapa
+transtelekom.id             http_transtelekom
+rndweb.cnit.net.id          https_rndweb
+platinum.net.id             https_platinum
+palapacloud.id              http_palapacloud
+naibaho.id                  https_naibaho
+jarmp.id                    http_jarmp
+www.jarmp.id                http_jarmp
+iscx.isc.id                 https_iscx
+isc.id                      https_isc
+hdnet.id                    http_hdnet
+www.hdnet.id                http_hdnet
+cybersat.platinum.net.id    https_cybersat
+cybernetworkglobal.com      https_cybernetworkglobal
+ix.cni.net.id               https_ixcni
+# Dulu dicocokkan lewat SNI (ssl_fc_sni) -> salah rute saat browser memakai ulang koneksi HTTP/2. Sekarang lewat Host.
+cdn.cni.net.id              https_cdncni
+cdn.platinum.net.id         http_cdnplatinum
+cdn.palapacloud.id          http_cdnpalapacloud
+bandung.cni.net.id          https_bandung
+bali.cni.net.id             https_bali
+aplikadata.id               http_aplikadata
+www.aplikadata.id           http_aplikadata
+1dataid.id                  http_1dataid
+www.1dataid.id              http_1dataid
+# PERLU KEPUTUSAN: ACL host_cninetid ada di config lama tapi tanpa use_backend -> cni.net.id via HTTPS selalu 503.
+# cni.net.id                http_cninetid

@@ -1,0 +1,50 @@
+{{define "config.html"}}{{template "layout.html" .}}{{end}}
+
+{{define "content"}}
+<div class="panel">
+  <h3>Editor Config</h3>
+  <form id="cfg-form">
+    <textarea name="content" id="cfg-content">{{.Active}}</textarea>
+    <div style="margin-top:10px; display:flex; gap:8px;">
+      <button type="button" hx-post="/api/config/validate" hx-include="#cfg-content" hx-target="#validate-out">Validasi</button>
+      <button type="button" hx-post="/api/config/apply" hx-include="#cfg-content" hx-target="#apply-out"
+        hx-confirm="Terapkan config ini ke HAProxy sekarang? Pastikan sudah divalidasi.">Simpan &amp; Terapkan</button>
+    </div>
+  </form>
+  <div id="validate-out"></div>
+  <div id="apply-out"></div>
+</div>
+
+<div class="panel">
+  <h3>Backup</h3>
+  <table>
+    <tr><th>File</th><th>Waktu</th><th></th></tr>
+    {{range .Backups}}
+    <tr>
+      <td>{{.Path}}</td>
+      <td>{{.ModTime}}</td>
+      <td>
+        <form style="display:inline" hx-post="/api/config/rollback" hx-confirm="Kembalikan ke backup ini?" hx-target="#apply-out">
+          <input type="hidden" name="backup_path" value="{{.Path}}">
+          <button type="submit">Rollback</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+{{define "validate_result.html"}}
+<div class="panel">
+  {{if .OK}}<strong style="color:var(--ok)">Konfigurasi valid.</strong>{{else}}<strong style="color:var(--bad)">Konfigurasi tidak valid.</strong>{{end}}
+  <pre>{{.Output}}</pre>
+</div>
+{{end}}
+
+{{define "apply_result.html"}}
+<div class="panel">
+  {{if .OK}}<strong style="color:var(--ok)">Berhasil diterapkan.</strong>{{else}}<strong style="color:var(--bad)">Gagal diterapkan.</strong>{{end}}
+  <pre>{{.Output}}</pre>
+</div>
+{{end}}

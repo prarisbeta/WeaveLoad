@@ -1,0 +1,17 @@
+{{define "login.html"}}<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Login — haproxy-gui</title>
+<style>
+body { background:#0f1115; color:#e6e8ee; font-family:-apple-system,"Segoe UI",sans-serif; display:flex; height:100vh; align-items:center; justify-content:center; }
+.box { background:#161922; border:1px solid #262b38; border-radius:10px; padding:32px; text-align:center; min-width:320px; }
+a.btn { display:inline-block; margin-top:16px; background:#4f8cff; color:#fff; text-decoration:none; padding:10px 20px; border-radius:6px; }
+.err { color:#e5484d; margin-top:12px; }
+</style></head>
+<body>
+<div class="box">
+  <h2>haproxy-gui</h2>
+  <p class="muted">Manajemen HAProxy — haproxy-cni</p>
+  {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
+  <a class="btn" href="/auth/login">Masuk dengan OMS CNI SSO</a>
+</div>
+</body></html>
+{{end}}

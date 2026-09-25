@@ -1,0 +1,20 @@
+{{define "audit.html"}}{{template "layout.html" .}}{{end}}
+
+{{define "content"}}
+<div class="panel">
+  <h3>Audit Log</h3>
+  <table>
+    <tr><th>Waktu</th><th>User</th><th>IP</th><th>Aksi</th><th>Target</th><th>Detail</th></tr>
+    {{range .Entries}}
+    <tr>
+      <td>{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
+      <td>{{.UserEmail}}</td>
+      <td>{{.RemoteIP}}</td>
+      <td>{{.Action}}</td>
+      <td>{{.Target}}</td>
+      <td class="muted">{{.Detail}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}

@@ -1,0 +1,52 @@
+{{define "layout.html"}}<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{block "title" .}}haproxy-gui{{end}}</title>
+<style>
+:root {
+  --bg: #0f1115; --panel: #161922; --border: #262b38; --text: #e6e8ee;
+  --muted: #8b93a7; --accent: #4f8cff; --ok: #2ecc71; --warn: #f5a623; --bad: #e5484d;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 12px 20px; border-bottom: 1px solid var(--border); }
+header nav a { color: var(--muted); text-decoration: none; margin-right: 16px; font-size: 13px; }
+header nav a:hover, header nav a.active { color: var(--text); }
+main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+th { color: var(--muted); font-weight: 500; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+.badge-up { background: rgba(46,204,113,.15); color: var(--ok); }
+.badge-down { background: rgba(229,72,77,.15); color: var(--bad); }
+.badge-maint { background: rgba(245,166,35,.15); color: var(--warn); }
+.badge-nocheck { background: rgba(139,147,167,.15); color: var(--muted); }
+button, .btn { background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+button:hover { border-color: var(--accent); }
+button.danger:hover { border-color: var(--bad); }
+textarea { width: 100%; min-height: 60vh; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font: 13px/1.4 ui-monospace, monospace; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.muted { color: var(--muted); }
+</style>
+<script src="/static/htmx.min.js"></script>
+</head>
+<body>
+<header>
+  <strong>haproxy-gui — haproxy-cni</strong>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/config">Config</a>
+    <a href="/certs">SSL</a>
+    <a href="/acl">ACL &amp; Map</a>
+    <a href="/audit">Audit Log</a>
+    <a href="/users">Users</a>
+  </nav>
+</header>
+<main>
+{{block "content" .}}{{end}}
+</main>
+</body>
+</html>
+{{end}}

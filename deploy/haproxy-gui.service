@@ -1,0 +1,26 @@
+[Unit]
+Description=haproxy-gui — web management UI for haproxy-cni
+After=network.target haproxy.service
+Wants=haproxy.service
+
+[Service]
+Type=simple
+User=haproxy-gui
+Group=haproxy
+EnvironmentFile=/etc/haproxy-gui/env
+ExecStart=/usr/local/bin/haproxy-gui
+Restart=on-failure
+RestartSec=2s
+
+# Hardening: this process only needs its own DB/staging dir, the HAProxy
+# runtime socket (via group membership on 'haproxy'), and read access to
+# /etc/haproxy for the config editor and cert listing.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/haproxy-gui
+ReadOnlyPaths=/etc/haproxy
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

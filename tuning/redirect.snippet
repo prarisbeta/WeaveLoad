@@ -1,0 +1,3 @@
+        # Host di daftar ini dialihkan ke HTTPS (301). Tambah host tanpa reload:
+        #   echo "add acl /etc/haproxy/maps/https_redirect.lst <host>" | nc -U /var/lib/haproxy/stats  (+ tulis ke file)
+        http-request redirect scheme https code 301 if { req.hdr(host),lower,field(1,:) -m str -f /etc/haproxy/maps/https_redirect.lst } !{ path_beg /.well-known/acme-challenge/ }

@@ -1,0 +1,21 @@
+{{define "acl.html"}}{{template "layout.html" .}}{{end}}
+
+{{define "content"}}
+{{range .Files}}
+<div class="panel">
+  <h3>{{.Label}} <span class="muted">({{.Path}})</span></h3>
+  <table>
+    {{if .HasValue}}<tr><th>Host</th><th>Backend</th></tr>{{else}}<tr><th>Entri</th></tr>{{end}}
+    {{range .Entries}}
+    <tr><td>{{.Key}}</td>{{if $.HasValue}}<td>{{.Value}}</td>{{end}}</tr>
+    {{end}}
+  </table>
+  <form hx-post="/api/acl/add" hx-target="closest .panel">
+    <input type="hidden" name="path" value="{{.Path}}">
+    <input type="text" name="key" placeholder="{{if .HasValue}}host, mis. app.example.id{{else}}nilai, mis. IP{{end}}" required>
+    {{if .HasValue}}<input type="text" name="value" placeholder="nama backend" required>{{end}}
+    <button type="submit">Tambah</button>
+  </form>
+</div>
+{{end}}
+{{end}}
