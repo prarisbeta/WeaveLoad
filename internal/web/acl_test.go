@@ -50,7 +50,7 @@ func (f *fakeMapRuntime) DelMapEntry(mapFile, key string) error {
 }
 
 func aclTemplates(t *testing.T) *template.Template {
-	return mustParse(t, `{{define "acl.html"}}{{range .Files}}{{.Label}}:{{range .Entries}}{{.Key}}={{.Value}} {{end}}{{end}}{{end}}`)
+	return mustParse(t, `{{define "acl.html"}}{{range .Files}}{{.Label}}:{{range .Entries}}{{.Key}}={{.Value}} {{end}}pools=[{{range .PoolOptions}}{{.}},{{end}}]{{end}}{{end}}`)
 }
 
 func TestAclHandler_ReadsMapFile(t *testing.T) {
@@ -68,6 +68,44 @@ func TestAclHandler_ReadsMapFile(t *testing.T) {
 
 	if !strings.Contains(rec.Body.String(), "oms.cni.net.id=http_oms") {
 		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestAclHandler_ValueIsPool_OffersPoolNamesFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts_http.map")
+	os.WriteFile(path, []byte("oms.cni.net.id http_oms\n"), 0o640)
+
+	h := &AclHandler{
+		Files:     []MapFile{{Label: "HTTP routing", Path: path, HasValue: true, ValueIsPool: true}},
+		Templates: aclTemplates(t),
+		Config:    &fakeConfigStore{active: "backend http_oms\n  server n1 1.2.3.4:80 check\nbackend http_other\n  server n2 1.2.3.5:80 check\n"},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/acl", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "pools=[http_oms,http_other,]") {
+		t.Errorf("body = %q, want pool names from the active config", body)
+	}
+}
+
+func TestAclHandler_ValueIsPool_NoConfig_NoPoolOptions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts_http.map")
+	os.WriteFile(path, []byte("oms.cni.net.id http_oms\n"), 0o640)
+
+	h := &AclHandler{
+		Files:     []MapFile{{Label: "HTTP routing", Path: path, HasValue: true, ValueIsPool: true}},
+		Templates: aclTemplates(t),
+	}
+	req := httptest.NewRequest(http.MethodGet, "/acl", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if !strings.Contains(rec.Body.String(), "pools=[]") {
+		t.Errorf("body = %q, want no pool options when Config is unset", rec.Body.String())
 	}
 }
 

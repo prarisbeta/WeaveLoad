@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"haproxy-gui/internal/auth"
+	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/store"
 )
 
@@ -31,6 +32,12 @@ type MapFile struct {
 	// HasValue is true for "key value" maps (host routing) and false for
 	// plain allow/deny lists (admin_allow.lst, https_redirect.lst).
 	HasValue bool
+	// ValueIsPool marks a HasValue file whose value names a backend/pool
+	// (e.g. the host routing maps). When set, and AclHandler.Config is
+	// available, the UI offers a dropdown of the pools that actually exist
+	// in the config instead of a free-text field — a beginner picks a name
+	// from a list rather than having to type it exactly right.
+	ValueIsPool bool
 }
 
 // AclHandler lists and edits the map/ACL files this instance manages. Every
@@ -43,6 +50,29 @@ type AclHandler struct {
 	Runtime   MapRuntime
 	Audit     AuditRecorder
 	Templates *template.Template
+	// Config is optional. When set, files marked MapFile.ValueIsPool get
+	// their dropdown of pool names from the live config instead of asking
+	// the user to type one from memory.
+	Config ConfigStore
+}
+
+// poolNames returns the sorted names of every backend/listen pool in the
+// active config, or nil if that can't be read — callers fall back to a
+// free-text field rather than failing the whole page.
+func (h *AclHandler) poolNames() []string {
+	if h.Config == nil {
+		return nil
+	}
+	content, err := h.Config.Active()
+	if err != nil {
+		return nil
+	}
+	cfg := haproxycfg.Parse(content)
+	names := make([]string, 0, len(cfg.Pools))
+	for _, p := range cfg.Pools {
+		names = append(names, p.Name)
+	}
+	return names
 }
 
 func (h *AclHandler) findFile(path string) (MapFile, bool) {
@@ -92,16 +122,28 @@ func readMapFile(path string, hasValue bool) ([]mapEntry, error) {
 func (h *AclHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	type fileView struct {
 		MapFile
-		Entries []mapEntry
+		Entries     []mapEntry
+		PoolOptions []string
 	}
 	var views []fileView
+	var pools []string
+	for _, f := range h.Files {
+		if f.ValueIsPool {
+			pools = h.poolNames()
+			break
+		}
+	}
 	for _, f := range h.Files {
 		entries, err := readMapFile(f.Path, f.HasValue)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("failed to read %s: %v", f.Path, err), http.StatusInternalServerError)
 			return
 		}
-		views = append(views, fileView{MapFile: f, Entries: entries})
+		view := fileView{MapFile: f, Entries: entries}
+		if f.ValueIsPool {
+			view.PoolOptions = pools
+		}
+		views = append(views, view)
 	}
 	data := struct {
 		Chrome

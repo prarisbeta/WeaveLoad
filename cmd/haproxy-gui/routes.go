@@ -103,14 +103,15 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
-			{Label: "HTTP host routing", Path: "/etc/haproxy/maps/hosts_http.map", HasValue: true},
-			{Label: "HTTPS host routing", Path: "/etc/haproxy/maps/hosts_https.map", HasValue: true},
+			{Label: "HTTP host routing", Path: "/etc/haproxy/maps/hosts_http.map", HasValue: true, ValueIsPool: true},
+			{Label: "HTTPS host routing", Path: "/etc/haproxy/maps/hosts_https.map", HasValue: true, ValueIsPool: true},
 			{Label: "HTTP -> HTTPS redirect list", Path: "/etc/haproxy/maps/https_redirect.lst", HasValue: false},
 			{Label: "Stats page allowed IPs", Path: "/etc/haproxy/maps/admin_allow.lst", HasValue: false},
 		},
 		Runtime:   d.runtime,
 		Audit:     d.store,
 		Templates: d.templates,
+		Config:    d.cfgfile,
 	}
 	mux.Handle("GET /acl", chain(aclHandler, requireAuth))
 

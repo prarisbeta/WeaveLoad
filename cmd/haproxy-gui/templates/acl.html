@@ -2,7 +2,7 @@
 
 {{define "acl_content"}}
 <h1>Aturan &amp; Rute</h1>
-<p class="hint">Daftar yang menentukan ke mana trafik diarahkan, dan IP mana yang boleh mengakses halaman status. Perubahan berlaku langsung, tanpa perlu menunggu.</p>
+<p class="hint">Aturan rute menentukan: "kalau orang membuka domain ini, kirim ke kelompok server itu". Daftar lain di bawah mengatur IP mana yang boleh mengakses halaman status. Perubahan berlaku langsung, tanpa perlu menunggu.</p>
 <div id="acl-root">
 {{template "acl_list.html" .}}
 </div>
@@ -15,6 +15,7 @@
 {{range .Files}}
 <div class="panel">
   <h3>{{.Label}}</h3>
+  {{if .ValueIsPool}}<p class="hint">Domain di kolom kiri diarahkan ke kelompok server yang dipilih di kolom kanan.</p>{{end}}
   {{if not .Entries}}
   <div class="empty-state"><p>Daftar ini masih kosong. Tambahkan entri pertama di bawah.</p></div>
   {{else}}
@@ -23,6 +24,7 @@
     {{if .HasValue}}<tr><th>Domain</th><th>Diarahkan ke</th><th></th></tr>{{else}}<tr><th>Entri</th><th></th></tr>{{end}}
     {{$path := .Path}}
     {{$hasValue := .HasValue}}
+    {{$poolOptions := .PoolOptions}}
     {{$canOperate := $.User.Role.Allows "operator"}}
     {{range .Entries}}
     <tr>
@@ -33,7 +35,14 @@
         <form class="field-inline" hx-post="/api/acl/edit" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
           <input type="hidden" name="path" value="{{$path}}">
           <input type="hidden" name="key" value="{{.Key}}">
+          {{if $poolOptions}}
+          <select name="value" aria-label="Kelompok server tujuan baru untuk {{.Key}}">
+            {{$current := .Value}}
+            {{range $poolOptions}}<option value="{{.}}"{{if eq . $current}} selected{{end}}>{{.}}</option>{{end}}
+          </select>
+          {{else}}
           <input type="text" name="value" value="{{.Value}}" aria-label="Tujuan baru untuk {{.Key}}" required>
+          {{end}}
           <button type="submit" title="Simpan tujuan baru untuk {{.Key}}">Simpan</button>
         </form>
         {{else}}{{.Value}}{{end}}
@@ -53,7 +62,16 @@
   <form style="margin-top:12px" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
     <input type="hidden" name="path" value="{{.Path}}">
     <input type="text" name="key" placeholder="{{if .HasValue}}domain, misalnya app.contoh.id{{else}}nilai, misalnya alamat IP{{end}}" required>
-    {{if .HasValue}}<input type="text" name="value" placeholder="nama tujuan" required>{{end}}
+    {{if .HasValue}}
+      {{if .PoolOptions}}
+      <select name="value" aria-label="Kelompok server tujuan" required>
+        <option value="" disabled selected>Pilih kelompok server&hellip;</option>
+        {{range .PoolOptions}}<option value="{{.}}">{{.}}</option>{{end}}
+      </select>
+      {{else}}
+      <input type="text" name="value" placeholder="nama tujuan" required>
+      {{end}}
+    {{end}}
     <button type="submit" class="primary">Tambah entri</button>
   </form>
   {{end}}
