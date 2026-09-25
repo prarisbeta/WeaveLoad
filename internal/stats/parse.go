@@ -256,8 +256,8 @@ type PieSlice struct {
 
 // maxPieSlices caps how many backends get their own wedge — beyond this,
 // a long tail of small backends turns the pie into unreadable confetti.
-// pieColors has one more entry than this, reserved for "Lainnya".
-const maxPieSlices = 9
+// pieColors has room to spare beyond this, reserved for "Lainnya".
+const maxPieSlices = 8
 
 // ConnectionsPie returns one slice per backend, comparing each one's share
 // of total active connections across the whole system ("keseluruhan"). Only
@@ -304,9 +304,11 @@ func (s Snapshot) ConnectionsPie() []PieSlice {
 	if others > 0 {
 		addSlice("Lainnya", others, len(pieColors)-1)
 	}
-	// Floating-point rounding can leave the last slice a hair short of
-	// 100%; stretch it so the gradient has no unpainted sliver at the seam.
-	if len(slices) > 0 && slices[len(slices)-1].EndPct < 100 {
+	// Floating-point rounding can leave the last slice a hair short of (or,
+	// summing enough small roundings, past) 100%; pin it exactly so the
+	// gradient has no unpainted sliver, and no overshoot past 100%, at the
+	// seam.
+	if len(slices) > 0 && slices[len(slices)-1].EndPct != 100 {
 		slices[len(slices)-1].EndPct = 100
 	}
 	return slices

@@ -5,6 +5,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -108,11 +109,19 @@ func isHTMXRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
+// renderTemplate renders into a buffer first, not straight to w: writing
+// directly means a mid-render template error arrives after some output (and
+// a 200 status) is already flushed, so the later http.Error both logs a
+// "superfluous WriteHeader" warning and serves the client broken, truncated
+// HTML instead of the error.
 func renderTemplate(w http.ResponseWriter, t *template.Template, name string, data any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := t.ExecuteTemplate(w, name, data); err != nil {
+	var buf bytes.Buffer
+	if err := t.ExecuteTemplate(&buf, name, data); err != nil {
 		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	buf.WriteTo(w)
 }
 
 // ServerControl is the subset of *runtime.Client the runtime-control

@@ -214,7 +214,7 @@ func TestConnectionsPie_EmptySnapshotReturnsNoSlices(t *testing.T) {
 	}
 }
 
-func TestConnectionsPie_CapsAtNineSlicesPlusOthers(t *testing.T) {
+func TestConnectionsPie_CapsAtEightSlicesPlusOthers(t *testing.T) {
 	var body strings.Builder
 	body.WriteString("# pxname,svname,status,weight,check_status,last_chk,scur\n")
 	// 11 backends: b1=100 down to b10=10 in steps of 10, plus b11=5.
@@ -228,18 +228,18 @@ func TestConnectionsPie_CapsAtNineSlicesPlusOthers(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	slices := snap.ConnectionsPie()
-	if len(slices) != 10 {
-		t.Fatalf("slices = %d, want 10 (9 busiest + Lainnya)", len(slices))
+	if len(slices) != 9 {
+		t.Fatalf("slices = %d, want 9 (8 busiest + Lainnya)", len(slices))
 	}
-	for i := 0; i < 9; i++ {
+	for i := 0; i < 8; i++ {
 		wantName := fmt.Sprintf("b%d", i+1)
 		if slices[i].Name != wantName {
 			t.Errorf("slices[%d].Name = %q, want %q", i, slices[i].Name, wantName)
 		}
 	}
-	last := slices[9]
-	if last.Name != "Lainnya" || last.Sessions != 10+5 {
-		t.Errorf("last slice = %+v, want Lainnya with sessions=15 (b10=10 + b11=5)", last)
+	last := slices[8]
+	if last.Name != "Lainnya" || last.Sessions != 20+10+5 {
+		t.Errorf("last slice = %+v, want Lainnya with sessions=35 (b9=20 + b10=10 + b11=5)", last)
 	}
 	if last.EndPct != 100 {
 		t.Errorf("last slice EndPct = %v, want 100", last.EndPct)

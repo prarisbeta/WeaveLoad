@@ -7,6 +7,10 @@
 // 2. When a page is opened at a "#member-<name>" anchor (used by the
 //    dashboard's "Ubah" link to point at a specific pool member row),
 //    briefly highlights that row so it's obvious which one to edit.
+// 3. On the logs page, an auto-refresh dropdown (5s/10s/20s/off) that just
+//    reloads the page on a timer, keeping the current filters (they're in
+//    the URL query string). The choice is remembered in localStorage so it
+//    survives the reload and later visits to the page.
 (function () {
   "use strict";
 
@@ -53,4 +57,43 @@
       row.style.outline = "";
     }, 3000);
   });
+
+  var AUTO_REFRESH_KEY = "haproxy-gui:logs-auto-refresh";
+
+  document.addEventListener("DOMContentLoaded", function () {
+    var select = document.getElementById("log-auto-refresh");
+    if (!select) {
+      return;
+    }
+    var saved = "0";
+    try {
+      saved = localStorage.getItem(AUTO_REFRESH_KEY) || "0";
+    } catch (e) {
+      // localStorage unavailable (private mode, etc.) — fall back to off.
+    }
+    select.value = saved;
+    scheduleAutoRefresh(parseInt(saved, 10));
+    select.addEventListener("change", function () {
+      try {
+        localStorage.setItem(AUTO_REFRESH_KEY, select.value);
+      } catch (e) {
+        // ignore — the timer still applies for the rest of this page view.
+      }
+      scheduleAutoRefresh(parseInt(select.value, 10));
+    });
+  });
+
+  var autoRefreshTimer = null;
+
+  function scheduleAutoRefresh(seconds) {
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+    }
+    if (seconds > 0) {
+      autoRefreshTimer = setInterval(function () {
+        window.location.reload();
+      }, seconds * 1000);
+    }
+  }
 })();

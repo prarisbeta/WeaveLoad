@@ -16,6 +16,15 @@
     </div>
     <button type="submit" class="primary">Terapkan</button>
     {{if or .Date .Keyword}}<a class="btn" href="/logs">Bersihkan filter</a>{{end}}
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="log-auto-refresh">Refresh otomatis</label>
+      <select id="log-auto-refresh">
+        <option value="0">Nonaktif</option>
+        <option value="5">5 detik</option>
+        <option value="10">10 detik</option>
+        <option value="20">20 detik</option>
+      </select>
+    </div>
   </form>
 </div>
 
