@@ -37,23 +37,21 @@ type DashboardHandler struct {
 func (h *DashboardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	raw, err := h.Stats.ShowStat()
 	if err != nil {
-		http.Error(w, "failed to reach haproxy runtime socket: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "Tidak bisa terhubung ke sistem gateway: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	snap, err := stats.Parse(raw)
 	if err != nil {
-		http.Error(w, "failed to parse haproxy stats: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Data trafik tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	u, _ := auth.UserFromContext(r.Context())
-	sess, _ := auth.SessionFromContext(r.Context())
 	data := struct {
+		Chrome
 		Snapshot   stats.Snapshot
-		User       store.User
 		CanOperate bool
-		CSRFToken  string
-	}{Snapshot: snap, User: u, CanOperate: u.Role.Allows(store.RoleOperator), CSRFToken: sess.CSRFToken}
+	}{Chrome: NewChrome(r, "dashboard"), Snapshot: snap, CanOperate: u.Role.Allows(store.RoleOperator)}
 
 	if isHTMXRequest(r) {
 		renderTemplate(w, h.Templates, "dashboard_table.html", data)
@@ -153,8 +151,26 @@ func (h *ServerActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
+	if h.Refresh == nil || h.Templates == nil {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+		return
+	}
+	raw, err := h.Refresh.ShowStat()
+	if err != nil {
+		http.Error(w, "Aksi berhasil, tapi gagal memuat ulang data trafik: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	snap, err := stats.Parse(raw)
+	if err != nil {
+		http.Error(w, "Aksi berhasil, tapi data trafik terbaru tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	renderTemplate(w, h.Templates, "dashboard_table.html", struct {
+		Chrome
+		Snapshot   stats.Snapshot
+		CanOperate bool
+	}{Chrome: NewChrome(r, "dashboard"), Snapshot: snap, CanOperate: u.Role.Allows(store.RoleOperator)})
 }
 
 func parseRequest(r *http.Request, out *serverActionRequest) error {

@@ -35,8 +35,9 @@ func (h *UsersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderTemplate(w, h.Templates, "users.html", struct {
+		Chrome
 		Users []store.User
-	}{Users: users})
+	}{Chrome: NewChrome(r, "users"), Users: users})
 }
 
 // UserUpdateHandler applies a role change or enable/disable toggle to one
@@ -111,6 +112,7 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderTemplate(w, h.Templates, "users_table.html", struct {
+		Chrome
 		Users []store.User
-	}{Users: users})
+	}{Chrome: NewChrome(r, "users"), Users: users})
 }

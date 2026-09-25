@@ -92,3 +92,38 @@ func TestBackend_NotFound(t *testing.T) {
 		t.Error("expected ok=false for unknown backend")
 	}
 }
+
+func TestSummary_CountsAcrossFixture(t *testing.T) {
+	snap, _ := Parse(fixture)
+	sum := snap.Summary()
+	if sum.FrontendsUp != 1 || sum.FrontendsTotal != 1 {
+		t.Errorf("frontends up/total = %d/%d, want 1/1", sum.FrontendsUp, sum.FrontendsTotal)
+	}
+	if sum.BackendsUp != 1 || sum.BackendsTotal != 1 {
+		t.Errorf("backends up/total = %d/%d, want 1/1", sum.BackendsUp, sum.BackendsTotal)
+	}
+	if sum.ServersTotal != 2 || sum.ServersDown != 0 {
+		t.Errorf("servers total/down = %d/%d, want 2/0", sum.ServersTotal, sum.ServersDown)
+	}
+	if sum.Sessions != 0 {
+		t.Errorf("sessions = %d, want 0", sum.Sessions)
+	}
+	if !sum.Healthy() {
+		t.Error("expected Healthy() true for an all-UP fixture")
+	}
+}
+
+func TestSummary_UnhealthyWhenAServerIsDown(t *testing.T) {
+	body := `# pxname,svname,status,weight,check_status,last_chk,scur
+https_ixcni,node01,DOWN,1,L7STS,Layer7 wrong status,0
+https_ixcni,BACKEND,UP,,,,0
+`
+	snap, _ := Parse(body)
+	sum := snap.Summary()
+	if sum.ServersDown != 1 {
+		t.Errorf("servers down = %d, want 1", sum.ServersDown)
+	}
+	if sum.Healthy() {
+		t.Error("expected Healthy() false when a server is down")
+	}
+}

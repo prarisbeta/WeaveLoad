@@ -1,33 +1,41 @@
 {{define "certs.html"}}{{template "chrome_header" .}}{{template "certs_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "certs_content"}}
+<h1>Sertifikat SSL</h1>
+<p class="hint">Sertifikat ini membuktikan identitas situs ke pengunjung dan mengaktifkan koneksi terenkripsi (https). Sertifikat yang kedaluwarsa membuat pengunjung melihat peringatan "tidak aman".</p>
 <div class="panel">
-  <h3>Sertifikat SSL</h3>
+  {{if not .Certs}}
+  <div class="empty-state"><h3>Belum ada sertifikat terpasang</h3></div>
+  {{else}}
+  <div class="table-scroll">
   <table>
-    <tr><th>File</th><th>Common Name</th><th>SAN</th><th>Berlaku s/d</th><th>Status</th></tr>
+    <tr><th>Berkas</th><th>Untuk domain</th><th>Domain lain yang dicakup</th><th>Berlaku sampai</th><th>Status</th></tr>
     {{range .Certs}}
     <tr>
       <td>{{.FileName}}</td>
       <td>{{.CommonName}}</td>
       <td class="muted">{{range .DNSNames}}{{.}} {{end}}</td>
-      <td>{{.NotAfter.Format "2006-01-02"}}</td>
+      <td>{{.NotAfter.Format "2 Jan 2006"}}</td>
       <td>
-        {{if .Expired $.Now}}<span class="badge badge-down">Kedaluwarsa</span>
-        {{else if .ExpiresWithin30 $.Now}}<span class="badge badge-maint">&lt; 30 hari</span>
-        {{else}}<span class="badge badge-up">OK</span>{{end}}
+        {{if .Expired $.Now}}<span class="badge badge-down">Sudah kedaluwarsa</span>
+        {{else if .ExpiresWithin30 $.Now}}<span class="badge badge-maint">Kurang dari 30 hari lagi</span>
+        {{else}}<span class="badge badge-up">Berlaku</span>{{end}}
       </td>
     </tr>
     {{end}}
   </table>
+  </div>
+  {{end}}
 </div>
 
 {{if .CanUpload}}
 <div class="panel">
-  <h3>Upload / Ganti Sertifikat</h3>
-  <form hx-encoding="multipart/form-data" hx-post="/api/certs/upload" hx-target="#upload-out">
-    <p>Nama file (harus diakhiri .pem): <input type="text" name="filename" required></p>
-    <p>Bundle PEM (cert + chain + key digabung): <input type="file" name="bundle" required></p>
-    <button type="submit">Upload &amp; Validasi</button>
+  <h3>Tambah atau ganti sertifikat</h3>
+  <p class="hint">Unggah satu berkas PEM berisi sertifikat, rantai sertifikat, dan kunci privat digabung jadi satu. Setelah diunggah, sertifikat belum otomatis aktif — hubungkan lewat menu Konfigurasi.</p>
+  <form hx-encoding="multipart/form-data" hx-post="/api/certs/upload" hx-target="#upload-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
+    <p>Nama berkas (harus diakhiri .pem): <input type="text" name="filename" required></p>
+    <p>Berkas PEM: <input type="file" name="bundle" required></p>
+    <button type="submit" class="primary">Unggah &amp; validasi</button>
   </form>
   <div id="upload-out"></div>
 </div>

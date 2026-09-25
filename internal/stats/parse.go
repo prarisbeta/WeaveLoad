@@ -151,6 +151,49 @@ func Parse(csvBody string) (Snapshot, error) {
 	return snap, nil
 }
 
+// Summary aggregates a Snapshot into the counts an overview page needs, so
+// callers don't re-walk Frontends/Backends/Servers themselves.
+type Summary struct {
+	FrontendsUp    int
+	FrontendsTotal int
+	BackendsUp     int
+	BackendsTotal  int
+	ServersDown    int
+	ServersTotal   int
+	Sessions       int
+}
+
+// Healthy reports whether every frontend and backend is up and no server is
+// down (ignoring servers deliberately in MAINT/DRAIN).
+func (s Summary) Healthy() bool {
+	return s.FrontendsUp == s.FrontendsTotal && s.BackendsUp == s.BackendsTotal && s.ServersDown == 0
+}
+
+// Summary computes aggregate counts across the whole snapshot.
+func (s Snapshot) Summary() Summary {
+	var sum Summary
+	sum.FrontendsTotal = len(s.Frontends)
+	for _, f := range s.Frontends {
+		if f.Status == "OPEN" {
+			sum.FrontendsUp++
+		}
+	}
+	sum.BackendsTotal = len(s.Backends)
+	for _, b := range s.Backends {
+		if b.Status == "UP" {
+			sum.BackendsUp++
+		}
+		for _, srv := range b.Servers {
+			sum.ServersTotal++
+			sum.Sessions += srv.Sessions
+			if srv.Down() {
+				sum.ServersDown++
+			}
+		}
+	}
+	return sum
+}
+
 // Backend looks up one backend by name.
 func (s Snapshot) Backend(name string) (Backend, bool) {
 	for _, b := range s.Backends {

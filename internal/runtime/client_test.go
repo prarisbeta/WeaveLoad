@@ -172,6 +172,37 @@ func TestAddMapEntry_RejectsWhitespaceInValue(t *testing.T) {
 	}
 }
 
+func TestDelMapEntry_SendsExactCommand(t *testing.T) {
+	var got string
+	c := New(fakeSocket(t, func(cmd string) string {
+		got = cmd
+		return ""
+	}))
+	if err := c.DelMapEntry("/etc/haproxy/maps/hosts_http.map", "old.example.com"); err != nil {
+		t.Fatalf("DelMapEntry: %v", err)
+	}
+	want := "del map /etc/haproxy/maps/hosts_http.map old.example.com"
+	if got != want {
+		t.Errorf("command = %q, want %q", got, want)
+	}
+}
+
+func TestDelMapEntry_RejectsWhitespaceInKey(t *testing.T) {
+	c := New(fakeSocket(t, func(string) string { return "" }))
+	err := c.DelMapEntry("/etc/haproxy/maps/hosts_http.map", "evil key")
+	if err == nil {
+		t.Fatal("expected error for key containing whitespace")
+	}
+}
+
+func TestDelMapEntry_ErrorReplyBecomesGoError(t *testing.T) {
+	c := New(fakeSocket(t, func(string) string { return "No such entry.\n" }))
+	err := c.DelMapEntry("/etc/haproxy/maps/hosts_http.map", "ghost.example.com")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 // errorsAs avoids importing "errors" just for one helper in tests.
 func errorsAs(err error, target **ErrInvalidName) bool {
 	e, ok := err.(*ErrInvalidName)

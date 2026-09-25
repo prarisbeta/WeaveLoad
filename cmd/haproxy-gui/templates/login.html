@@ -1,17 +1,42 @@
 {{define "login.html"}}<!doctype html>
-<html lang="id"><head><meta charset="utf-8"><title>Login — haproxy-gui</title>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Masuk — Konsol Gateway</title>
 <style>
-body { background:#0f1115; color:#e6e8ee; font-family:-apple-system,"Segoe UI",sans-serif; display:flex; height:100vh; align-items:center; justify-content:center; }
-.box { background:#161922; border:1px solid #262b38; border-radius:10px; padding:32px; text-align:center; min-width:320px; }
-a.btn { display:inline-block; margin-top:16px; background:#4f8cff; color:#fff; text-decoration:none; padding:10px 20px; border-radius:6px; }
-.err { color:#e5484d; margin-top:12px; }
+:root { --bg: #f6f8fb; --surface: #ffffff; --border: #dce3ed; --ink: #101828; --ink-muted: #5b6472; --accent: #0e7c86; --bad: #b91c1c; --bad-soft: #fbeaea; }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); min-height: 100vh;
+  font: 14px/1.55 -apple-system, "Segoe UI", "Inter", Roboto, Helvetica, Arial, sans-serif;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.box {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 36px 32px; text-align: center; width: 100%; max-width: 340px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+}
+.brand-mark {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 18px;
+  margin: 0 auto 16px;
+}
+h1 { font-size: 17px; margin: 0 0 4px; }
+p.sub { color: var(--ink-muted); font-size: 13px; margin: 0 0 24px; }
+.btn {
+  display: block; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
+  padding: 11px 20px; border-radius: 8px; font-size: 14px;
+}
+.btn:hover { filter: brightness(1.06); }
+.err { background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 16px; text-align: left; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style></head>
 <body>
 <div class="box">
-  <h2>haproxy-gui</h2>
-  <p class="muted">Manajemen HAProxy — haproxy-cni</p>
+  <div class="brand-mark">G</div>
+  <h1>Konsol Gateway</h1>
+  <p class="sub">Masuk dengan akun kantor Anda untuk melanjutkan.</p>
   {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
-  <a class="btn" href="/auth/login">Masuk dengan OMS CNI SSO</a>
+  <a class="btn" href="/auth/login">Masuk dengan akun SSO</a>
 </div>
 </body></html>
 {{end}}

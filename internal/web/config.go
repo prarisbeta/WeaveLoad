@@ -38,9 +38,10 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	backups, _ := h.Config.ListBackups()
 
 	renderTemplate(w, h.Templates, "config.html", struct {
+		Chrome
 		Active  string
 		Backups []cfgfile.Backup
-	}{Active: active, Backups: backups})
+	}{Chrome: NewChrome(r, "config"), Active: active, Backups: backups})
 }
 
 // ValidateAction handles "Validate" clicks: runs haproxy -c against the
@@ -132,7 +133,7 @@ func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !res.OK {
-		http.Error(w, "apply failed, HAProxy config was rolled back: "+res.Output, http.StatusBadGateway)
+		http.Error(w, "Penerapan gagal, konfigurasi dikembalikan otomatis ke versi sebelumnya: "+res.Output, http.StatusBadGateway)
 		return
 	}
 	renderTemplate(w, h.Templates, "apply_result.html", res)

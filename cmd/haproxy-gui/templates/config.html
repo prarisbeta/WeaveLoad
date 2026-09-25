@@ -1,14 +1,16 @@
 {{define "config.html"}}{{template "chrome_header" .}}{{template "config_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "config_content"}}
+<h1>Konfigurasi</h1>
+<p class="hint">Ini adalah pengaturan inti sistem gateway. Selalu tekan "Periksa" sebelum "Simpan &amp; Terapkan" — jika ada kesalahan, sistem akan memberi tahu tanpa mengubah apa pun. Jika penerapan gagal, sistem otomatis kembali ke versi yang berjalan sebelumnya.</p>
 <div class="panel">
-  <h3>Editor Config</h3>
+  <h3>Editor</h3>
   <form id="cfg-form">
-    <textarea name="content" id="cfg-content">{{.Active}}</textarea>
+    <textarea name="content" id="cfg-content" aria-label="Isi konfigurasi">{{.Active}}</textarea>
     <div style="margin-top:10px; display:flex; gap:8px;">
-      <button type="button" hx-post="/api/config/validate" hx-include="#cfg-content" hx-target="#validate-out">Validasi</button>
-      <button type="button" hx-post="/api/config/apply" hx-include="#cfg-content" hx-target="#apply-out"
-        hx-confirm="Terapkan config ini ke HAProxy sekarang? Pastikan sudah divalidasi.">Simpan &amp; Terapkan</button>
+      <button type="button" hx-post="/api/config/validate" hx-include="#cfg-content" hx-target="#validate-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Periksa</button>
+      <button type="button" class="primary" hx-post="/api/config/apply" hx-include="#cfg-content" hx-target="#apply-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'
+        hx-confirm="Terapkan konfigurasi ini sekarang? Pastikan sudah diperiksa dan hasilnya valid.">Simpan &amp; terapkan</button>
     </div>
   </form>
   <div id="validate-out"></div>
@@ -16,28 +18,35 @@
 </div>
 
 <div class="panel">
-  <h3>Backup</h3>
+  <h3>Cadangan sebelumnya</h3>
+  <p class="hint">Kembalikan ke salah satu versi berikut jika perubahan terbaru bermasalah.</p>
+  {{if not .Backups}}
+  <div class="empty-state"><p>Belum ada cadangan tersimpan.</p></div>
+  {{else}}
+  <div class="table-scroll">
   <table>
-    <tr><th>File</th><th>Waktu</th><th></th></tr>
+    <tr><th>Berkas</th><th>Waktu</th><th></th></tr>
     {{range .Backups}}
     <tr>
       <td>{{.Path}}</td>
       <td>{{.ModTime}}</td>
       <td>
-        <form style="display:inline" hx-post="/api/config/rollback" hx-confirm="Kembalikan ke backup ini?" hx-target="#apply-out">
+        <form style="display:inline" hx-post="/api/config/rollback" hx-confirm="Kembalikan ke cadangan ini? Konfigurasi yang berjalan sekarang akan digantikan." hx-target="#apply-out" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
           <input type="hidden" name="backup_path" value="{{.Path}}">
-          <button type="submit">Rollback</button>
+          <button type="submit">Kembalikan</button>
         </form>
       </td>
     </tr>
     {{end}}
   </table>
+  </div>
+  {{end}}
 </div>
 {{end}}
 
 {{define "validate_result.html"}}
 <div class="panel">
-  {{if .OK}}<strong style="color:var(--ok)">Konfigurasi valid.</strong>{{else}}<strong style="color:var(--bad)">Konfigurasi tidak valid.</strong>{{end}}
+  {{if .OK}}<strong style="color:var(--ok)">Konfigurasi valid, aman diterapkan.</strong>{{else}}<strong style="color:var(--bad)">Konfigurasi tidak valid — belum diterapkan.</strong>{{end}}
   <pre>{{.Output}}</pre>
 </div>
 {{end}}

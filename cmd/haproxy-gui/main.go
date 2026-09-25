@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -39,7 +40,7 @@ func run() error {
 		return err
 	}
 
-	tpl, err := template.New("").Funcs(template.FuncMap{}).ParseFS(templatesFS, "templates/*.html")
+	tpl, err := template.New("").Funcs(template.FuncMap{"upper": strings.ToUpper}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return err
 	}

@@ -136,6 +136,20 @@ func (c *Client) AddMapEntry(mapFile, key, value string) error {
 	return wrapIfError(out, err)
 }
 
+// DelMapEntry removes every entry matching key from a runtime map. It does
+// not touch the map file on disk (callers should also rewrite the file so
+// the removal survives a reload).
+func (c *Client) DelMapEntry(mapFile, key string) error {
+	if strings.ContainsAny(mapFile, "\n\r") || !strings.HasPrefix(mapFile, "/") {
+		return fmt.Errorf("invalid map file path: %q", mapFile)
+	}
+	if strings.ContainsAny(key, "\n\r ") {
+		return fmt.Errorf("map key must not contain whitespace or newlines")
+	}
+	out, err := c.run(fmt.Sprintf("del map %s %s", mapFile, key))
+	return wrapIfError(out, err)
+}
+
 // wrapIfError turns a non-empty Runtime API reply into a Go error. HAProxy
 // replies with an empty body on success and a one-line message on failure.
 func wrapIfError(out string, err error) error {

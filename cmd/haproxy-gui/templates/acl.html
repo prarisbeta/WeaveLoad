@@ -1,20 +1,45 @@
 {{define "acl.html"}}{{template "chrome_header" .}}{{template "acl_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "acl_content"}}
+<h1>Aturan &amp; Rute</h1>
+<p class="hint">Daftar yang menentukan ke mana trafik diarahkan, dan IP mana yang boleh mengakses halaman status. Perubahan berlaku langsung, tanpa perlu menunggu.</p>
+<div id="acl-root">
+{{template "acl_list.html" .}}
+</div>
+{{end}}
+
+{{define "acl_list.html"}}
+{{if not .Files}}
+<div class="panel"><div class="empty-state"><h3>Belum ada daftar yang dikelola di sini</h3></div></div>
+{{end}}
 {{range .Files}}
 <div class="panel">
-  <h3>{{.Label}} <span class="muted">({{.Path}})</span></h3>
+  <h3>{{.Label}}</h3>
+  {{if not .Entries}}
+  <div class="empty-state"><p>Daftar ini masih kosong. Tambahkan entri pertama di bawah.</p></div>
+  {{else}}
+  <div class="table-scroll">
   <table>
-    {{if .HasValue}}<tr><th>Host</th><th>Backend</th></tr>{{else}}<tr><th>Entri</th></tr>{{end}}
+    {{if .HasValue}}<tr><th>Domain</th><th>Diarahkan ke</th><th></th></tr>{{else}}<tr><th>Entri</th><th></th></tr>{{end}}
+    {{$path := .Path}}
+    {{$hasValue := .HasValue}}
     {{range .Entries}}
-    <tr><td>{{.Key}}</td>{{if $.HasValue}}<td>{{.Value}}</td>{{end}}</tr>
+    <tr>
+      <td>{{.Key}}</td>
+      {{if $hasValue}}<td>{{.Value}}</td>{{end}}
+      <td>
+        <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus &quot;{{.Key}}&quot; dari daftar ini?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}'>Hapus</button>
+      </td>
+    </tr>
     {{end}}
   </table>
-  <form hx-post="/api/acl/add" hx-target="closest .panel">
+  </div>
+  {{end}}
+  <form style="margin-top:12px" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
     <input type="hidden" name="path" value="{{.Path}}">
-    <input type="text" name="key" placeholder="{{if .HasValue}}host, mis. app.example.id{{else}}nilai, mis. IP{{end}}" required>
-    {{if .HasValue}}<input type="text" name="value" placeholder="nama backend" required>{{end}}
-    <button type="submit">Tambah</button>
+    <input type="text" name="key" placeholder="{{if .HasValue}}domain, misalnya app.contoh.id{{else}}nilai, misalnya alamat IP{{end}}" required>
+    {{if .HasValue}}<input type="text" name="value" placeholder="nama tujuan" required>{{end}}
+    <button type="submit" class="primary">Tambah entri</button>
   </form>
 </div>
 {{end}}

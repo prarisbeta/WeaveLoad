@@ -16,6 +16,7 @@ import (
 // MapRuntime is the subset of *runtime.Client the ACL/map handlers need.
 type MapRuntime interface {
 	AddMapEntry(mapFile, key, value string) error
+	DelMapEntry(mapFile, key string) error
 }
 
 // MapFile describes one managed map/ACL list file this app knows how to
@@ -101,7 +102,16 @@ func (h *AclHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		views = append(views, fileView{MapFile: f, Entries: entries})
 	}
-	renderTemplate(w, h.Templates, "acl.html", struct{ Files []fileView }{Files: views})
+	data := struct {
+		Chrome
+		Files []fileView
+	}{Chrome: NewChrome(r, "acl"), Files: views}
+
+	if isHTMXRequest(r) {
+		renderTemplate(w, h.Templates, "acl_list.html", data)
+		return
+	}
+	renderTemplate(w, h.Templates, "acl.html", data)
 }
 
 // AclAddHandler adds one entry to a managed map/list file, both at runtime
@@ -185,4 +195,105 @@ func appendLine(path, line string) error {
 	defer f.Close()
 	_, err = f.WriteString(line + "\n")
 	return err
+}
+
+// AclDeleteHandler removes one entry from a managed map/list file, both at
+// runtime (immediate effect) and on disk.
+type AclDeleteHandler struct {
+	AclHandler *AclHandler
+}
+
+func (h *AclDeleteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	path := r.FormValue("path")
+	key := strings.TrimSpace(r.FormValue("key"))
+
+	mf, ok := h.AclHandler.findFile(path)
+	if !ok {
+		http.Error(w, "unknown map file", http.StatusBadRequest)
+		return
+	}
+	if key == "" {
+		http.Error(w, "key must be non-empty", http.StatusBadRequest)
+		return
+	}
+
+	u, _ := auth.UserFromContext(r.Context())
+	target := path + ":" + key
+
+	if err := h.AclHandler.Runtime.DelMapEntry(path, key); err != nil {
+		_ = h.AclHandler.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email, RemoteIP: clientIP(r),
+			Action: "acl.delete", Target: target, Detail: "runtime delete failed: " + err.Error(),
+		})
+		http.Error(w, "failed to remove at runtime: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	if err := removeLine(path, key, mf.HasValue); err != nil {
+		_ = h.AclHandler.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email, RemoteIP: clientIP(r),
+			Action: "acl.delete", Target: target,
+			Detail: "removed at runtime but FAILED to persist to file (entry will return on the next reload): " + err.Error(),
+		})
+		http.Error(w, "removed at runtime but failed to update the file — this entry will come back on the next reload: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.AclHandler.Audit.Record(store.AuditEntry{
+		UserEmail: u.Email, RemoteIP: clientIP(r),
+		Action: "acl.delete", Target: target, Detail: "ok",
+	}); err != nil {
+		http.Error(w, "removed but failed to audit-log: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.AclHandler.ServeHTTP(w, r)
+}
+
+// removeLine rewrites path without the line whose key matches (the first
+// whitespace-separated field for hasValue files, or the whole trimmed line
+// otherwise). Comments and blank lines are preserved as-is.
+func removeLine(path, key string, hasValue bool) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var kept []string
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			kept = append(kept, line)
+			continue
+		}
+		lineKey := trimmed
+		if hasValue {
+			if fields := strings.Fields(trimmed); len(fields) > 0 {
+				lineKey = fields[0]
+			}
+		}
+		if lineKey == key {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if err := sc.Err(); err != nil {
+		f.Close()
+		return err
+	}
+	f.Close()
+
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(strings.Join(kept, "\n")+"\n"), 0o640); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

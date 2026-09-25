@@ -25,7 +25,7 @@ type BeginLoginHandler struct {
 
 func (h *BeginLoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := h.Provider.BeginLogin(w, r, h.CookieSecure); err != nil {
-		http.Redirect(w, r, "/login?error=failed+to+start+login", http.StatusFound)
+		http.Redirect(w, r, "/login?error=Gagal+memulai+proses+masuk%2C+coba+lagi", http.StatusFound)
 	}
 }
 
@@ -40,12 +40,12 @@ func (h *CallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claims, err := h.Provider.HandleCallback(r)
 	if err != nil {
 		log.Printf("oidc callback failed: %v", err)
-		http.Redirect(w, r, "/login?error=login+failed", http.StatusFound)
+		http.Redirect(w, r, "/login?error=Proses+masuk+gagal%2C+coba+lagi", http.StatusFound)
 		return
 	}
 	if _, err := CompleteLogin(w, h.Store, claims, h.CookieSecure); err != nil {
 		log.Printf("complete login failed for %s: %v", claims.Email, err)
-		http.Redirect(w, r, "/login?error=account+is+disabled+or+invalid", http.StatusFound)
+		http.Redirect(w, r, "/login?error=Akun+ini+nonaktif+atau+tidak+valid", http.StatusFound)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusFound)

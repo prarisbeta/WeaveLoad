@@ -1,37 +1,49 @@
 {{define "users.html"}}{{template "chrome_header" .}}{{template "users_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "users_content"}}
-<div class="panel" id="users-panel">
+<h1>Pengguna</h1>
+<p class="hint">Semua orang masuk lewat akun SSO kantor. Saat login pertama kali, akun otomatis dibuat sebagai "Pengamat" (hanya bisa melihat) — naikkan perannya di sini agar bisa mengoperasikan atau mengelola sistem.</p>
+<div id="users-panel">
 {{template "users_table.html" .}}
 </div>
 {{end}}
 
 {{define "users_table.html"}}
+{{if not .Users}}
+<div class="panel"><div class="empty-state"><h3>Belum ada pengguna</h3></div></div>
+{{else}}
+<div class="panel">
+<div class="table-scroll">
 <table>
-  <tr><th>Email</th><th>Nama</th><th>Role</th><th>Status</th><th>Aksi</th></tr>
+  <tr><th>Email</th><th>Nama</th><th>Peran</th><th>Status</th><th>Tindakan</th></tr>
   {{range .Users}}
   <tr>
     <td>{{.Email}}</td>
     <td>{{.Name}}</td>
-    <td>{{.Role}}</td>
+    <td>{{if eq .Role "admin"}}Administrator{{else if eq .Role "operator"}}Operator{{else}}Pengamat{{end}}</td>
     <td>{{if .Enabled}}<span class="badge badge-up">Aktif</span>{{else}}<span class="badge badge-down">Nonaktif</span>{{end}}</td>
     <td>
-      <form style="display:inline" hx-post="/api/users/update" hx-target="#users-panel">
+      <div class="row-actions">
+      <form class="field-inline" hx-post="/api/users/update" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
         <input type="hidden" name="user_id" value="{{.ID}}">
         <input type="hidden" name="action" value="set_role">
-        <select name="role" onchange="this.form.requestSubmit()">
-          <option value="viewer" {{if eq .Role "viewer"}}selected{{end}}>viewer</option>
-          <option value="operator" {{if eq .Role "operator"}}selected{{end}}>operator</option>
-          <option value="admin" {{if eq .Role "admin"}}selected{{end}}>admin</option>
+        <select name="role" onchange="this.form.requestSubmit()" aria-label="Peran untuk {{.Email}}" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
+          <option value="viewer" {{if eq .Role "viewer"}}selected{{end}}>Pengamat</option>
+          <option value="operator" {{if eq .Role "operator"}}selected{{end}}>Operator</option>
+          <option value="admin" {{if eq .Role "admin"}}selected{{end}}>Administrator</option>
         </select>
       </form>
       {{if .Enabled}}
-      <button class="danger" hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"disable"}' hx-target="#users-panel" hx-confirm="Nonaktifkan {{.Email}}?">Nonaktifkan</button>
+      <button class="danger" hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"disable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan akun {{.Email}}? Pengguna ini tidak akan bisa masuk lagi sampai diaktifkan kembali.">Nonaktifkan</button>
       {{else}}
-      <button hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"enable"}' hx-target="#users-panel">Aktifkan</button>
+      <button hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"enable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Aktifkan</button>
       {{end}}
+      </div>
     </td>
   </tr>
   {{end}}
 </table>
+</div>
+</div>
+{{end}}
 {{end}}

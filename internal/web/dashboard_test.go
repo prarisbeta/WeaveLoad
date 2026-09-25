@@ -218,6 +218,32 @@ func TestServerActionHandler_Weight_JSONBody(t *testing.T) {
 	}
 }
 
+func TestServerActionHandler_RefreshesTableWhenWired(t *testing.T) {
+	rt := newFakeRuntime()
+	au := &fakeAudit{}
+	h := &ServerActionHandler{
+		Runtime:   rt,
+		Audit:     au,
+		Refresh:   fakeStats{body: testFixture},
+		Templates: testTemplates(t),
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/action", strings.NewReader("backend=http_oms&server=node1&action=drain"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "FULL PAGE") {
+		t.Errorf("expected the table fragment only, got full page: %q", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "http_oms") {
+		t.Errorf("expected refreshed backend name in response, got %q", rec.Body.String())
+	}
+}
+
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }

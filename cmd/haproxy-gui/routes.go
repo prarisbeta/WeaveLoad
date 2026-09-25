@@ -58,6 +58,7 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	auditHandler := &web.AuditHandler{Store: d.store, Templates: d.templates}
 	mux.Handle("GET /audit", chain(auditHandler, requireAuth, requireOperator))
+	mux.Handle("GET /audit/export", chain(&web.AuditExportHandler{Store: d.store}, requireAuth, requireOperator))
 
 	certsHandler := &web.CertsHandler{Certs: d.certs, Templates: d.templates}
 	mux.Handle("GET /certs", chain(certsHandler, requireAuth))
@@ -76,9 +77,10 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /acl", chain(aclHandler, requireAuth))
 
 	// --- operator (runtime control) ---
-	serverAction := &web.ServerActionHandler{Runtime: d.runtime, Audit: d.store}
+	serverAction := &web.ServerActionHandler{Runtime: d.runtime, Audit: d.store, Refresh: d.runtime, Templates: d.templates}
 	mux.Handle("POST /api/servers/action", chain(serverAction, requireAuth, requireOperator, auth.RequireCSRF))
 	mux.Handle("POST /api/acl/add", chain(&web.AclAddHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
+	mux.Handle("POST /api/acl/delete", chain(&web.AclDeleteHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
 
 	// --- admin (config, certs, users) ---
 	configHandler := &web.ConfigHandler{Config: d.cfgfile, Audit: d.store, Templates: d.templates}

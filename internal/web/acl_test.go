@@ -13,17 +13,31 @@ import (
 )
 
 type fakeMapRuntime struct {
-	added map[string][2]string // mapFile -> [key, value]
-	err   error
+	added   map[string][2]string // mapFile -> [key, value]
+	deleted map[string]string    // mapFile -> key
+	err     error
 }
 
-func newFakeMapRuntime() *fakeMapRuntime { return &fakeMapRuntime{added: map[string][2]string{}} }
+func newFakeMapRuntime() *fakeMapRuntime {
+	return &fakeMapRuntime{added: map[string][2]string{}, deleted: map[string]string{}}
+}
 
 func (f *fakeMapRuntime) AddMapEntry(mapFile, key, value string) error {
 	if f.err != nil {
 		return f.err
 	}
 	f.added[mapFile] = [2]string{key, value}
+	return nil
+}
+
+func (f *fakeMapRuntime) DelMapEntry(mapFile, key string) error {
+	if f.err != nil {
+		return f.err
+	}
+	if f.deleted == nil {
+		f.deleted = map[string]string{}
+	}
+	f.deleted[mapFile] = key
 	return nil
 }
 
@@ -128,6 +142,82 @@ func TestAclAddHandler_UnknownMapFile_400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 for a path not in the managed file list", rec.Code)
+	}
+}
+
+func TestAclDeleteHandler_RemovesRuntimeAndFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts_http.map")
+	os.WriteFile(path, []byte("old.example.id http_old\nkeep.example.id http_keep\n"), 0o640)
+
+	rt := newFakeMapRuntime()
+	au := &fakeAudit{}
+	base := &AclHandler{
+		Files:     []MapFile{{Label: "HTTP routing", Path: path, HasValue: true}},
+		Runtime:   rt,
+		Audit:     au,
+		Templates: aclTemplates(t),
+	}
+	h := &AclDeleteHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/delete", strings.NewReader("path="+path+"&key=old.example.id"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{Email: "admin@example.com"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if rt.deleted[path] != "old.example.id" {
+		t.Errorf("runtime not called correctly: %+v", rt.deleted)
+	}
+	got, _ := os.ReadFile(path)
+	if strings.Contains(string(got), "old.example.id") {
+		t.Errorf("entry should have been removed from file: %q", got)
+	}
+	if !strings.Contains(string(got), "keep.example.id") {
+		t.Errorf("unrelated entry should survive: %q", got)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "acl.delete" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestAclDeleteHandler_UnknownMapFile_400(t *testing.T) {
+	base := &AclHandler{Files: []MapFile{{Label: "L", Path: "/etc/known.lst"}}, Runtime: newFakeMapRuntime(), Audit: &fakeAudit{}, Templates: aclTemplates(t)}
+	h := &AclDeleteHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/delete", strings.NewReader("path=/etc/passwd&key=x"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for a path not in the managed file list", rec.Code)
+	}
+}
+
+func TestAclDeleteHandler_RuntimeFailure_502(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "list.lst")
+	os.WriteFile(path, []byte("1.2.3.4\n"), 0o640)
+	rt := &fakeMapRuntime{added: map[string][2]string{}, err: assertErr("no such entry")}
+	au := &fakeAudit{}
+	base := &AclHandler{Files: []MapFile{{Label: "L", Path: path}}, Runtime: rt, Audit: au, Templates: aclTemplates(t)}
+	h := &AclDeleteHandler{AclHandler: base}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/acl/delete", strings.NewReader("path="+path+"&key=1.2.3.4"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", rec.Code)
+	}
+	got, _ := os.ReadFile(path)
+	if !strings.Contains(string(got), "1.2.3.4") {
+		t.Error("file should be unchanged when the runtime call failed")
 	}
 }
 

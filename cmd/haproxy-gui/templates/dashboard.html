@@ -1,51 +1,96 @@
 {{define "dashboard.html"}}{{template "chrome_header" .}}{{template "dashboard_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "dashboard_content"}}
-<div id="dashboard-root" hx-get="/api/dashboard" hx-trigger="every 3s" hx-swap="innerHTML">
+<h1>Ringkasan Trafik</h1>
+<p class="hint">Kondisi jaringan saat ini, diperbarui otomatis setiap beberapa detik. Warna hijau berarti sehat, kuning berarti sengaja dinonaktifkan sementara, merah berarti butuh perhatian.</p>
+<div id="dashboard-root" hx-get="/api/dashboard" hx-trigger="every 5s" hx-swap="innerHTML">
 {{template "dashboard_table.html" .}}
 </div>
 {{end}}
 
 {{define "dashboard_table.html"}}
+{{$sum := .Snapshot.Summary}}
+<div class="stat-row">
+  <div class="stat-tile {{if eq $sum.FrontendsUp $sum.FrontendsTotal}}ok{{else}}bad{{end}}">
+    <div class="stat-value">{{$sum.FrontendsUp}}/{{$sum.FrontendsTotal}}</div>
+    <div class="stat-label">Pintu masuk aktif</div>
+  </div>
+  <div class="stat-tile {{if eq $sum.BackendsUp $sum.BackendsTotal}}ok{{else}}bad{{end}}">
+    <div class="stat-value">{{$sum.BackendsUp}}/{{$sum.BackendsTotal}}</div>
+    <div class="stat-label">Kelompok server sehat</div>
+  </div>
+  <div class="stat-tile {{if eq $sum.ServersDown 0}}ok{{else}}bad{{end}}">
+    <div class="stat-value">{{$sum.ServersDown}}</div>
+    <div class="stat-label">Server bermasalah</div>
+  </div>
+  <div class="stat-tile">
+    <div class="stat-value">{{$sum.Sessions}}</div>
+    <div class="stat-label">Koneksi aktif saat ini</div>
+  </div>
+</div>
+
 <div class="panel">
-  <h3>Frontends</h3>
+  <h3>Pintu masuk trafik</h3>
+  <p class="hint">Ini adalah alamat yang menerima permintaan dari pengguna sebelum diteruskan ke server tujuan.</p>
+  {{if not .Snapshot.Frontends}}
+  <div class="empty-state"><h3>Belum ada data</h3><p>Sistem belum melaporkan pintu masuk trafik apa pun.</p></div>
+  {{else}}
+  <div class="table-scroll">
   <table>
-    <tr><th>Name</th><th>Status</th></tr>
+    <tr><th>Nama</th><th>Status</th></tr>
     {{range .Snapshot.Frontends}}
     <tr>
       <td>{{.Name}}</td>
-      <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{.Status}}</span></td>
+      <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{if eq .Status "OPEN"}}Aktif{{else}}{{.Status}}{{end}}</span></td>
     </tr>
     {{end}}
   </table>
+  </div>
+  {{end}}
 </div>
+
+{{if not .Snapshot.Backends}}
+<div class="panel"><div class="empty-state"><h3>Belum ada kelompok server</h3><p>Belum ada backend yang terdaftar untuk menerima trafik.</p></div></div>
+{{end}}
 
 {{$canOperate := .CanOperate}}
 {{range .Snapshot.Backends}}
 <div class="panel">
-  <h3>{{.Name}} <span class="badge {{if eq .Status "UP"}}badge-up{{else if eq .Status "DOWN"}}badge-down{{else}}badge-maint{{end}}">{{.Status}}</span></h3>
+  <h3>{{.Name}} <span class="badge {{if eq .Status "UP"}}badge-up{{else if eq .Status "DOWN"}}badge-down{{else}}badge-maint{{end}}">{{if eq .Status "UP"}}Sehat{{else if eq .Status "DOWN"}}Bermasalah{{else}}{{.Status}}{{end}}</span></h3>
+  <p class="hint">Server-server berikut menerima trafik yang diteruskan ke kelompok "{{.Name}}".</p>
+  <div class="table-scroll">
   <table>
-    <tr><th>Server</th><th>Status</th><th>Check</th><th>Weight</th><th>Sessions</th>{{if $canOperate}}<th>Actions</th>{{end}}</tr>
+    <tr><th>Server</th><th>Status</th><th>Pemeriksaan</th><th>Bobot</th><th>Koneksi</th>{{if $canOperate}}<th>Tindakan</th>{{end}}</tr>
     {{$backend := .Name}}
     {{range .Servers}}
     <tr>
       <td>{{.Name}}</td>
       <td>
-        <span class="badge {{if .Up}}badge-up{{else if .Down}}badge-down{{else}}badge-maint{{end}}">{{.Status}}</span>
+        <span class="badge {{if .Up}}badge-up{{else if .Down}}badge-down{{else}}badge-maint{{end}}">{{if .Up}}Aktif{{else if .Down}}Tidak merespons{{else}}{{.Status}}{{end}}</span>
       </td>
       <td class="muted">{{.CheckStatus}} {{.LastCheck}}</td>
       <td>{{.Weight}}</td>
       <td>{{.Sessions}}</td>
       {{if $canOperate}}
       <td>
-        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"ready"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Enable</button>
-        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"drain"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Drain</button>
-        <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"maint"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Disable {{.Name}} in {{$backend}}?">Disable</button>
+        <div class="row-actions">
+        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"ready"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Kembalikan server ini ke jalur trafik normal">Aktifkan</button>
+        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"drain"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Habiskan koneksi yang sedang berjalan dulu, lalu berhenti menerima trafik baru">Kosongkan bertahap</button>
+        <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"maint"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan {{.Name}} di {{$backend}} sekarang? Semua trafik ke server ini akan langsung dihentikan." title="Hentikan server ini menerima trafik sama sekali, mulai sekarang">Nonaktifkan</button>
+        <form class="field-inline" hx-post="/api/servers/action" hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+          <input type="hidden" name="backend" value="{{$backend}}">
+          <input type="hidden" name="server" value="{{.Name}}">
+          <input type="hidden" name="action" value="weight">
+          <input type="text" name="weight" value="{{.Weight}}" size="3" aria-label="Bobot server {{.Name}}" title="Porsi trafik relatif dibanding server lain (0-256)">
+          <button type="submit" title="Terapkan bobot baru">Atur bobot</button>
+        </form>
+        </div>
       </td>
       {{end}}
     </tr>
     {{end}}
   </table>
+  </div>
 </div>
 {{end}}
 {{end}}

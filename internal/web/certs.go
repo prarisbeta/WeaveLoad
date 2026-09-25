@@ -36,10 +36,11 @@ func (h *CertsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	u, _ := auth.UserFromContext(r.Context())
 	renderTemplate(w, h.Templates, "certs.html", struct {
+		Chrome
 		Certs     []certs.Info
 		Now       time.Time
 		CanUpload bool
-	}{Certs: list, Now: time.Now(), CanUpload: u.Role.Allows(store.RoleAdmin)})
+	}{Chrome: NewChrome(r, "certs"), Certs: list, Now: time.Now(), CanUpload: u.Role.Allows(store.RoleAdmin)})
 }
 
 // CertUploadStagingDir is where uploaded bundles land pending review; an
