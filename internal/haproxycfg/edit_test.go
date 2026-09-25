@@ -360,3 +360,105 @@ func TestAddMember_PreservesCRLF(t *testing.T) {
 		t.Errorf("CRLF not preserved: %q", out)
 	}
 }
+
+func TestSetRateLimit_AddsBlockToPoolWithoutOne(t *testing.T) {
+	out, block, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(block, "rps=20 action=deny") || !strings.Contains(block, "gt 20") {
+		t.Errorf("block = %q", block)
+	}
+	if !strings.Contains(out, "backend http_oms\n        # haproxy-gui:rate-limit rps=20 action=deny\n") {
+		t.Errorf("block not inserted right after the backend header:\n%s", out)
+	}
+	p, _ := Parse(out).Pool("http_oms")
+	if p.RateLimit == nil || p.RateLimit.RPS != 20 || p.RateLimit.Action != "deny" {
+		t.Errorf("re-parsed RateLimit = %+v", p.RateLimit)
+	}
+	// The pool's members must still be intact after the insert shifts lines.
+	if len(p.Members) != 3 {
+		t.Errorf("members = %d, want 3 (unaffected by the insert)", len(p.Members))
+	}
+}
+
+func TestSetRateLimit_ReplacesExistingBlockInPlace(t *testing.T) {
+	withLimit, _, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := SetRateLimit(withLimit, "http_oms", RateLimitSpec{RPS: 50, Action: "tarpit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out, "haproxy-gui:rate-limit") != 1 {
+		t.Errorf("expected exactly one rate-limit block after replacing, got:\n%s", out)
+	}
+	p, _ := Parse(out).Pool("http_oms")
+	if p.RateLimit == nil || p.RateLimit.RPS != 50 || p.RateLimit.Action != "tarpit" {
+		t.Errorf("RateLimit after replace = %+v", p.RateLimit)
+	}
+}
+
+func TestSetRateLimit_RejectsBadInput(t *testing.T) {
+	cases := map[string]RateLimitSpec{
+		"bad action": {RPS: 20, Action: "block"},
+		"zero rps":   {RPS: 0, Action: "deny"},
+		"huge rps":   {RPS: 1000000, Action: "deny"},
+	}
+	for name, spec := range cases {
+		if _, _, err := SetRateLimit(sampleCfg, "http_oms", spec); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
+	}
+}
+
+func TestSetRateLimit_UnknownPool_Errors(t *testing.T) {
+	if _, _, err := SetRateLimit(sampleCfg, "nope", RateLimitSpec{RPS: 20, Action: "deny"}); err == nil {
+		t.Error("expected error for unknown pool")
+	}
+}
+
+func TestRemoveRateLimit_RemovesAllFourLines(t *testing.T) {
+	withLimit, _, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := RemoveRateLimit(withLimit, "http_oms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "haproxy-gui:rate-limit") || strings.Contains(out, "sc_http_req_rate") {
+		t.Errorf("rate-limit block not fully removed:\n%s", out)
+	}
+	p, _ := Parse(out).Pool("http_oms")
+	if p.RateLimit != nil {
+		t.Errorf("RateLimit = %+v, want nil after removal", p.RateLimit)
+	}
+	if len(p.Members) != 3 {
+		t.Errorf("members = %d, want 3 (unaffected by the removal)", len(p.Members))
+	}
+}
+
+func TestRemoveRateLimit_ErrorsWhenNoneConfigured(t *testing.T) {
+	if _, err := RemoveRateLimit(sampleCfg, "http_oms"); err == nil {
+		t.Error("expected error removing a rate limit that was never set")
+	}
+}
+
+func TestRemoveRateLimit_UnknownPool_Errors(t *testing.T) {
+	if _, err := RemoveRateLimit(sampleCfg, "nope"); err == nil {
+		t.Error("expected error for unknown pool")
+	}
+}
+
+func TestSetRateLimit_PreservesCRLF(t *testing.T) {
+	crlf := strings.ReplaceAll("backend b\n  server s1 10.0.0.1:80 check\n", "\n", "\r\n")
+	out, _, err := SetRateLimit(crlf, "b", RateLimitSpec{RPS: 10, Action: "deny"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "haproxy-gui:rate-limit rps=10 action=deny\r\n") {
+		t.Errorf("CRLF not preserved: %q", out)
+	}
+}

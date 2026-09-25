@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/store"
 )
 
@@ -45,6 +46,7 @@ func poolTemplates(t *testing.T) *template.Template {
 {{define "pool_edit_form.html"}}EDITFORM name={{.Member.Name}} host={{.Member.Host}} port={{.Member.Port}} weight={{.Member.Weight}}{{end}}
 {{define "pool_new.html"}}NEWPOOLFORM{{end}}
 {{define "pool_new_preview.html"}}NEWPOOL block={{.Block}} OK={{.Validation.OK}}{{end}}
+{{define "rate_limit_preview.html"}}RATELIMIT block={{.Block}} OK={{.Validation.OK}} rps={{.Spec.RPS}} action={{.Spec.Action}}{{end}}
 `)
 }
 
@@ -433,6 +435,89 @@ func TestPoolNewApply_InvalidConfigNotApplied(t *testing.T) {
 	svc := newPoolService(t, cs, audit)
 	rec := serve(&PoolNewApply{svc}, "POST /api/pools/new/apply",
 		adminReq(http.MethodPost, "/api/pools/new/apply", newPoolForm()))
+	if !strings.Contains(rec.Body.String(), "RESULT ok=false") || cs.appliedPath != "" {
+		t.Errorf("body=%q applied=%q", rec.Body.String(), cs.appliedPath)
+	}
+}
+
+func rateLimitForm() url.Values {
+	return url.Values{"rps": {"20"}, "action": {"deny"}}
+}
+
+func TestRateLimitPreview_ShowsBlockAndValidates(t *testing.T) {
+	cs := &fakeConfigStore{active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true}}
+	svc := newPoolService(t, cs, &fakeAudit{})
+	rec := serve(&RateLimitPreview{svc}, "POST /api/pools/{name}/rate-limit/preview",
+		adminReq(http.MethodPost, "/api/pools/web/rate-limit/preview", rateLimitForm()))
+	body := rec.Body.String()
+	if !strings.Contains(body, "haproxy-gui:rate-limit rps=20 action=deny") || !strings.Contains(body, "OK=true") {
+		t.Errorf("body = %q", body)
+	}
+	if cs.appliedPath != "" {
+		t.Error("preview must not apply anything")
+	}
+}
+
+func TestRateLimitPreview_UnknownPoolShowsReason(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	rec := serve(&RateLimitPreview{svc}, "POST /api/pools/{name}/rate-limit/preview",
+		adminReq(http.MethodPost, "/api/pools/nope/rate-limit/preview", rateLimitForm()))
+	if !strings.Contains(rec.Body.String(), "RESULT ok=false") {
+		t.Errorf("body = %q", rec.Body.String())
+	}
+}
+
+func TestRateLimitApply_AppliesAndAudits(t *testing.T) {
+	cs := &fakeConfigStore{
+		active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true},
+		draftPath: "/staging/d.cfg", applyRes: cfgfile.ApplyResult{OK: true},
+	}
+	audit := &fakeAudit{}
+	svc := newPoolService(t, cs, audit)
+	rec := serve(&RateLimitApply{svc}, "POST /api/pools/{name}/rate-limit/apply",
+		adminReq(http.MethodPost, "/api/pools/web/rate-limit/apply", rateLimitForm()))
+
+	if !strings.Contains(rec.Body.String(), "RESULT ok=true") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if len(cs.savedDrafts) != 1 || !strings.Contains(cs.savedDrafts[0], "haproxy-gui:rate-limit rps=20 action=deny") {
+		t.Errorf("draft = %v", cs.savedDrafts)
+	}
+	if len(audit.entries) != 1 || audit.entries[0].Action != "pool.rate_limit.set" || audit.entries[0].Target != "web" {
+		t.Errorf("audit = %+v", audit.entries)
+	}
+}
+
+func TestRateLimitRemove_RemovesAndAudits(t *testing.T) {
+	withLimit, _, err := haproxycfg.SetRateLimit(poolCfg, "web", haproxycfg.RateLimitSpec{RPS: 20, Action: "deny"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := &fakeConfigStore{
+		active: withLimit, validateRes: cfgfile.ValidateResult{OK: true},
+		draftPath: "/staging/d.cfg", applyRes: cfgfile.ApplyResult{OK: true},
+	}
+	audit := &fakeAudit{}
+	svc := newPoolService(t, cs, audit)
+	rec := serve(&RateLimitRemove{svc}, "POST /api/pools/{name}/rate-limit/remove",
+		adminReq(http.MethodPost, "/api/pools/web/rate-limit/remove", nil))
+
+	if !strings.Contains(rec.Body.String(), "RESULT ok=true") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if len(cs.savedDrafts) != 1 || strings.Contains(cs.savedDrafts[0], "haproxy-gui:rate-limit") {
+		t.Errorf("draft still contains the rate-limit block: %v", cs.savedDrafts)
+	}
+	if len(audit.entries) != 1 || audit.entries[0].Action != "pool.rate_limit.remove" {
+		t.Errorf("audit = %+v", audit.entries)
+	}
+}
+
+func TestRateLimitRemove_ErrorsWhenNoneConfigured(t *testing.T) {
+	cs := &fakeConfigStore{active: poolCfg}
+	svc := newPoolService(t, cs, &fakeAudit{})
+	rec := serve(&RateLimitRemove{svc}, "POST /api/pools/{name}/rate-limit/remove",
+		adminReq(http.MethodPost, "/api/pools/web/rate-limit/remove", nil))
 	if !strings.Contains(rec.Body.String(), "RESULT ok=false") || cs.appliedPath != "" {
 		t.Errorf("body=%q applied=%q", rec.Body.String(), cs.appliedPath)
 	}

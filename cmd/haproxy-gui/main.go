@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
@@ -21,7 +22,10 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/omsdir"
+	"haproxy-gui/internal/ratelimitqueue"
+	"haproxy-gui/internal/redisping"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
@@ -101,6 +105,7 @@ func run() error {
 	}
 
 	go pruneSessionsPeriodically(s)
+	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
 
 	log.Printf("haproxy-gui listening on %s", cfg.ListenAddr)
 	errCh := make(chan error, 1)
@@ -131,6 +136,56 @@ func pruneSessionsPeriodically(s *store.Store) {
 			log.Printf("prune sessions: %v", err)
 		} else if n > 0 {
 			log.Printf("pruned %d expired sessions", n)
+		}
+	}
+}
+
+// rateLimitBlockStatus is the HTTP status haproxycfg.SetRateLimit's block
+// always answers with (both "deny" and "tarpit" actions use it), so it's
+// what identifies a rate-limit rejection in the access log.
+const rateLimitBlockStatus = 429
+
+// pushRateLimitEventsPeriodically is the "Queue" a Redis connection saved on
+// the Settings page is for: every tick, it checks which pools currently
+// have a rate limit configured, scans the access log for rejections against
+// them since the last tick, and pushes each as a JSON event onto a Redis
+// list (ratelimitqueue.QueueKey) for something downstream to consume.
+// Entirely best-effort — Redis unset/unreachable or the log being
+// momentarily unavailable just skips this tick, never crashes the app.
+func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath string) {
+	t := time.NewTicker(15 * time.Second)
+	defer t.Stop()
+	var since time.Time
+	for range t.C {
+		rs, err := s.GetRedisSettings()
+		if err != nil || rs.Host == "" {
+			continue // feature not configured, or settings unreadable this tick
+		}
+		content, err := cf.Active()
+		if err != nil {
+			continue
+		}
+		limited := map[string]bool{}
+		for _, p := range haproxycfg.Parse(content).Pools {
+			if p.RateLimit != nil {
+				limited[p.Name] = true
+			}
+		}
+		events, newest, err := ratelimitqueue.Extract(logPath, since, limited, rateLimitBlockStatus)
+		if err != nil {
+			log.Printf("scan access log for rate-limit events: %v", err)
+			continue
+		}
+		since = newest
+		for _, ev := range events {
+			b, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			opts := redisping.Options{Host: rs.Host, Port: rs.Port, Password: rs.Password, DB: rs.DB, TLS: rs.TLS}
+			if err := redisping.Push(opts, "haproxy:ratelimit:events", string(b)); err != nil {
+				log.Printf("push rate-limit event to redis: %v", err)
+			}
 		}
 	}
 }

@@ -115,6 +115,32 @@ func TestPing_AuthFailure(t *testing.T) {
 	}
 }
 
+func TestPush_SendsRPUSHAndSucceedsOnIntegerReply(t *testing.T) {
+	var gotCmd []string
+	addr := fakeRedis(t, func(cmd []string) string {
+		gotCmd = cmd
+		return ":1\r\n"
+	})
+	host, port := splitHostPort(t, addr)
+
+	if err := Push(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", `{"pool":"web"}`); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if len(gotCmd) != 3 || gotCmd[0] != "RPUSH" || gotCmd[1] != "events" || gotCmd[2] != `{"pool":"web"}` {
+		t.Errorf("command sent = %v", gotCmd)
+	}
+}
+
+func TestPush_ReportsServerError(t *testing.T) {
+	addr := fakeRedis(t, func(cmd []string) string { return "-ERR wrong number of arguments\r\n" })
+	host, port := splitHostPort(t, addr)
+
+	err := Push(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", "x")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 func TestPing_ConnectFailure(t *testing.T) {
 	// Nothing listens on this port.
 	err := Ping(Options{Host: "127.0.0.1", Port: "1", Timeout: 500 * time.Millisecond})

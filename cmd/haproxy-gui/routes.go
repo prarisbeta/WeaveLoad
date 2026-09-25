@@ -141,6 +141,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/pools/{name}/members/remove", chain(&web.PoolMemberRemove{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/new/preview", chain(&web.PoolNewPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/new/apply", chain(&web.PoolNewApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/rate-limit/preview", chain(&web.RateLimitPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/rate-limit/apply", chain(&web.RateLimitApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/rate-limit/remove", chain(&web.RateLimitRemove{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
 
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,

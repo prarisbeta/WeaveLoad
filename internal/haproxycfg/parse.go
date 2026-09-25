@@ -44,10 +44,27 @@ type Pool struct {
 	HealthCheck string // the "http-check send ..." arguments, if any
 	Cookie      bool   // true when the section has a "cookie" directive
 	Members     []Member
+	RateLimit   *RateLimit // nil when no per-IP rate limit is configured
 
 	headerLine   int // line index of the "backend <name>" line
 	lastBodyLine int // last non-blank, non-comment line of the section
 }
+
+// RateLimit is a per-source-IP request rate limit on one pool, managed as a
+// 4-line block (see edit.go's rateLimitLines) identified by its leading
+// marker comment — the only way haproxy-gui recognizes a block it wrote as
+// its own, so it can replace or remove it later without disturbing anything
+// else in the backend.
+type RateLimit struct {
+	RPS    int
+	Action string // "deny" or "tarpit"
+
+	markerLine int // line index of the "# haproxy-gui:rate-limit ..." comment
+}
+
+// rateLimitMarkerRE matches the marker comment rateLimitLines writes, e.g.
+// "# haproxy-gui:rate-limit rps=20 action=deny".
+var rateLimitMarkerRE = regexp.MustCompile(`^#\s*haproxy-gui:rate-limit\s+rps=(\d+)\s+action=(deny|tarpit)\s*$`)
 
 // Config is the parsed structure of one haproxy.cfg.
 type Config struct {
@@ -80,6 +97,13 @@ func Parse(content string) Config {
 
 	for i, raw := range strings.Split(content, "\n") {
 		text := strings.TrimRight(raw, "\r")
+		if cur != nil {
+			if m := rateLimitMarkerRE.FindStringSubmatch(strings.TrimSpace(text)); m != nil {
+				rps, _ := strconv.Atoi(m[1])
+				cur.RateLimit = &RateLimit{RPS: rps, Action: m[2], markerLine: i}
+				continue
+			}
+		}
 		tokens := tokenize(text)
 		if len(tokens) == 0 {
 			continue

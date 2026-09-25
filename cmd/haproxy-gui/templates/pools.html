@@ -56,6 +56,30 @@
 
 {{if .CanAdmin}}
 <div class="panel">
+  <h3>Batas Laju (Rate Limit)</h3>
+  <p class="hint">Membatasi berapa banyak permintaan yang boleh datang dari satu alamat IP ke pool ini dalam 10 detik. Pelanggar bisa langsung ditolak, atau ditunda dulu (tarpit) sebelum ditolak — keduanya membalas kode 429.</p>
+  {{if .Pool.RateLimit}}
+  <p><strong>Aktif:</strong> maksimum {{.Pool.RateLimit.RPS}} permintaan/detik per IP, pelanggar di-{{.Pool.RateLimit.Action}}.</p>
+  <div class="row-actions">
+    <button class="danger" hx-post="/api/pools/{{.Pool.Name}}/rate-limit/remove" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Nonaktifkan batas laju di {{.Pool.Name}}? Semua alamat IP akan bisa mengirim permintaan tanpa batas lagi.">Nonaktifkan batas laju</button>
+  </div>
+  {{else}}
+  <p class="hint">Belum ada batas laju aktif di pool ini.</p>
+  {{end}}
+  <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/rate-limit/preview" hx-target="#rate-limit-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
+    <label>Batas <span class="muted">(permintaan/detik per IP)</span><input type="text" name="rps" value="{{if .Pool.RateLimit}}{{.Pool.RateLimit.RPS}}{{else}}20{{end}}" required size="6" inputmode="numeric"></label>
+    <label>Aksi saat dilanggar
+      <select name="action">
+        <option value="deny" {{if or (not .Pool.RateLimit) (eq .Pool.RateLimit.Action "deny")}}selected{{end}}>Tolak langsung (deny)</option>
+        <option value="tarpit" {{if and .Pool.RateLimit (eq .Pool.RateLimit.Action "tarpit")}}selected{{end}}>Tunda dulu, lalu tolak (tarpit)</option>
+      </select>
+    </label>
+    <div><button type="submit">{{if .Pool.RateLimit}}Pratinjau perubahan{{else}}Pratinjau{{end}}</button></div>
+  </form>
+  <div id="rate-limit-preview"></div>
+</div>
+
+<div class="panel">
   <h3>Tambah anggota</h3>
   <p class="hint">Anggota baru = satu node yang ditambahkan ke kelompok ini. Pengaturan SSL, SNI, dan pemeriksaan kesehatan disalin otomatis dari anggota contoh, jadi biasanya cukup isi nama dan alamat. Setelah diterapkan, HAProxy dimuat ulang tanpa memutus koneksi yang sedang berjalan.</p>
   <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/members/preview" hx-target="#pool-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
@@ -147,6 +171,24 @@
     <input type="hidden" name="clone_from" value="{{.Spec.CloneFrom}}">
     {{if .Spec.Backup}}<input type="hidden" name="backup" value="1">{{end}}
     {{if .Spec.Disabled}}<input type="hidden" name="disabled" value="1">{{end}}
+    <button type="submit" class="primary">Terapkan</button>
+  </form>
+  {{else}}
+  <p style="color:var(--bad)"><strong>Konfigurasi hasil perubahan tidak valid, tidak bisa diterapkan.</strong></p>
+  <pre>{{.Validation.Output}}</pre>
+  {{end}}
+</div>
+{{end}}
+
+{{define "rate_limit_preview.html"}}
+<div class="panel preview-box">
+  <p><strong>Yang akan ditambahkan/diganti di {{.Pool}}:</strong></p>
+  <pre>{{.Block}}</pre>
+  {{if .Validation.OK}}
+  <p style="color:var(--ok)"><strong>Konfigurasi valid.</strong></p>
+  <form hx-post="/api/pools/{{.Pool}}/rate-limit/apply" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Terapkan batas laju ini di {{.Pool}} dan muat ulang HAProxy sekarang?">
+    <input type="hidden" name="rps" value="{{.Spec.RPS}}">
+    <input type="hidden" name="action" value="{{.Spec.Action}}">
     <button type="submit" class="primary">Terapkan</button>
   </form>
   {{else}}

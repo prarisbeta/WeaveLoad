@@ -1,7 +1,9 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"haproxy-gui/internal/auth"
@@ -275,6 +277,112 @@ func (h *PoolMemberRemove) removalBlocker(pool, member string) string {
 	}
 	// Not in live stats (e.g. added to the file but never loaded): nothing to cut.
 	return ""
+}
+
+func rateLimitSpecFromForm(r *http.Request) haproxycfg.RateLimitSpec {
+	rps, _ := strconv.Atoi(strings.TrimSpace(r.FormValue("rps")))
+	action := strings.TrimSpace(r.FormValue("action"))
+	if action == "" {
+		action = "deny"
+	}
+	return haproxycfg.RateLimitSpec{RPS: rps, Action: action}
+}
+
+type rateLimitPreviewData struct {
+	Pool       string
+	Block      string
+	Validation poolResult
+	Spec       haproxycfg.RateLimitSpec
+	CSRFToken  string
+}
+
+// RateLimitPreview builds the per-IP rate-limit block for a pool and runs
+// "haproxy -c" on the result, changing nothing yet — same preview-then-
+// confirm pattern as every other config-mutating action here.
+type RateLimitPreview struct{ *PoolService }
+
+func (h *RateLimitPreview) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	pool := r.PathValue("name")
+	spec := rateLimitSpecFromForm(r)
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, block, err := haproxycfg.SetRateLimit(content, pool, spec)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+	v, err := h.Config.Validate(updated)
+	if err != nil {
+		http.Error(w, "Validator tidak bisa dijalankan: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sess, _ := auth.SessionFromContext(r.Context())
+	renderTemplate(w, h.Templates, "rate_limit_preview.html", rateLimitPreviewData{
+		Pool: pool, Block: block, Spec: spec, CSRFToken: sess.CSRFToken,
+		Validation: poolResult{OK: v.OK, Output: v.Output},
+	})
+}
+
+// RateLimitApply adds or replaces a pool's rate-limit block through the same
+// validate-stage-apply-audit pipeline as every other config change.
+type RateLimitApply struct{ *PoolService }
+
+func (h *RateLimitApply) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	pool := r.PathValue("name")
+	spec := rateLimitSpecFromForm(r)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, block, err := haproxycfg.SetRateLimit(content, pool, spec)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+	h.applyChange(w, r, "pool.rate_limit.set", pool, block, updated,
+		fmt.Sprintf("Batas laju %s (%d permintaan/detik per alamat IP) diterapkan di %s dan HAProxy dimuat ulang.", spec.Action, spec.RPS, pool))
+}
+
+// RateLimitRemove turns off a pool's rate limit — applied directly (no
+// preview) since removal has nothing left to preview, matching how member
+// removal itself works.
+type RateLimitRemove struct{ *PoolService }
+
+func (h *RateLimitRemove) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	pool := r.PathValue("name")
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	updated, err := haproxycfg.RemoveRateLimit(content, pool)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+	h.applyChange(w, r, "pool.rate_limit.remove", pool, "rate limit removed", updated,
+		"Batas laju di "+pool+" dinonaktifkan dan HAProxy dimuat ulang.")
 }
 
 // applyChange validates, stages and applies updated as the new haproxy.cfg,

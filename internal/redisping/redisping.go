@@ -29,6 +29,37 @@ type Options struct {
 // soon as the server reports a RESP error, so the caller sees exactly which
 // step failed (connect, auth, select, or ping).
 func Ping(o Options) error {
+	conn, err := connect(o)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := command(conn, "PING"); err != nil {
+		return fmt.Errorf("ping: %w", err)
+	}
+	return nil
+}
+
+// Push sends "RPUSH key value" — used to hand one event (already serialized
+// by the caller, typically as JSON) to a Redis list acting as a simple
+// queue. Like Ping, this opens and closes its own connection each call;
+// callers pushing many events in a tight loop should batch them instead of
+// calling this per-event.
+func Push(o Options, key, value string) error {
+	conn, err := connect(o)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if err := command(conn, "RPUSH", key, value); err != nil {
+		return fmt.Errorf("rpush %s: %w", key, err)
+	}
+	return nil
+}
+
+// connect dials Host:Port and, if configured, authenticates and selects DB —
+// the setup Ping and Push both need before sending their own command.
+func connect(o Options) (net.Conn, error) {
 	if o.Timeout <= 0 {
 		o.Timeout = 5 * time.Second
 	}
@@ -43,25 +74,23 @@ func Ping(o Options) error {
 		conn, err = dialer.Dial("tcp", addr)
 	}
 	if err != nil {
-		return fmt.Errorf("connect to %s: %w", addr, err)
+		return nil, fmt.Errorf("connect to %s: %w", addr, err)
 	}
-	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(o.Timeout))
 
 	if o.Password != "" {
 		if err := command(conn, "AUTH", o.Password); err != nil {
-			return fmt.Errorf("auth: %w", err)
+			conn.Close()
+			return nil, fmt.Errorf("auth: %w", err)
 		}
 	}
 	if o.DB != 0 {
 		if err := command(conn, "SELECT", strconv.Itoa(o.DB)); err != nil {
-			return fmt.Errorf("select db %d: %w", o.DB, err)
+			conn.Close()
+			return nil, fmt.Errorf("select db %d: %w", o.DB, err)
 		}
 	}
-	if err := command(conn, "PING"); err != nil {
-		return fmt.Errorf("ping: %w", err)
-	}
-	return nil
+	return conn, nil
 }
 
 // command sends args as a RESP array and reads back one line, treating a

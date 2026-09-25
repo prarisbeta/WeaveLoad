@@ -307,6 +307,63 @@ func RemoveMember(content, pool, member string) (string, string, error) {
 	return "", "", fmt.Errorf("anggota %q tidak ada di kelompok %s", member, pool)
 }
 
+// RateLimitSpec is what the "rate limit" form submits.
+type RateLimitSpec struct {
+	RPS    int
+	Action string // "deny" (reject with 429) or "tarpit" (hold the connection open, then 429)
+}
+
+// rateLimitLines renders spec as the 4-line block SetRateLimit/RemoveRateLimit
+// recognize by its leading marker comment — see RateLimit in parse.go.
+func rateLimitLines(indent string, spec RateLimitSpec) []string {
+	return []string{
+		indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s", spec.RPS, spec.Action),
+		indent + "stick-table type ip size 100k expire 30s store http_req_rate(10s)",
+		indent + "http-request track-sc0 src",
+		indent + fmt.Sprintf("http-request %s deny_status 429 if { sc_http_req_rate(0) gt %d }", spec.Action, spec.RPS),
+	}
+}
+
+// SetRateLimit adds pool's per-source-IP request rate limit, or replaces the
+// one already there. Requests from one IP over spec.RPS in a 10s window are
+// rejected (deny) or held open then rejected (tarpit) with HTTP 429.
+func SetRateLimit(content, pool string, spec RateLimitSpec) (string, string, error) {
+	p, ok := Parse(content).Pool(pool)
+	if !ok {
+		return "", "", fmt.Errorf("kelompok %q tidak ditemukan di konfigurasi", pool)
+	}
+	if spec.Action != "deny" && spec.Action != "tarpit" {
+		return "", "", fmt.Errorf(`aksi harus "deny" atau "tarpit"`)
+	}
+	if spec.RPS < 1 || spec.RPS > 100000 {
+		return "", "", fmt.Errorf("batas permintaan/detik harus 1-100000")
+	}
+
+	indent := "        "
+	if len(p.Members) > 0 {
+		indent = p.Members[0].Indent
+	}
+	lines := rateLimitLines(indent, spec)
+	block := strings.Join(lines, "\n")
+
+	if p.RateLimit != nil {
+		return replaceLines(content, p.RateLimit.markerLine, 4, lines), block, nil
+	}
+	return insertLines(content, p.headerLine, lines), block, nil
+}
+
+// RemoveRateLimit deletes pool's rate limit block. Errors if it has none.
+func RemoveRateLimit(content, pool string) (string, error) {
+	p, ok := Parse(content).Pool(pool)
+	if !ok {
+		return "", fmt.Errorf("kelompok %q tidak ditemukan di konfigurasi", pool)
+	}
+	if p.RateLimit == nil {
+		return "", fmt.Errorf("kelompok %s tidak memiliki batas laju yang aktif", pool)
+	}
+	return deleteLines(content, p.RateLimit.markerLine, 4), nil
+}
+
 func insertLine(content string, after int, text string) string {
 	lines := strings.Split(content, "\n")
 	if after < len(lines) && strings.HasSuffix(lines[after], "\r") {
@@ -333,5 +390,51 @@ func deleteLine(content string, idx int) string {
 	out := make([]string, 0, len(lines)-1)
 	out = append(out, lines[:idx]...)
 	out = append(out, lines[idx+1:]...)
+	return strings.Join(out, "\n")
+}
+
+// insertLines is insertLine for a whole block at once, so a multi-line
+// insert stays one edit (and one \r-detection) instead of N chained calls.
+func insertLines(content string, after int, newLines []string) string {
+	lines := strings.Split(content, "\n")
+	cr := after < len(lines) && strings.HasSuffix(lines[after], "\r")
+	ins := make([]string, len(newLines))
+	for i, l := range newLines {
+		if cr {
+			l += "\r"
+		}
+		ins[i] = l
+	}
+	out := make([]string, 0, len(lines)+len(ins))
+	out = append(out, lines[:after+1]...)
+	out = append(out, ins...)
+	out = append(out, lines[after+1:]...)
+	return strings.Join(out, "\n")
+}
+
+// replaceLines swaps out count lines starting at start for newLines.
+func replaceLines(content string, start, count int, newLines []string) string {
+	lines := strings.Split(content, "\n")
+	cr := start < len(lines) && strings.HasSuffix(lines[start], "\r")
+	rep := make([]string, len(newLines))
+	for i, l := range newLines {
+		if cr {
+			l += "\r"
+		}
+		rep[i] = l
+	}
+	out := make([]string, 0, len(lines)-count+len(rep))
+	out = append(out, lines[:start]...)
+	out = append(out, rep...)
+	out = append(out, lines[start+count:]...)
+	return strings.Join(out, "\n")
+}
+
+// deleteLines removes count lines starting at start.
+func deleteLines(content string, start, count int) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines)-count)
+	out = append(out, lines[:start]...)
+	out = append(out, lines[start+count:]...)
 	return strings.Join(out, "\n")
 }

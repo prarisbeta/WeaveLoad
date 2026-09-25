@@ -41,6 +41,34 @@ backend empty_pool
         timeout server 10s
 `
 
+func TestParse_RateLimit_AbsentByDefault(t *testing.T) {
+	cfg := Parse(sampleCfg)
+	oms, _ := cfg.Pool("http_oms")
+	if oms.RateLimit != nil {
+		t.Errorf("RateLimit = %+v, want nil for a pool with no rate-limit marker", oms.RateLimit)
+	}
+}
+
+func TestParse_RateLimit_DetectsMarkerBlock(t *testing.T) {
+	cfg := `backend http_limited
+        # haproxy-gui:rate-limit rps=20 action=deny
+        stick-table type ip size 100k expire 30s store http_req_rate(10s)
+        http-request track-sc0 src
+        http-request deny deny_status 429 if { sc_http_req_rate(0) gt 20 }
+        server node1 10.0.0.1:80 check
+`
+	p, ok := Parse(cfg).Pool("http_limited")
+	if !ok {
+		t.Fatal("http_limited not found")
+	}
+	if p.RateLimit == nil {
+		t.Fatal("RateLimit = nil, want a parsed block")
+	}
+	if p.RateLimit.RPS != 20 || p.RateLimit.Action != "deny" {
+		t.Errorf("RateLimit = %+v, want RPS=20 Action=deny", p.RateLimit)
+	}
+}
+
 func TestParse_FindsBackendsAndListensAsPools(t *testing.T) {
 	cfg := Parse(sampleCfg)
 	var names []string
