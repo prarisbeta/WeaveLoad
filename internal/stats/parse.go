@@ -216,8 +216,10 @@ func (b Backend) TotalSessions() int {
 
 // pieColors cycles through a fixed, colorblind-considerate palette so
 // PieSlice never needs a template-side color decision (Go's html/template
-// has no arithmetic to compute a palette index itself).
-var pieColors = []string{"#0e7c86", "#2563eb", "#f59e0b", "#dc2626", "#7c3aed", "#059669", "#db2777", "#4b5563"}
+// has no arithmetic to compute a palette index itself). One extra color at
+// the end is reserved for "Lainnya" so it never collides with the last
+// per-backend wedge.
+var pieColors = []string{"#0e7c86", "#2563eb", "#f59e0b", "#dc2626", "#7c3aed", "#059669", "#db2777", "#4b5563", "#0ea5e9", "#92400e"}
 
 // PieSlice is one wedge of a connections pie chart: StartPct/EndPct are
 // pre-computed cumulative percentages (0-100) suitable for a single CSS
@@ -233,9 +235,9 @@ type PieSlice struct {
 }
 
 // maxPieSlices caps how many backends get their own wedge — beyond this,
-// a long tail of small backends turns the pie into unreadable confetti, and
-// there are exactly this many colors in pieColors to draw from.
-const maxPieSlices = 8
+// a long tail of small backends turns the pie into unreadable confetti.
+// pieColors has one more entry than this, reserved for "Lainnya".
+const maxPieSlices = 9
 
 // ConnectionsPie returns one slice per backend, comparing each one's share
 // of total active connections across the whole system ("keseluruhan"). Only
