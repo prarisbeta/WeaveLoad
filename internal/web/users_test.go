@@ -64,24 +64,24 @@ func usersTemplates(t *testing.T) *template.Template {
 }
 
 func TestUsersHandler_ListsUsers(t *testing.T) {
-	ua := &fakeUserAdmin{users: []store.User{{ID: 1, Email: "a@x.id", Role: store.RoleAdmin}}}
+	ua := &fakeUserAdmin{users: []store.User{{ID: 1, Email: "a@x.id", Role: store.RolePlatformAdmin}}}
 	h := &UsersHandler{Store: ua, Templates: usersTemplates(t)}
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	if !strings.Contains(rec.Body.String(), "a@x.id:admin") {
+	if !strings.Contains(rec.Body.String(), "a@x.id:platform_admin") {
 		t.Errorf("body = %q", rec.Body.String())
 	}
 }
 
 func TestUserUpdateHandler_SetRole(t *testing.T) {
-	ua := &fakeUserAdmin{users: []store.User{{ID: 2, Email: "b@x.id", Role: store.RoleOperator}}}
+	ua := &fakeUserAdmin{users: []store.User{{ID: 2, Email: "b@x.id", Role: store.RoleNOCOperator}}}
 	au := &fakeAudit{}
 	h := &UserUpdateHandler{Store: ua, Audit: au, Templates: usersTemplates(t)}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/users/update", strings.NewReader("user_id=2&action=set_role&role=operator"))
+	req := httptest.NewRequest(http.MethodPost, "/api/users/update", strings.NewReader("user_id=2&action=set_role&role=noc_operator"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
 	rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestUserUpdateHandler_SetRole(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
 	}
-	if ua.lastID != 2 || ua.lastRole != store.RoleOperator {
+	if ua.lastID != 2 || ua.lastRole != store.RoleNOCOperator {
 		t.Errorf("SetRole called with id=%d role=%s", ua.lastID, ua.lastRole)
 	}
 	if len(au.entries) != 1 {
@@ -170,7 +170,7 @@ func TestUserCreateHandler_PreRegistersAccount(t *testing.T) {
 	au := &fakeAudit{}
 	h := &UserCreateHandler{Store: ua, Audit: au, Templates: usersTemplates(t)}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/users/create", strings.NewReader("email=Baru@Example.id&name=Baru&role=operator"))
+	req := httptest.NewRequest(http.MethodPost, "/api/users/create", strings.NewReader("email=Baru@Example.id&name=Baru&role=noc_operator"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
 	rec := httptest.NewRecorder()
@@ -179,13 +179,13 @@ func TestUserCreateHandler_PreRegistersAccount(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
 	}
-	if ua.created == nil || ua.created.Email != "Baru@Example.id" || ua.created.Role != store.RoleOperator {
+	if ua.created == nil || ua.created.Email != "Baru@Example.id" || ua.created.Role != store.RoleNOCOperator {
 		t.Errorf("CreateUser called with = %+v", ua.created)
 	}
 	if len(au.entries) != 1 || au.entries[0].Action != "user.create" {
 		t.Errorf("audit entries = %+v", au.entries)
 	}
-	if !strings.Contains(rec.Body.String(), "Baru@Example.id:operator") {
+	if !strings.Contains(rec.Body.String(), "Baru@Example.id:noc_operator") {
 		t.Errorf("expected the new user in the re-rendered list, got %q", rec.Body.String())
 	}
 }

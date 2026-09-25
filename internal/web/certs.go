@@ -40,7 +40,7 @@ func (h *CertsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Certs     []certs.Info
 		Now       time.Time
 		CanUpload bool
-	}{Chrome: NewChrome(r, "certs"), Certs: list, Now: time.Now(), CanUpload: u.Role.Allows(store.RoleAdmin)})
+	}{Chrome: NewChrome(r, "certs"), Certs: list, Now: time.Now(), CanUpload: u.Role.Can(store.CapManageConfig)})
 }
 
 // CertUploadStagingDir is where uploaded bundles land pending review; an

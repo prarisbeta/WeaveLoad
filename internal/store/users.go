@@ -6,20 +6,83 @@ import (
 	"fmt"
 )
 
-// Role is a user's permission level. Higher roles include lower ones'
-// capabilities: Admin > Operator > Viewer.
+// Role is a user's job function, which grants a fixed set of Capabilities
+// (see rolePermissions) — not a rank in a hierarchy. A SOC Analyst and an
+// SRE are both "more privileged than Viewer" in different, non-overlapping
+// ways (e.g. the SOC Analyst can see security events an SRE can't, but
+// can't touch HAProxy config an SRE can) — see docs/roadmap's RBAC section.
 type Role string
 
 const (
-	RoleViewer   Role = "viewer"
-	RoleOperator Role = "operator"
-	RoleAdmin    Role = "admin"
+	RoleSuperAdmin    Role = "super_admin"
+	RolePlatformAdmin Role = "platform_admin"
+	RoleNOCOperator   Role = "noc_operator"
+	RoleSOCAnalyst    Role = "soc_analyst"
+	RoleSRE           Role = "sre"
+	RoleSecurityAdmin Role = "security_admin"
+	RoleAuditor       Role = "auditor"
+	RoleViewer        Role = "viewer"
 )
 
-// Allows reports whether this role meets or exceeds the required role.
-func (r Role) Allows(required Role) bool {
-	rank := map[Role]int{RoleViewer: 1, RoleOperator: 2, RoleAdmin: 3}
-	return rank[r] >= rank[required]
+// Capability is one specific thing a role may be permitted to do. Handlers
+// and templates check a capability directly (Role.Can) instead of comparing
+// roles against each other.
+type Capability string
+
+const (
+	CapRuntimeControl Capability = "runtime_control" // enable/disable/drain/weight servers, edit ACL/map entries
+	CapViewLogs       Capability = "view_logs"
+	CapViewQueue      Capability = "view_queue"
+	CapViewAudit      Capability = "view_audit"
+	CapManageConfig   Capability = "manage_config" // config editor, pool/member add-edit-remove, rate limits, cert upload
+	CapManageUsers    Capability = "manage_users"
+	CapManageSettings Capability = "manage_settings" // Redis connection, queue API token
+
+	// Reserved for modules not yet built (Security Engine, Incident
+	// Management — see the HAIProxy roadmap): no route checks these yet,
+	// but the role table below already grants them so wiring up those
+	// modules later doesn't require touching every role's permission set
+	// again.
+	CapViewSecurity    Capability = "view_security"
+	CapManageIncidents Capability = "manage_incidents"
+)
+
+var allCapabilities = []Capability{
+	CapRuntimeControl, CapViewLogs, CapViewQueue, CapViewAudit,
+	CapManageConfig, CapManageUsers, CapManageSettings,
+	CapViewSecurity, CapManageIncidents,
+}
+
+// rolePermissions is the whole RBAC model: what each of the 8 roles can do.
+// Super Admin and Platform Admin both get every capability for now — the
+// MVP has no org/tenant-scoped settings that would distinguish "owns the
+// whole platform" from "administers one deployment" yet.
+var rolePermissions = map[Role][]Capability{
+	RoleSuperAdmin:    allCapabilities,
+	RolePlatformAdmin: allCapabilities,
+	RoleNOCOperator:   {CapRuntimeControl, CapViewLogs, CapViewQueue},
+	RoleSOCAnalyst:    {CapViewQueue, CapViewAudit, CapViewSecurity, CapManageIncidents},
+	RoleSRE:           {CapRuntimeControl, CapManageConfig, CapViewLogs, CapViewQueue},
+	RoleSecurityAdmin: {CapRuntimeControl, CapManageConfig, CapViewLogs, CapViewQueue, CapViewAudit, CapViewSecurity, CapManageIncidents, CapManageSettings},
+	RoleAuditor:       {CapViewLogs, CapViewQueue, CapViewAudit, CapViewSecurity},
+	RoleViewer:        {},
+}
+
+// Can reports whether this role grants c. An unrecognized role (shouldn't
+// happen — SetRole/CreateUser validate against Valid()) grants nothing.
+func (r Role) Can(c Capability) bool {
+	for _, have := range rolePermissions[r] {
+		if have == c {
+			return true
+		}
+	}
+	return false
+}
+
+// Valid reports whether r is one of the 8 recognized roles.
+func (r Role) Valid() bool {
+	_, ok := rolePermissions[r]
+	return ok
 }
 
 // User is one haproxy-gui account.
@@ -85,9 +148,7 @@ func (s *Store) CreateUser(email, name string, role Role) (User, error) {
 	if email == "" {
 		return User{}, fmt.Errorf("email is required")
 	}
-	switch role {
-	case RoleViewer, RoleOperator, RoleAdmin:
-	default:
+	if !role.Valid() {
 		return User{}, fmt.Errorf("invalid role: %q", role)
 	}
 
@@ -143,9 +204,7 @@ func scanUser(row *sql.Row) (User, error) {
 // SetRole changes a user's role. Only callers who have already checked the
 // acting user is an Admin should call this.
 func (s *Store) SetRole(userID int64, role Role) error {
-	switch role {
-	case RoleViewer, RoleOperator, RoleAdmin:
-	default:
+	if !role.Valid() {
 		return fmt.Errorf("invalid role: %q", role)
 	}
 	_, err := s.db.Exec(`UPDATE users SET role = ? WHERE id = ?`, role, userID)

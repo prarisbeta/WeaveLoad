@@ -29,7 +29,7 @@ type ServiceRestarter interface {
 
 // ConfigHandler serves the config editor page and its actions
 // (view/validate/save/apply). Apply must be wired behind
-// auth.RequireRole(store.RoleAdmin) — this is the most powerful action in
+// auth.RequireCapability(store.CapManageConfig) — this is the most powerful action in
 // the whole app, since it changes what HAProxy actually does.
 type ConfigHandler struct {
 	Config    ConfigStore

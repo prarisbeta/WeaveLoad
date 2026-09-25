@@ -11,6 +11,31 @@
   anonymously in its own data struct, so .User / .CSRFToken / .Active reach
   this template as promoted fields.
 */}}
+{{/*
+  role_label maps a store.Role value to its Indonesian display name — the
+  one place this mapping lives, so the sidebar user card and the Pengguna
+  page's role list/dropdown can never show different labels for the same
+  role.
+*/}}
+{{define "role_label"}}{{if eq . "super_admin"}}Super Admin{{else if eq . "platform_admin"}}Admin Platform{{else if eq . "noc_operator"}}Operator NOC{{else if eq . "soc_analyst"}}Analis SOC{{else if eq . "sre"}}SRE{{else if eq . "security_admin"}}Admin Keamanan{{else if eq . "auditor"}}Auditor{{else}}Pengamat{{end}}{{end}}
+
+{{/*
+  role_options renders every assignable role as an <option>, marking . (the
+  currently selected role, or "" for the new-user form's no-selection case)
+  as selected — the one place the 8 roles' <select> markup lives, used by
+  both the new-user form and the per-row role changer in users.html.
+*/}}
+{{define "role_options"}}
+<option value="viewer" {{if eq . "viewer"}}selected{{end}}>Pengamat</option>
+<option value="auditor" {{if eq . "auditor"}}selected{{end}}>Auditor</option>
+<option value="noc_operator" {{if eq . "noc_operator"}}selected{{end}}>Operator NOC</option>
+<option value="soc_analyst" {{if eq . "soc_analyst"}}selected{{end}}>Analis SOC</option>
+<option value="sre" {{if eq . "sre"}}selected{{end}}>SRE</option>
+<option value="security_admin" {{if eq . "security_admin"}}selected{{end}}>Admin Keamanan</option>
+<option value="platform_admin" {{if eq . "platform_admin"}}selected{{end}}>Admin Platform</option>
+<option value="super_admin" {{if eq . "super_admin"}}selected{{end}}>Super Admin</option>
+{{end}}
+
 {{define "chrome_header"}}<!doctype html>
 <html lang="id">
 <head>
@@ -285,7 +310,7 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5L6.5 17M12 11.5l5.5 5.5"/></svg>
         Node
       </a>
-      {{if .User.Role.Allows "admin"}}
+      {{if .User.Role.Can "manage_config"}}
       <a class="nav-link{{if eq .Active "config"}} active{{end}}" href="/config">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v6H4zM4 14h10v6H4z"/></svg>
         Konfigurasi
@@ -299,25 +324,31 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
         Aturan &amp; Rute
       </a>
-      {{if .User.Role.Allows "operator"}}
+      {{if .User.Role.Can "view_audit"}}
       <a class="nav-link{{if eq .Active "audit"}} active{{end}}" href="/audit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6"/></svg>
         Riwayat Aktivitas
       </a>
+      {{end}}
+      {{if .User.Role.Can "view_logs"}}
       <a class="nav-link{{if eq .Active "logs"}} active{{end}}" href="/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h4"/></svg>
         Log Trafik
       </a>
+      {{end}}
+      {{if .User.Role.Can "view_queue"}}
       <a class="nav-link{{if eq .Active "queue"}} active{{end}}" href="/queue">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="12" height="4" rx="1"/><path d="M7 6h10"/></svg>
         Antrean
       </a>
       {{end}}
-      {{if .User.Role.Allows "admin"}}
+      {{if .User.Role.Can "manage_users"}}
       <a class="nav-link{{if eq .Active "users"}} active{{end}}" href="/users">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 8.2c1.4.3 2.5 1.6 2.5 3.1M16.5 14c2 .4 3.5 2 3.5 4"/></svg>
         Pengguna
       </a>
+      {{end}}
+      {{if .User.Role.Can "manage_settings"}}
       <a class="nav-link{{if eq .Active "settings"}} active{{end}}" href="/settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V19a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H4a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H10a1.65 1.65 0 001-1.51V4a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V10a1.65 1.65 0 001.51 1H20a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         Pengaturan
@@ -330,7 +361,7 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
         <span class="user-avatar">{{if .User.Email}}{{slice .User.Email 0 1 | upper}}{{end}}</span>
         <span class="user-meta">
           <div class="user-email">{{.User.Email}}</div>
-          <div class="user-role">{{if eq .User.Role "admin"}}Administrator{{else if eq .User.Role "operator"}}Operator{{else}}Pengamat{{end}}</div>
+          <div class="user-role">{{template "role_label" .User.Role}}</div>
         </span>
       </div>
       <form class="logout-form" method="post" action="/auth/logout">

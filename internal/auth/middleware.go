@@ -106,9 +106,9 @@ func isHTMXRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
 }
 
-// RequireRole rejects (403) authenticated users whose role doesn't meet
-// required. Must run after RequireAuth in the middleware chain.
-func RequireRole(required store.Role) func(http.Handler) http.Handler {
+// RequireCapability rejects (403) authenticated users whose role doesn't
+// grant cap. Must run after RequireAuth in the middleware chain.
+func RequireCapability(cap store.Capability) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := UserFromContext(r.Context())
@@ -116,7 +116,7 @@ func RequireRole(required store.Role) func(http.Handler) http.Handler {
 				http.Error(w, "authentication required", http.StatusUnauthorized)
 				return
 			}
-			if !u.Role.Allows(required) {
+			if !u.Role.Can(cap) {
 				http.Error(w, "insufficient permissions", http.StatusForbidden)
 				return
 			}

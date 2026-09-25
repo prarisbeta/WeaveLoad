@@ -77,7 +77,7 @@ func (h *PoolMemberPreview) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // PoolMemberAdd adds one member: edits haproxy.cfg, validates, and applies
 // through the same root helper (backup, reload, auto-rollback) as the
-// config editor. Wire behind auth.RequireRole(store.RoleAdmin).
+// config editor. Wire behind auth.RequireCapability(store.CapManageConfig).
 type PoolMemberAdd struct{ *PoolService }
 
 func (h *PoolMemberAdd) ServeHTTP(w http.ResponseWriter, r *http.Request) {

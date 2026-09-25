@@ -69,8 +69,13 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux := http.NewServeMux()
 
 	requireAuth := auth.RequireAuth(d.store)
-	requireOperator := auth.RequireRole(store.RoleOperator)
-	requireAdmin := auth.RequireRole(store.RoleAdmin)
+	requireRuntimeControl := auth.RequireCapability(store.CapRuntimeControl)
+	requireViewLogs := auth.RequireCapability(store.CapViewLogs)
+	requireViewQueue := auth.RequireCapability(store.CapViewQueue)
+	requireViewAudit := auth.RequireCapability(store.CapViewAudit)
+	requireManageConfig := auth.RequireCapability(store.CapManageConfig)
+	requireManageUsers := auth.RequireCapability(store.CapManageUsers)
+	requireManageSettings := auth.RequireCapability(store.CapManageSettings)
 	secure := d.cfg.CookieSecure
 
 	// --- public ---
@@ -87,24 +92,24 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	pools := &web.PoolService{Config: d.cfgfile, Stats: d.runtime, Audit: d.store, Templates: d.templates}
 	mux.Handle("GET /pools", chain(&web.PoolsHandler{PoolService: pools}, requireAuth))
-	mux.Handle("GET /pools/new", chain(&web.PoolNewFormHandler{PoolService: pools}, requireAuth, requireAdmin))
+	mux.Handle("GET /pools/new", chain(&web.PoolNewFormHandler{PoolService: pools}, requireAuth, requireManageConfig))
 	mux.Handle("GET /pools/{name}", chain(&web.PoolDetailHandler{PoolService: pools}, requireAuth))
-	mux.Handle("GET /pools/{name}/members/{member}/edit", chain(&web.PoolMemberEditForm{PoolService: pools}, requireAuth, requireAdmin))
+	mux.Handle("GET /pools/{name}/members/{member}/edit", chain(&web.PoolMemberEditForm{PoolService: pools}, requireAuth, requireManageConfig))
 	mux.Handle("GET /nodes", chain(&web.NodesHandler{PoolService: pools}, requireAuth))
-	mux.Handle("GET /nodes/add-to-pool", chain(http.HandlerFunc(web.NodeAddRedirect), requireAuth, requireAdmin))
+	mux.Handle("GET /nodes/add-to-pool", chain(http.HandlerFunc(web.NodeAddRedirect), requireAuth, requireManageConfig))
 
 	auditHandler := &web.AuditHandler{Store: d.store, Templates: d.templates}
-	mux.Handle("GET /audit", chain(auditHandler, requireAuth, requireOperator))
-	mux.Handle("GET /audit/export", chain(&web.AuditExportHandler{Store: d.store}, requireAuth, requireOperator))
+	mux.Handle("GET /audit", chain(auditHandler, requireAuth, requireViewAudit))
+	mux.Handle("GET /audit/export", chain(&web.AuditExportHandler{Store: d.store}, requireAuth, requireViewAudit))
 
 	certsHandler := &web.CertsHandler{Certs: d.certs, Templates: d.templates}
 	mux.Handle("GET /certs", chain(certsHandler, requireAuth))
 
 	logHandler := &web.LogHandler{Path: d.cfg.LogPath, Templates: d.templates}
-	mux.Handle("GET /logs", chain(logHandler, requireAuth, requireOperator))
+	mux.Handle("GET /logs", chain(logHandler, requireAuth, requireViewLogs))
 
 	queueHandler := &web.QueueHandler{Store: d.store, Templates: d.templates}
-	mux.Handle("GET /queue", chain(queueHandler, requireAuth, requireOperator))
+	mux.Handle("GET /queue", chain(queueHandler, requireAuth, requireViewQueue))
 
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
@@ -120,48 +125,50 @@ func buildRoutes(d routeDeps) http.Handler {
 	}
 	mux.Handle("GET /acl", chain(aclHandler, requireAuth))
 
-	// --- operator (runtime control) ---
+	// --- runtime control (server enable/disable/drain/weight, ACL edits) ---
 	serverAction := &web.ServerActionHandler{Runtime: d.runtime, Audit: d.store, Refresh: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths, Templates: d.templates}
-	mux.Handle("POST /api/servers/action", chain(serverAction, requireAuth, requireOperator, auth.RequireCSRF))
-	mux.Handle("POST /api/acl/add", chain(&web.AclAddHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
-	mux.Handle("POST /api/acl/edit", chain(&web.AclEditHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
-	mux.Handle("POST /api/acl/delete", chain(&web.AclDeleteHandler{AclHandler: aclHandler}, requireAuth, requireOperator, auth.RequireCSRF))
+	mux.Handle("POST /api/servers/action", chain(serverAction, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	mux.Handle("POST /api/acl/add", chain(&web.AclAddHandler{AclHandler: aclHandler}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	mux.Handle("POST /api/acl/edit", chain(&web.AclEditHandler{AclHandler: aclHandler}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	mux.Handle("POST /api/acl/delete", chain(&web.AclDeleteHandler{AclHandler: aclHandler}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
 
-	// --- admin (config, certs, users) ---
+	// --- manage config (config editor, pools/members, rate limits, certs) ---
 	configHandler := &web.ConfigHandler{Config: d.cfgfile, Audit: d.store, Templates: d.templates}
-	mux.Handle("GET /config", chain(configHandler, requireAuth, requireAdmin))
-	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/config/rollback", chain(&web.RollbackAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/haproxy/restart", chain(&web.RestartServiceAction{Service: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("GET /config", chain(configHandler, requireAuth, requireManageConfig))
+	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/config/rollback", chain(&web.RollbackAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/haproxy/restart", chain(&web.RestartServiceAction{Service: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
 	// Adding/removing pool members rewrites haproxy.cfg and reloads, so it
-	// sits with the config editor at admin level; state/weight stay operator.
-	mux.Handle("POST /api/pools/{name}/members/preview", chain(&web.PoolMemberPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/members/add", chain(&web.PoolMemberAdd{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/members/edit/preview", chain(&web.PoolMemberEditPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/members/edit/apply", chain(&web.PoolMemberEditApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/members/remove", chain(&web.PoolMemberRemove{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/new/preview", chain(&web.PoolNewPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/new/apply", chain(&web.PoolNewApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/rate-limit/preview", chain(&web.RateLimitPreview{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/rate-limit/apply", chain(&web.RateLimitApply{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/pools/{name}/rate-limit/remove", chain(&web.RateLimitRemove{PoolService: pools}, requireAuth, requireAdmin, auth.RequireCSRF))
+	// sits with the config editor's capability; state/weight stay under
+	// runtime control above.
+	mux.Handle("POST /api/pools/{name}/members/preview", chain(&web.PoolMemberPreview{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/add", chain(&web.PoolMemberAdd{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/edit/preview", chain(&web.PoolMemberEditPreview{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/edit/apply", chain(&web.PoolMemberEditApply{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/members/remove", chain(&web.PoolMemberRemove{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/new/preview", chain(&web.PoolNewPreview{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/new/apply", chain(&web.PoolNewApply{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/rate-limit/preview", chain(&web.RateLimitPreview{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/rate-limit/apply", chain(&web.RateLimitApply{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/rate-limit/remove", chain(&web.RateLimitRemove{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,
-	}, requireAuth, requireAdmin, auth.RequireCSRF))
+	}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
+	// --- manage users, manage settings ---
 	usersHandler := &web.UsersHandler{Store: d.store, Audit: d.store, Templates: d.templates}
-	mux.Handle("GET /users", chain(usersHandler, requireAuth, requireAdmin))
-	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireAdmin))
+	mux.Handle("GET /users", chain(usersHandler, requireAuth, requireManageUsers))
+	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageUsers, auth.RequireCSRF))
+	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageUsers, auth.RequireCSRF))
+	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireManageUsers))
 
-	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireAdmin))
-	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
-	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireAdmin, auth.RequireCSRF))
+	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireManageSettings))
+	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
+	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
+	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 
 	// --- external API (own bearer-token auth, not the browser session/CSRF
 	// flow above — callers here are the Incident Management module or an

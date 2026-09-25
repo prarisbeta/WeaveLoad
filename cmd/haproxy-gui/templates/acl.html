@@ -25,7 +25,7 @@
     {{$path := .Path}}
     {{$hasValue := .HasValue}}
     {{$poolOptions := .PoolOptions}}
-    {{$canOperate := $.User.Role.Allows "operator"}}
+    {{$canOperate := $.User.Role.Can "runtime_control"}}
     {{range .Entries}}
     <tr>
       <td>{{.Key}}</td>
@@ -58,7 +58,7 @@
   </table>
   </div>
   {{end}}
-  {{if $.User.Role.Allows "operator"}}
+  {{if $.User.Role.Can "runtime_control"}}
   <form style="margin-top:12px" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
     <input type="hidden" name="path" value="{{.Path}}">
     <input type="text" name="key" placeholder="{{if .HasValue}}domain, misalnya app.contoh.id{{else}}nilai, misalnya alamat IP{{end}}" required>

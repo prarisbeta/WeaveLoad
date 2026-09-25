@@ -25,10 +25,8 @@
       </div>
       <div>
         <label class="hint" style="margin:0 0 4px; display:block;" for="new-role">Peran</label>
-        <select id="new-role" name="role" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
-          <option value="viewer">Pengamat</option>
-          <option value="operator">Operator</option>
-          <option value="admin">Administrator</option>
+        <select id="new-role" name="role">
+          {{template "role_options" ""}}
         </select>
       </div>
       <button type="submit" class="primary">Tambah pengguna</button>
@@ -56,15 +54,13 @@
     <td>{{.Name}}</td>
     <td>
       {{if $isSelf}}
-      Administrator
+      {{template "role_label" .Role}}
       {{else}}
       <form class="field-inline" hx-post="/api/users/update" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
         <input type="hidden" name="user_id" value="{{.ID}}">
         <input type="hidden" name="action" value="set_role">
-        <select name="role" onchange="this.form.requestSubmit()" aria-label="Peran untuk {{.Email}}" title="Pengamat: hanya melihat. Operator: bisa menyalakan/mematikan server. Administrator: bisa mengubah semua pengaturan.">
-          <option value="viewer" {{if eq .Role "viewer"}}selected{{end}}>Pengamat</option>
-          <option value="operator" {{if eq .Role "operator"}}selected{{end}}>Operator</option>
-          <option value="admin" {{if eq .Role "admin"}}selected{{end}}>Administrator</option>
+        <select name="role" onchange="this.form.requestSubmit()" aria-label="Peran untuk {{.Email}}">
+          {{template "role_options" .Role}}
         </select>
       </form>
       {{end}}

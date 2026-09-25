@@ -63,7 +63,7 @@ func adminReq(method, target string, form url.Values) *http.Request {
 	} else {
 		req = httptest.NewRequest(method, target, nil)
 	}
-	return withUser(req, store.User{Email: "admin@example.com", Role: store.RoleAdmin})
+	return withUser(req, store.User{Email: "admin@example.com", Role: store.RolePlatformAdmin})
 }
 
 func serve(h http.Handler, pattern string, req *http.Request) *httptest.ResponseRecorder {

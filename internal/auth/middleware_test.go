@@ -150,8 +150,8 @@ func TestRequireAuth_DisabledUser_403(t *testing.T) {
 	}
 }
 
-func TestRequireRole_InsufficientRole_403(t *testing.T) {
-	h := RequireRole(store.RoleAdmin)(okHandler())
+func TestRequireCapability_MissingCapability_403(t *testing.T) {
+	h := RequireCapability(store.CapManageConfig)(okHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	ctx := WithUser(req.Context(), store.User{Role: store.RoleViewer}, store.Session{})
@@ -163,11 +163,11 @@ func TestRequireRole_InsufficientRole_403(t *testing.T) {
 	}
 }
 
-func TestRequireRole_SufficientRole_PassesThrough(t *testing.T) {
-	h := RequireRole(store.RoleOperator)(okHandler())
+func TestRequireCapability_GrantedCapability_PassesThrough(t *testing.T) {
+	h := RequireCapability(store.CapRuntimeControl)(okHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	ctx := WithUser(req.Context(), store.User{Role: store.RoleAdmin}, store.Session{})
+	ctx := WithUser(req.Context(), store.User{Role: store.RolePlatformAdmin}, store.Session{})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req.WithContext(ctx))
 

@@ -122,7 +122,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 			req = httptest.NewRequest(p.method, p.target, nil)
 		}
 		req = req.WithContext(auth.WithUser(req.Context(),
-			store.User{Email: "admin@cni.net.id", Role: store.RoleAdmin}, store.Session{CSRFToken: "t"}))
+			store.User{Email: "admin@cni.net.id", Role: store.RolePlatformAdmin}, store.Session{CSRFToken: "t"}))
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 

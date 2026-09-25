@@ -12,7 +12,7 @@ import (
 
 // LogHandler serves the traffic log viewer: the raw HAProxy access log,
 // optionally filtered to one day and/or a keyword. Reachable behind
-// auth.RequireRole(store.RoleOperator) — same sensitivity level as the
+// auth.RequireCapability(store.CapViewLogs) — same sensitivity level as the
 // audit log, since request logs can contain client IPs and URLs.
 type LogHandler struct {
 	Path      string

@@ -150,8 +150,8 @@ func (h *PoolDetailHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Chrome:     NewChrome(r, "pools"),
 		Pool:       joinPool(p, snap),
 		StatsErr:   statsErr,
-		CanOperate: u.Role.Allows(store.RoleOperator),
-		CanAdmin:   u.Role.Allows(store.RoleAdmin),
+		CanOperate: u.Role.Can(store.CapRuntimeControl),
+		CanAdmin:   u.Role.Can(store.CapManageConfig),
 		KnownHosts: hosts,
 		Suggested:  p.SuggestName(),
 		Prefill:    r.URL.Query().Get("node"),
@@ -221,7 +221,7 @@ func (h *NodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func userIsAdmin(r *http.Request) bool {
 	u, _ := auth.UserFromContext(r.Context())
-	return u.Role.Allows(store.RoleAdmin)
+	return u.Role.Can(store.CapManageConfig)
 }
 
 // NodeAddRedirect sends the Nodes page's "add to pool" form to the chosen

@@ -14,7 +14,7 @@ import (
 
 // UserAdmin is the subset of *store.Store the user management page needs.
 // Every method here should only ever be reachable behind
-// auth.RequireRole(store.RoleAdmin).
+// auth.RequireCapability(store.CapManageUsers).
 type UserAdmin interface {
 	ListUsers() ([]store.User, error)
 	SetRole(userID int64, role store.Role) error
@@ -72,8 +72,8 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch action {
 	case "set_role":
 		role := store.Role(r.FormValue("role"))
-		if actor.ID == id && role != store.RoleAdmin {
-			http.Error(w, "Anda tidak bisa menurunkan peran akun sendiri.", http.StatusForbidden)
+		if actor.ID == id && !role.Can(store.CapManageUsers) {
+			http.Error(w, "Anda tidak bisa mengubah peran akun sendiri menjadi peran tanpa akses manajemen pengguna — itu akan mengunci Anda sendiri.", http.StatusForbidden)
 			return
 		}
 		actionErr = h.Store.SetRole(id, role)
@@ -186,9 +186,7 @@ func (h *UserCreateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Masukkan alamat email yang valid dari akun SSO OMS CNI (harus mengandung @).", http.StatusBadRequest)
 		return
 	}
-	switch role {
-	case store.RoleViewer, store.RoleOperator, store.RoleAdmin:
-	default:
+	if !role.Valid() {
 		http.Error(w, "Peran tidak dikenali.", http.StatusBadRequest)
 		return
 	}

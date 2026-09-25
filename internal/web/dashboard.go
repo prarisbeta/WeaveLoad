@@ -85,8 +85,8 @@ func (h *DashboardHandler) buildData(r *http.Request) (dashboardData, *statusErr
 	return dashboardData{
 		Chrome:     NewChrome(r, "dashboard"),
 		Snapshot:   snap,
-		CanOperate: u.Role.Allows(store.RoleOperator),
-		CanAdmin:   u.Role.Allows(store.RoleAdmin),
+		CanOperate: u.Role.Can(store.CapRuntimeControl),
+		CanAdmin:   u.Role.Can(store.CapManageConfig),
 		Sys:        sys,
 	}, nil
 }
@@ -133,7 +133,7 @@ type ServerControl interface {
 
 // ServerActionHandler enables/disables/drains a server, or changes its
 // weight, and records the action in the audit log. Wiring this behind
-// auth.RequireRole(store.RoleOperator) is the caller's responsibility.
+// auth.RequireCapability(store.CapRuntimeControl) is the caller's responsibility.
 type ServerActionHandler struct {
 	Runtime   ServerControl
 	Audit     AuditRecorder
@@ -231,8 +231,8 @@ func (h *ServerActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	renderTemplate(w, h.Templates, "dashboard_table.html", dashboardData{
 		Chrome:     NewChrome(r, "dashboard"),
 		Snapshot:   snap,
-		CanOperate: u.Role.Allows(store.RoleOperator),
-		CanAdmin:   u.Role.Allows(store.RoleAdmin),
+		CanOperate: u.Role.Can(store.CapRuntimeControl),
+		CanAdmin:   u.Role.Can(store.CapManageConfig),
 		Sys:        sys,
 	})
 }

@@ -6,6 +6,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -36,12 +37,17 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
+// usersRoleCheck is shared between the fresh-install schema below and
+// migrateRoles' rebuild of an existing (pre-8-role) users table, so the two
+// can never drift apart.
+const usersRoleCheck = `'super_admin','platform_admin','noc_operator','soc_analyst','sre','security_admin','auditor','viewer'`
+
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
 	id            INTEGER PRIMARY KEY AUTOINCREMENT,
 	email         TEXT NOT NULL UNIQUE,
 	name          TEXT NOT NULL DEFAULT '',
-	role          TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('viewer','operator','admin')),
+	role          TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN (` + usersRoleCheck + `)),
 	sso_subject   TEXT,
 	password_hash TEXT,
 	enabled       INTEGER NOT NULL DEFAULT 1,
@@ -74,6 +80,65 @@ CREATE TABLE IF NOT EXISTS settings (
 `
 
 func (s *Store) migrate() error {
-	_, err := s.db.Exec(schema)
-	return err
+	if _, err := s.db.Exec(schema); err != nil {
+		return err
+	}
+	return s.migrateRoles()
+}
+
+// migrateRoles upgrades a users table created before the 8-role RBAC model
+// (CHECK IN ('viewer','operator','admin')) to the current one, mapping the
+// old 3 roles onto their closest new equivalent so nobody's access silently
+// changes on upgrade: admin -> platform_admin (keeps every capability),
+// operator -> noc_operator (kept the runtime-control capability operator
+// had), viewer -> viewer (unchanged name and meaning).
+//
+// SQLite can't ALTER a CHECK constraint in place, so this rebuilds the
+// table: rename it aside, create it fresh with the new constraint, copy
+// rows across with the role remapped, drop the old copy. Idempotent — it
+// inspects the table's own CREATE SQL and does nothing once it already
+// contains the new constraint's roles.
+func (s *Store) migrateRoles() error {
+	var createSQL string
+	err := s.db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'`).Scan(&createSQL)
+	if err != nil {
+		return fmt.Errorf("inspect users table: %w", err)
+	}
+	if strings.Contains(createSQL, "platform_admin") {
+		return nil // already on the 8-role schema
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin role migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`ALTER TABLE users RENAME TO users_pre_rbac_migration`); err != nil {
+		return fmt.Errorf("rename old users table: %w", err)
+	}
+	if _, err := tx.Exec(`CREATE TABLE users (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		email         TEXT NOT NULL UNIQUE,
+		name          TEXT NOT NULL DEFAULT '',
+		role          TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN (` + usersRoleCheck + `)),
+		sso_subject   TEXT,
+		password_hash TEXT,
+		enabled       INTEGER NOT NULL DEFAULT 1,
+		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+	)`); err != nil {
+		return fmt.Errorf("recreate users table: %w", err)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO users (id, email, name, role, sso_subject, password_hash, enabled, created_at)
+		SELECT id, email, name,
+			CASE role WHEN 'admin' THEN 'platform_admin' WHEN 'operator' THEN 'noc_operator' ELSE role END,
+			sso_subject, password_hash, enabled, created_at
+		FROM users_pre_rbac_migration`); err != nil {
+		return fmt.Errorf("copy users to migrated table: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE users_pre_rbac_migration`); err != nil {
+		return fmt.Errorf("drop old users table: %w", err)
+	}
+	return tx.Commit()
 }

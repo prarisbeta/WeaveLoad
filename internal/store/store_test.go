@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 )
@@ -13,6 +14,76 @@ func newTestDB(t *testing.T) *Store {
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+// TestMigrateRoles_UpgradesOldSchemaAndRemapsRoles simulates a database
+// created before the 8-role RBAC model (CHECK IN ('viewer','operator',
+// 'admin')) and checks migrateRoles both remaps every existing user's role
+// correctly and is safe to run again afterwards (Open calls it on every
+// startup, not just once).
+func TestMigrateRoles_UpgradesOldSchemaAndRemapsRoles(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+
+	const oldSchema = `CREATE TABLE users (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		email         TEXT NOT NULL UNIQUE,
+		name          TEXT NOT NULL DEFAULT '',
+		role          TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('viewer','operator','admin')),
+		sso_subject   TEXT,
+		password_hash TEXT,
+		enabled       INTEGER NOT NULL DEFAULT 1,
+		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+	)`
+	if _, err := db.Exec(oldSchema); err != nil {
+		t.Fatalf("create old schema: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (email, name, role) VALUES
+		('a@x.id', 'A', 'admin'), ('b@x.id', 'B', 'operator'), ('c@x.id', 'C', 'viewer')`); err != nil {
+		t.Fatalf("seed old rows: %v", err)
+	}
+
+	s := &Store{db: db}
+	if err := s.migrateRoles(); err != nil {
+		t.Fatalf("migrateRoles: %v", err)
+	}
+
+	cases := []struct {
+		email string
+		want  Role
+	}{
+		{"a@x.id", RolePlatformAdmin},
+		{"b@x.id", RoleNOCOperator},
+		{"c@x.id", RoleViewer},
+	}
+	for _, c := range cases {
+		u, err := s.UserByEmail(c.email)
+		if err != nil {
+			t.Fatalf("UserByEmail(%q): %v", c.email, err)
+		}
+		if u.Role != c.want {
+			t.Errorf("%s role after migration = %q, want %q", c.email, u.Role, c.want)
+		}
+	}
+
+	// Idempotent: a second run (as happens on every subsequent process
+	// startup via Open -> migrate -> migrateRoles) must not error or
+	// re-touch already-migrated rows.
+	if err := s.migrateRoles(); err != nil {
+		t.Fatalf("second migrateRoles call: %v", err)
+	}
+	if u, err := s.UserByEmail("a@x.id"); err != nil || u.Role != RolePlatformAdmin {
+		t.Errorf("role changed on second migration: %+v, err=%v", u, err)
+	}
+
+	// New role values must now actually be insertable — proves the CHECK
+	// constraint itself was rebuilt, not just the copied data remapped.
+	if _, err := s.CreateUser("d@x.id", "D", RoleSOCAnalyst); err != nil {
+		t.Errorf("CreateUser with a new-model role after migration: %v", err)
+	}
 }
 
 func TestUpsertSSOUser_CreatesViewerByDefault(t *testing.T) {
@@ -38,7 +109,7 @@ func TestUpsertSSOUser_SecondLoginDoesNotDowngradeRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetRole(u.ID, RoleAdmin); err != nil {
+	if err := s.SetRole(u.ID, RolePlatformAdmin); err != nil {
 		t.Fatalf("SetRole: %v", err)
 	}
 
@@ -46,8 +117,8 @@ func TestUpsertSSOUser_SecondLoginDoesNotDowngradeRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Role != RoleAdmin {
-		t.Errorf("role after re-login = %q, want admin (must not be reset)", again.Role)
+	if again.Role != RolePlatformAdmin {
+		t.Errorf("role after re-login = %q, want platform_admin (must not be reset)", again.Role)
 	}
 	if again.Name != "Admin Renamed" {
 		t.Errorf("name = %q, want updated name", again.Name)
@@ -61,21 +132,37 @@ func TestUserByEmail_NotFound(t *testing.T) {
 	}
 }
 
-func TestRole_Allows(t *testing.T) {
+func TestRole_Can(t *testing.T) {
 	cases := []struct {
-		have, need Role
-		want       bool
+		role Role
+		cap  Capability
+		want bool
 	}{
-		{RoleAdmin, RoleViewer, true},
-		{RoleAdmin, RoleAdmin, true},
-		{RoleViewer, RoleAdmin, false},
-		{RoleOperator, RoleViewer, true},
-		{RoleViewer, RoleOperator, false},
+		{RolePlatformAdmin, CapManageUsers, true},
+		{RolePlatformAdmin, CapViewSecurity, true}, // admins get every capability, including reserved ones
+		{RoleViewer, CapManageUsers, false},
+		{RoleViewer, CapRuntimeControl, false},
+		{RoleNOCOperator, CapRuntimeControl, true},
+		{RoleNOCOperator, CapManageConfig, false}, // NOC Operator can't edit HAProxy config
+		{RoleSOCAnalyst, CapViewSecurity, true},
+		{RoleSOCAnalyst, CapManageConfig, false}, // per the PRD: SOC Analyst never gets HAProxy config access
+		{Role("not_a_real_role"), CapManageUsers, false},
 	}
 	for _, c := range cases {
-		if got := c.have.Allows(c.need); got != c.want {
-			t.Errorf("%s.Allows(%s) = %v, want %v", c.have, c.need, got, c.want)
+		if got := c.role.Can(c.cap); got != c.want {
+			t.Errorf("%s.Can(%s) = %v, want %v", c.role, c.cap, got, c.want)
 		}
+	}
+}
+
+func TestRole_Valid(t *testing.T) {
+	for _, r := range []Role{RoleSuperAdmin, RolePlatformAdmin, RoleNOCOperator, RoleSOCAnalyst, RoleSRE, RoleSecurityAdmin, RoleAuditor, RoleViewer} {
+		if !r.Valid() {
+			t.Errorf("%s.Valid() = false, want true", r)
+		}
+	}
+	if Role("bogus").Valid() {
+		t.Error(`Role("bogus").Valid() = true, want false`)
 	}
 }
 
@@ -177,14 +264,14 @@ func TestListAudit_NewestFirstAndFiltered(t *testing.T) {
 
 func TestCreateUser_PreRegistersWithChosenRole(t *testing.T) {
 	s := newTestDB(t)
-	u, err := s.CreateUser("Baru@Example.com", "Baru", RoleOperator)
+	u, err := s.CreateUser("Baru@Example.com", "Baru", RoleNOCOperator)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 	if u.Email != "baru@example.com" {
 		t.Errorf("email = %q, want lowercased", u.Email)
 	}
-	if u.Role != RoleOperator {
+	if u.Role != RoleNOCOperator {
 		t.Errorf("role = %q, want operator", u.Role)
 	}
 	if !u.Enabled {
@@ -197,7 +284,7 @@ func TestCreateUser_RejectsDuplicateEmail(t *testing.T) {
 	if _, err := s.CreateUser("dup@example.com", "A", RoleViewer); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateUser("Dup@Example.com", "B", RoleAdmin); err != ErrEmailTaken {
+	if _, err := s.CreateUser("Dup@Example.com", "B", RolePlatformAdmin); err != ErrEmailTaken {
 		t.Errorf("err = %v, want ErrEmailTaken", err)
 	}
 }
@@ -211,7 +298,7 @@ func TestCreateUser_RejectsUnknownRole(t *testing.T) {
 
 func TestCreateUser_FirstSSOLoginKeepsPreAssignedRole(t *testing.T) {
 	s := newTestDB(t)
-	pre, err := s.CreateUser("future-admin@example.com", "Future Admin", RoleAdmin)
+	pre, err := s.CreateUser("future-admin@example.com", "Future Admin", RolePlatformAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +310,7 @@ func TestCreateUser_FirstSSOLoginKeepsPreAssignedRole(t *testing.T) {
 	if loggedIn.ID != pre.ID {
 		t.Errorf("SSO login should match the pre-registered row, got a different ID")
 	}
-	if loggedIn.Role != RoleAdmin {
+	if loggedIn.Role != RolePlatformAdmin {
 		t.Errorf("role after first login = %q, want admin (pre-assigned role must survive)", loggedIn.Role)
 	}
 	if loggedIn.SSOSubject != "sub-xyz" {
