@@ -257,7 +257,7 @@ type PieSlice struct {
 // maxPieSlices caps how many backends get their own wedge — beyond this,
 // a long tail of small backends turns the pie into unreadable confetti.
 // pieColors has room to spare beyond this, reserved for "Lainnya".
-const maxPieSlices = 8
+const maxPieSlices = 7
 
 // ConnectionsPie returns one slice per backend, comparing each one's share
 // of total active connections across the whole system ("keseluruhan"). Only
