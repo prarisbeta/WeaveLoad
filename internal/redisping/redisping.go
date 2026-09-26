@@ -121,6 +121,40 @@ func PopN(o Options, key string, n int) ([]string, error) {
 	return out, nil
 }
 
+// Set sends "SET key value EX ttlSeconds", used to publish a snapshot (e.g.
+// a security risk profile) with automatic expiry. ttl <= 0 sends a plain SET
+// with no expiry.
+func Set(o Options, key, value string, ttl time.Duration) error {
+	conn, err := connect(o)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	args := []string{"SET", key, value}
+	if ttl > 0 {
+		args = append(args, "EX", strconv.Itoa(int(ttl.Seconds())))
+	}
+	if _, err := conn.command(args...); err != nil {
+		return fmt.Errorf("set %s: %w", key, err)
+	}
+	return nil
+}
+
+// LTrim trims key to the range [start, stop] (same indexing as LRange),
+// discarding everything outside it — used to cap a list Redis key that
+// would otherwise grow without bound.
+func LTrim(o Options, key string, start, stop int) error {
+	conn, err := connect(o)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.command("LTRIM", key, strconv.Itoa(start), strconv.Itoa(stop)); err != nil {
+		return fmt.Errorf("ltrim %s: %w", key, err)
+	}
+	return nil
+}
+
 // toStrings converts an array reply's elements to strings, skipping any nil
 // entries (RESP allows null bulk strings inside an array; none of our
 // commands produce them, but this stays defensive rather than panicking).

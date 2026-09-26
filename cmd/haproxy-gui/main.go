@@ -23,10 +23,12 @@ import (
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/haproxycfg"
+	"haproxy-gui/internal/haproxylog"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/ratelimitqueue"
 	"haproxy-gui/internal/redisping"
 	"haproxy-gui/internal/runtime"
+	"haproxy-gui/internal/security"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
 )
@@ -106,6 +108,9 @@ func run() error {
 
 	go pruneSessionsPeriodically(s)
 	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
+	if err := runSecurityEnginePeriodically(s, cfg.LogPath); err != nil {
+		log.Printf("security engine disabled: %v", err)
+	}
 
 	log.Printf("haproxy-gui listening on %s", cfg.ListenAddr)
 	errCh := make(chan error, 1)
@@ -188,4 +193,41 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 			}
 		}
 	}
+}
+
+// runSecurityEnginePeriodically starts the internal/security Runner on a
+// background ticker, scanning newly appended access-log lines for the
+// brute-force/scan/abuse patterns in internal/security's detectors. It
+// starts the tailer at the current end of the log — a process restart never
+// replays the whole day's traffic — and publishing to Redis for at-risk IPs
+// reuses whatever Redis connection the Settings page has configured for the
+// rate-limit queue, read fresh on every tick so a later configuration
+// change takes effect without a restart.
+func runSecurityEnginePeriodically(s *store.Store, logPath string) error {
+	tailer, err := haproxylog.NewTailerAtEnd(logPath)
+	if err != nil {
+		return err
+	}
+	r := &security.Runner{
+		Store:  s,
+		Engine: security.NewEngine(security.DefaultThresholds()),
+		Tailer: tailer,
+		RedisOpts: func() (redisping.Options, bool) {
+			rs, err := s.GetRedisSettings()
+			if err != nil || rs.Host == "" {
+				return redisping.Options{}, false
+			}
+			return redisping.Options{Host: rs.Host, Port: rs.Port, Password: rs.Password, DB: rs.DB, TLS: rs.TLS}, true
+		},
+	}
+	go func() {
+		t := time.NewTicker(15 * time.Second)
+		defer t.Stop()
+		for range t.C {
+			if err := r.Tick(); err != nil {
+				log.Printf("security engine tick: %v", err)
+			}
+		}
+	}()
+	return nil
 }

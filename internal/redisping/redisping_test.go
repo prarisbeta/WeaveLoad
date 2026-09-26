@@ -234,6 +234,70 @@ func TestPopN_RespectsLimitWithoutDrainingFurther(t *testing.T) {
 	}
 }
 
+func TestSet_SendsSETWithEX(t *testing.T) {
+	var gotCmd []string
+	addr := fakeRedis(t, func(cmd []string) string {
+		gotCmd = cmd
+		return "+OK\r\n"
+	})
+	host, port := splitHostPort(t, addr)
+
+	if err := Set(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "security:1.2.3.4", `{"score":50}`, 24*time.Hour); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	want := []string{"SET", "security:1.2.3.4", `{"score":50}`, "EX", "86400"}
+	if len(gotCmd) != len(want) {
+		t.Fatalf("command sent = %v, want %v", gotCmd, want)
+	}
+	for i := range want {
+		if gotCmd[i] != want[i] {
+			t.Errorf("command sent = %v, want %v", gotCmd, want)
+			break
+		}
+	}
+}
+
+func TestSet_NoTTLOmitsEX(t *testing.T) {
+	var gotCmd []string
+	addr := fakeRedis(t, func(cmd []string) string {
+		gotCmd = cmd
+		return "+OK\r\n"
+	})
+	host, port := splitHostPort(t, addr)
+
+	if err := Set(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "k", "v", 0); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if len(gotCmd) != 3 || gotCmd[0] != "SET" {
+		t.Errorf("command sent = %v, want a plain SET with no EX", gotCmd)
+	}
+}
+
+func TestSet_ReportsServerError(t *testing.T) {
+	addr := fakeRedis(t, func(cmd []string) string { return "-ERR busy\r\n" })
+	host, port := splitHostPort(t, addr)
+
+	if err := Set(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "k", "v", time.Minute); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLTrim_SendsLTRIM(t *testing.T) {
+	var gotCmd []string
+	addr := fakeRedis(t, func(cmd []string) string {
+		gotCmd = cmd
+		return "+OK\r\n"
+	})
+	host, port := splitHostPort(t, addr)
+
+	if err := LTrim(Options{Host: host, Port: port, Timeout: 2 * time.Second}, "events", 0, 999); err != nil {
+		t.Fatalf("LTrim: %v", err)
+	}
+	if len(gotCmd) != 4 || gotCmd[0] != "LTRIM" || gotCmd[1] != "events" || gotCmd[2] != "0" || gotCmd[3] != "999" {
+		t.Errorf("command sent = %v", gotCmd)
+	}
+}
+
 func TestPopN_ZeroOrNegativeReturnsNothingWithoutConnecting(t *testing.T) {
 	got, err := PopN(Options{Host: "127.0.0.1", Port: "1", Timeout: 500 * time.Millisecond}, "events", 0)
 	if err != nil || len(got) != 0 {
