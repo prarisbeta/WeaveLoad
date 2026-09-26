@@ -1,6 +1,20 @@
 # Konsol Gateway — Implementation Plan per Edisi
 
-Versi 0.2 · 26 September 2026 · Acuan: *HAIProxy Enterprise AI SRE Platform — Product Knowledge v0.1*
+Versi 0.3 · 26 September 2026 · Acuan: *HAIProxy Enterprise AI SRE Platform — Product Knowledge v0.1*
+
+> **Catatan status (26 Sep 2026):** sebelum rebranding/edition-gating (bagian C0–C2) dikerjakan,
+> tiga potongan fungsional dari roadmap ini sudah dibangun dan **live di haproxy-cni** langsung di
+> `haproxy-gui` (belum di bawah nama Konsol Gateway, belum digating per edisi/lisensi — semua
+> pengguna internal mendapatkan fitur ini). Ringkasan dan pemetaannya ke ID task di bawah:
+>
+> | Dibangun | Memenuhi/tumpang tindih dengan | Deviasi dari rencana |
+> |---|---|---|
+> | RBAC 8-role berbasis kapabilitas (`super_admin`…`viewer`, `Role.Can(Capability)`) | C6-1 (RBAC dasar) + P4-7 (role tambahan `auditor`/`security`) | Lebih luas dari spesifikasi: bukan 3 role tetap (Community) atau 5 role (Professional), langsung 8 role di semua instalasi. `view_security`/`manage_incidents` sengaja disiapkan untuk P6/P7. |
+> | Antrean rate-limit + API konsumsi bertoken (`/queue`, `/api/queue/ratelimit-events/consume`) | Tidak ada di rencana ini secara eksplisit — mendukung P7 (Incident Management) dan integrasi eksternal | Fitur baru, ditambahkan sebagai jembatan sebelum P7 dikerjakan. |
+> | **Security Engine**: 7 detektor (brute force, anomali laju, pemindaian path, probing sensitif, penyalahgunaan HTTP, gangguan backend, kena rate-limit), skor risiko IP, halaman `/security` | P6 (Security analytics) — lihat status per-baris di §6 P6 | Dikerjakan sebagai deteksi murni observasional (tanpa auto-block), sesuai AP-1/AP-2; belum ada retensi/ambang yang bisa diubah dari UI (P6-1 baris "Ambang di DB" belum), belum tergabung dengan P7 Incident Management. |
+>
+> Detail teknis Security Engine ada di riwayat commit `00e853a`..`d4daf10` pada branch
+> `feature/pool-node-management`, dan panduan pakainya ada di [`WALKTHROUGH.md`](WALKTHROUGH.md).
 
 Konsol Gateway (nama kerja) adalah control plane untuk HAProxy dengan loop **Observe → Context →
 Decide → Act → Verify → Audit**. Produk ini dijual dalam 3 edisi dari satu codebase tertutup:
@@ -188,7 +202,7 @@ task mengikuti TDD dengan coverage ≥ 80% per paket.
 
 | ID | Task | Detail | Kriteria selesai | Est. |
 |---|---|---|---|---|
-| C6-1 | Kelola user lokal | Buat, nonaktifkan, ubah role (admin/operator/viewer). Admin tidak bisa menurunkan role dirinya sendiri. | Test RBAC per route. | 1 |
+| C6-1 | Kelola user lokal | Buat, nonaktifkan, ubah role. Admin tidak bisa menurunkan role dirinya sendiri ke peran tanpa `manage_users`. | **Selesai (26 Sep 2026)**, tapi dengan 8 role berbasis kapabilitas (bukan admin/operator/viewer tetap) — lihat catatan status di atas. Migrasi otomatis dari skema 3-role lama sudah teruji (`migrateRoles`, idempoten). | 1 |
 | C6-2 | Retensi audit Community | 30 hari (tetap). Ekspor CSV (sudah ada). | Job retensi berjalan harian. | 0,5 |
 
 ### C8 — Pool dan node ala F5 (11 h)
@@ -276,17 +290,17 @@ rollback otomatis), dan audit.
 
 | ID | Task | Detail | Kriteria selesai | Est. |
 |---|---|---|---|---|
-| P6-1 | Kerangka detektor | Rule tiap 1 menit → `events` (dedup 15 menit). Ambang di DB, bisa diubah admin (ter-audit). Ada mode "observe only". | Rule baru = satu file + test. | 2 |
-| P6-2 | Rule keamanan | Burst per IP, auth abuse (401/403), path scanning (404 unik), probe sensitif (`/.env`, `/.git/`, `/wp-admin`, dll.). | Test positif/negatif dari fixture log. | 3 |
-| P6-3 | Rule reliabilitas | 5xx > 3× baseline jam yang sama, p95 > 2× baseline, server flapping, antrean `qcur` > 0 selama ≥ 2 menit. | Tidak ada alarm palsu saat reload. | 2 |
-| P6-4 | Profil source | Ringkasan IP: req, host/path, status, event, riwayat mitigasi, status allowlist. | Terbuka < 500 ms untuk data 7 hari. | 1,5 |
+| P6-1 | Kerangka detektor | Rule tiap 1 menit → `events` (dedup 15 menit). Ambang di DB, bisa diubah admin (ter-audit). Ada mode "observe only". | **Sebagian selesai (26 Sep 2026)**: `internal/security.Engine` menjalankan 7 rule per tick (15 detik) di atas sliding window in-memory, dedup per rule+subjek per menit, hasil disimpan ke tabel `security_events` (analog `events`). Observe-only sudah terpenuhi (tidak ada aksi blokir otomatis). **Belum**: ambang (`Thresholds`) masih hardcoded di kode (`DefaultThresholds()`), belum ada halaman untuk mengubahnya dari UI (rencana semula di P6-1/Fase 7 desain Security Engine). | 2 |
+| P6-2 | Rule keamanan | Burst per IP, auth abuse (401/403), path scanning (404 unik), probe sensitif (`/.env`, `/.git/`, `/wp-admin`, dll.). | **Selesai (26 Sep 2026)**: `brute_force` (login gagal beruntun), `rate_anomaly` (burst per IP vs EWMA baseline), `path_scan` (path unik + rasio 404), `sensitive_probe` (daftar pola berkas/endpoint sensitif) — semua diuji dengan fixture log asli dari haproxy-cni. Coverage `internal/security` 85–87%. | 3 |
+| P6-3 | Rule reliabilitas | 5xx > 3× baseline jam yang sama, p95 > 2× baseline, server flapping, antrean `qcur` > 0 selama ≥ 2 menit. | **Sebagian selesai**: rule `backend_abuse` mendeteksi rasio 5xx tinggi dan waktu antrean (`Tw`) di atas baseline 1 jam, plus timeout. **Belum**: deteksi *server flapping* per anggota pool, dan pembandingan baseline per-jam-yang-sama (baseline saat ini adalah rolling 1 jam, bukan "jam yang sama kemarin"). | 2 |
+| P6-4 | Profil source | Ringkasan IP: req, host/path, status, event, riwayat mitigasi, status allowlist. | **Sebagian selesai**: halaman `/security/ip/{ip}` menampilkan skor risiko, status (normal/watch/suspicious/high_risk), dan riwayat kejadian per IP. **Belum**: ringkasan request/host/path mentah per IP (saat ini hanya lewat kejadian yang terdeteksi, bukan agregat trafik penuh — itu domain C3 Traffic, belum dikerjakan) dan status allowlist belum tampil di UI (baru ada di `Thresholds.AllowCIDRs`, sisi kode). | 1,5 |
 
 ### P7 — Incident management (3,5 h)
 
 | ID | Task | Detail | Kriteria selesai | Est. |
 |---|---|---|---|---|
-| P7-1 | Insiden + timeline | Status open/investigating/mitigated/resolved, owner, event yang dikorelasikan otomatis (subjek/backend sama), aksi, verifikasi, catatan. | Timeline lengkap dari event pertama sampai resolved. | 2,5 |
-| P7-2 | Evidence bundle | Ekspor JSON + CSV: event, log mentah (maks. 1.000 baris), metrik jendela waktu, aksi. | Bisa dibaca tanpa akses ke server. | 1 |
+| P7-1 | Insiden + timeline | Status open/investigating/mitigated/resolved, owner, event yang dikorelasikan otomatis (subjek/backend sama), aksi, verifikasi, catatan. | **Belum dikerjakan.** Fondasi sudah disiapkan di sisi Security Engine: `security_events.incident_id` nullable, `internal/security.Detection.Seed()` sudah didefinisikan sebagai kontrak IncidentSeed, dan status event (`open`/`acknowledged`/`dismissed`/`escalated`) sudah bisa diubah manual dari `/security/events/{id}`. Kapabilitas RBAC `manage_incidents` juga sudah ada dan digunakan untuk menggerbang aksi status ini. Task berikutnya: tabel `incidents` + halaman timeline + korelasi otomatis dari `security_events`. | 2,5 |
+| P7-2 | Evidence bundle | Ekspor JSON + CSV: event, log mentah (maks. 1.000 baris), metrik jendela waktu, aksi. | Belum dikerjakan. | 1 |
 
 ### P8 — MCP (5 h)
 

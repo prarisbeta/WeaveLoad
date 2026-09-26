@@ -217,5 +217,11 @@ func (h *SecurityEventStatusAction) ServeHTTP(w http.ResponseWriter, r *http.Req
 		http.Error(w, "status updated but could not be audit-logged: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// The button that triggered this has no hx-target, so htmx's default
+	// behavior would swap its own innerHTML with this response body,
+	// leaving an empty button once the status buttons re-render server
+	// side. HX-Refresh instead tells htmx to do a full page reload, so the
+	// event detail page re-renders with the new Status/AckedBy.
+	w.Header().Set("HX-Refresh", "true")
 	w.WriteHeader(http.StatusOK)
 }
