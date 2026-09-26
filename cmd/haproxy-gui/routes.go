@@ -76,6 +76,8 @@ func buildRoutes(d routeDeps) http.Handler {
 	requireManageConfig := auth.RequireCapability(store.CapManageConfig)
 	requireManageUsers := auth.RequireCapability(store.CapManageUsers)
 	requireManageSettings := auth.RequireCapability(store.CapManageSettings)
+	requireViewSecurity := auth.RequireCapability(store.CapViewSecurity)
+	requireManageIncidents := auth.RequireCapability(store.CapManageIncidents)
 	secure := d.cfg.CookieSecure
 
 	// --- public ---
@@ -110,6 +112,12 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	queueHandler := &web.QueueHandler{Store: d.store, Templates: d.templates}
 	mux.Handle("GET /queue", chain(queueHandler, requireAuth, requireViewQueue))
+
+	securityHandler := &web.SecurityHandler{Store: d.store, Templates: d.templates}
+	mux.Handle("GET /security", chain(securityHandler, requireAuth, requireViewSecurity))
+	mux.Handle("GET /security/events/{id}", chain(&web.SecurityEventDetail{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
+	mux.Handle("GET /security/ip/{ip}", chain(&web.SecurityIPHandler{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
+	mux.Handle("POST /api/security/events/{id}/status", chain(&web.SecurityEventStatusAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{

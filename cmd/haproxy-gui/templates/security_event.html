@@ -1,0 +1,39 @@
+{{define "security_event.html"}}{{template "chrome_header" .}}{{template "security_event_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "security_event_content"}}
+<h1>Kejadian Keamanan #{{.Event.ID}}</h1>
+<p class="hint"><a href="/security">&larr; Kembali ke daftar</a></p>
+
+<div class="panel">
+  <table>
+    <tr><th>Rule</th><td>{{.Event.Rule}}</td></tr>
+    <tr><th>Tingkat</th><td><span class="badge{{if or (eq .Event.Severity "high") (eq .Event.Severity "critical")}} badge-down{{end}}">{{.Event.Severity}}</span></td></tr>
+    <tr><th>Subjek</th><td>{{if eq .Event.SubjectType "ip"}}<a href="/security/ip/{{.Event.Subject}}">{{.Event.Subject}}</a>{{else}}{{.Event.Subject}}{{end}}</td></tr>
+    {{if .Event.Pool}}<tr><th>Pool</th><td>{{.Event.Pool}}</td></tr>{{end}}
+    <tr><th>Pertama Terlihat</th><td>{{.Event.FirstSeen.Format "2006-01-02 15:04:05"}}</td></tr>
+    <tr><th>Terakhir Terlihat</th><td>{{.Event.LastSeen.Format "2006-01-02 15:04:05"}}</td></tr>
+    <tr><th>Jumlah</th><td>{{.Event.Count}}</td></tr>
+    <tr><th>Status</th><td>{{.Event.Status}}</td></tr>
+    {{if .Event.AckedBy}}<tr><th>Ditinjau oleh</th><td>{{.Event.AckedBy}}</td></tr>{{end}}
+  </table>
+
+  <h3>Bukti</h3>
+  <pre style="white-space:pre-wrap; word-break:break-all">{{range $k, $v := .Event.Evidence}}{{$k}}: {{$v}}
+{{end}}</pre>
+
+  {{if eq .Event.SubjectType "ip"}}
+  <h3>Profil Risiko IP</h3>
+  {{if .Risk.IP}}
+  <p>Skor: <strong>{{printf "%.0f" .Risk.Score}}</strong> &mdash; Status: <span class="badge{{if eq .Risk.State "high_risk"}} badge-down{{end}}">{{.Risk.State}}</span></p>
+  {{else}}
+  <p class="muted">Belum ada profil risiko untuk subjek ini.</p>
+  {{end}}
+  {{end}}
+
+  <div style="margin-top:16px; display:flex; gap:8px">
+    <button type="button" hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"acknowledged"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Tandai kejadian ini sebagai ditinjau?">Tandai Ditinjau</button>
+    <button type="button" hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"dismissed"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Abaikan kejadian ini?">Abaikan</button>
+    <button type="button" hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"escalated"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Eskalasi kejadian ini?">Eskalasi</button>
+  </div>
+</div>
+{{end}}

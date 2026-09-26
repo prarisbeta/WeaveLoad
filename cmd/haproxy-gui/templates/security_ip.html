@@ -1,0 +1,42 @@
+{{define "security_ip.html"}}{{template "chrome_header" .}}{{template "security_ip_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "security_ip_content"}}
+<h1>Profil Risiko: {{.IP}}</h1>
+<p class="hint"><a href="/security">&larr; Kembali ke daftar</a></p>
+
+<div class="panel" style="margin-bottom:16px">
+  {{if .Risk.IP}}
+  <table>
+    <tr><th>Skor</th><td><strong>{{printf "%.0f" .Risk.Score}}</strong> / 100</td></tr>
+    <tr><th>Status</th><td><span class="badge{{if eq .Risk.State "high_risk"}} badge-down{{end}}">{{.Risk.State}}</span></td></tr>
+    <tr><th>Pertama Terlihat</th><td>{{.Risk.FirstSeen.Format "2006-01-02 15:04:05"}}</td></tr>
+    <tr><th>Terakhir Terlihat</th><td>{{.Risk.LastSeen.Format "2006-01-02 15:04:05"}}</td></tr>
+    <tr><th>Deteksi 24 Jam</th><td>{{.Risk.Detections24h}}</td></tr>
+  </table>
+  {{else}}
+  <p class="muted">Belum ada profil risiko untuk IP ini.</p>
+  {{end}}
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Riwayat Kejadian ({{.Total}})</h3>
+  {{if not .Events}}
+  <p class="muted">Belum ada kejadian tercatat untuk IP ini.</p>
+  {{else}}
+  <div class="table-scroll">
+  <table>
+    <tr><th>Terakhir</th><th>Rule</th><th>Tingkat</th><th>Jumlah</th><th>Status</th></tr>
+    {{range .Events}}
+    <tr>
+      <td class="muted" style="white-space:nowrap">{{.LastSeen.Format "2006-01-02 15:04:05"}}</td>
+      <td>{{.Rule}}</td>
+      <td><span class="badge{{if or (eq .Severity "high") (eq .Severity "critical")}} badge-down{{end}}">{{.Severity}}</span></td>
+      <td>{{.Count}}</td>
+      <td><a href="/security/events/{{.ID}}">{{.Status}}</a></td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+</div>
+{{end}}

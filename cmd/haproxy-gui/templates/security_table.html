@@ -1,0 +1,26 @@
+{{define "security_table.html"}}
+<div class="panel">
+  {{if not .Events}}
+  <div class="empty-state"><h3>Tidak ada kejadian</h3><p>Tidak ada kejadian keamanan yang cocok dengan filter ini.</p></div>
+  {{else}}
+  <p class="hint" style="margin-bottom:10px">{{.Total}} kejadian ditemukan, terbaru di atas.</p>
+  <div class="table-scroll">
+  <table>
+    <tr><th>Terakhir</th><th>Rule</th><th>Tingkat</th><th>Subjek</th><th>Jumlah</th><th>Status</th></tr>
+    {{range .Events}}
+    <tr>
+      <td class="muted" style="white-space:nowrap">{{.LastSeen.Format "2006-01-02 15:04:05"}}</td>
+      <td>{{.Rule}}</td>
+      <td><span class="badge{{if or (eq .Severity "high") (eq .Severity "critical")}} badge-down{{end}}">{{.Severity}}</span></td>
+      <td>
+        {{if eq .SubjectType "ip"}}<a href="/security/ip/{{.Subject}}">{{.Subject}}</a>{{else}}{{.Subject}}{{end}}
+      </td>
+      <td>{{.Count}}</td>
+      <td><a href="/security/events/{{.ID}}">{{.Status}}</a></td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{end}}
+</div>
+{{end}}

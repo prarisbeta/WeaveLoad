@@ -40,6 +40,28 @@ func (f fixedSettings) SetRedisSettings(store.RedisSettings) error     { return 
 func (f fixedSettings) GetQueueAPIToken() (string, error)              { return "", nil }
 func (f fixedSettings) SetQueueAPIToken(string) error                  { return nil }
 
+type fixedSecurity struct{}
+
+func (fixedSecurity) ListSecurityEvents(store.SecurityFilter) ([]store.SecurityEvent, int, error) {
+	return []store.SecurityEvent{{
+		ID: 1, Rule: "brute_force", Severity: "high", SubjectType: "ip", Subject: "10.0.0.9",
+		Count: 12, Status: "open", Evidence: map[string]any{"login_failures": 12},
+	}}, 1, nil
+}
+func (fixedSecurity) GetSecurityEvent(id int64) (store.SecurityEvent, error) {
+	return store.SecurityEvent{
+		ID: 1, Rule: "brute_force", Severity: "high", SubjectType: "ip", Subject: "10.0.0.9",
+		Count: 12, Status: "open", Evidence: map[string]any{"login_failures": 12},
+	}, nil
+}
+func (fixedSecurity) SetSecurityEventStatus(int64, string, string) error { return nil }
+func (fixedSecurity) GetIPRisk(ip string) (store.IPRisk, error) {
+	return store.IPRisk{IP: ip, Score: 42, State: "suspicious"}, nil
+}
+func (fixedSecurity) ListTopRisk(n int) ([]store.IPRisk, error) {
+	return []store.IPRisk{{IP: "10.0.0.9", Score: 42, State: "suspicious"}}, nil
+}
+
 type fixedStats string
 
 func (s fixedStats) ShowStat() (string, error) { return string(s), nil }
@@ -89,6 +111,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
 	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t)})
 	mux.Handle("GET /queue", &web.QueueHandler{Store: fixedSettings{}, Templates: realTemplates(t)})
+	mux.Handle("GET /security", &web.SecurityHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
+	mux.Handle("GET /security/events/{id}", &web.SecurityEventDetail{Store: fixedSecurity{}, Templates: realTemplates(t)})
+	mux.Handle("GET /security/ip/{ip}", &web.SecurityIPHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
 
 	pages := []struct {
 		file, method, target string
@@ -112,6 +137,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
 		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
 		{"queue.html", http.MethodGet, "/queue", nil, "belum dikonfigurasi"},
+		{"security.html", http.MethodGet, "/security", nil, "10.0.0.9"},
+		{"security_event.html", http.MethodGet, "/security/events/1", nil, "brute_force"},
+		{"security_ip.html", http.MethodGet, "/security/ip/10.0.0.9", nil, "10.0.0.9"},
 	}
 	for _, p := range pages {
 		var req *http.Request

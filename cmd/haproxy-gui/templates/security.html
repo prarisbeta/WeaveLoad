@@ -1,0 +1,72 @@
+{{define "security.html"}}{{template "chrome_header" .}}{{template "security_page" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "security_page"}}
+<h1>Keamanan</h1>
+<p class="hint">Deteksi otomatis dari log akses HAProxy: brute force login, pemindaian path, probing berkas sensitif, penyalahgunaan HTTP, dan gangguan pada backend. Halaman ini hanya mengamati &mdash; tidak memblokir trafik apa pun.</p>
+
+<div class="panel" style="margin-bottom:16px">
+  <form hx-get="/security" hx-target="#sec-table" hx-push-url="true" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end">
+    <label>Rule
+      <select name="rule">
+        <option value="">Semua</option>
+        <option value="brute_force" {{if eq .Rule "brute_force"}}selected{{end}}>Brute Force</option>
+        <option value="rate_anomaly" {{if eq .Rule "rate_anomaly"}}selected{{end}}>Anomali Laju</option>
+        <option value="path_scan" {{if eq .Rule "path_scan"}}selected{{end}}>Pemindaian Path</option>
+        <option value="sensitive_probe" {{if eq .Rule "sensitive_probe"}}selected{{end}}>Probing Sensitif</option>
+        <option value="http_abuse" {{if eq .Rule "http_abuse"}}selected{{end}}>Penyalahgunaan HTTP</option>
+        <option value="backend_abuse" {{if eq .Rule "backend_abuse"}}selected{{end}}>Gangguan Backend</option>
+        <option value="rate_limited" {{if eq .Rule "rate_limited"}}selected{{end}}>Kena Rate Limit</option>
+      </select>
+    </label>
+    <label>Tingkat
+      <select name="severity">
+        <option value="">Semua</option>
+        <option value="low" {{if eq .Severity "low"}}selected{{end}}>Rendah</option>
+        <option value="medium" {{if eq .Severity "medium"}}selected{{end}}>Sedang</option>
+        <option value="high" {{if eq .Severity "high"}}selected{{end}}>Tinggi</option>
+        <option value="critical" {{if eq .Severity "critical"}}selected{{end}}>Kritis</option>
+      </select>
+    </label>
+    <label>Status
+      <select name="status">
+        <option value="">Semua</option>
+        <option value="open" {{if eq .Status "open"}}selected{{end}}>Terbuka</option>
+        <option value="acknowledged" {{if eq .Status "acknowledged"}}selected{{end}}>Ditinjau</option>
+        <option value="dismissed" {{if eq .Status "dismissed"}}selected{{end}}>Diabaikan</option>
+        <option value="escalated" {{if eq .Status "escalated"}}selected{{end}}>Dieskalasi</option>
+      </select>
+    </label>
+    <label>IP <input type="text" name="ip" value="{{.IP}}" placeholder="1.2.3.4"></label>
+    <label>Periode
+      <select name="since">
+        <option value="1h" {{if eq .Since "1h"}}selected{{end}}>1 jam</option>
+        <option value="24h" {{if or (eq .Since "24h") (eq .Since "")}}selected{{end}}>24 jam</option>
+        <option value="7d" {{if eq .Since "7d"}}selected{{end}}>7 hari</option>
+      </select>
+    </label>
+    <button type="submit">Terapkan</button>
+  </form>
+</div>
+
+<div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px; align-items:start">
+  <div id="sec-table">{{template "security_table.html" .}}</div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">IP Berisiko Tinggi</h3>
+    {{if not .TopRisk}}
+    <p class="muted">Belum ada profil risiko.</p>
+    {{else}}
+    <table>
+      <tr><th>IP</th><th>Skor</th><th>Status</th></tr>
+      {{range .TopRisk}}
+      <tr>
+        <td><a href="/security/ip/{{.IP}}">{{.IP}}</a></td>
+        <td>{{printf "%.0f" .Score}}</td>
+        <td><span class="badge{{if eq .State "high_risk"}} badge-down{{end}}">{{.State}}</span></td>
+      </tr>
+      {{end}}
+    </table>
+    {{end}}
+  </div>
+</div>
+{{end}}
