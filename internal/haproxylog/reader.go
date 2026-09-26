@@ -15,11 +15,26 @@ import (
 
 // Line is one parsed log entry. Time and StatusCode are zero when the line
 // doesn't match HAProxy's httplog format (startup/admin messages, for
-// instance), but Raw always holds the full original line.
+// instance), but Raw always holds the full original line. ClientIP, Frontend,
+// Backend, Server, Method, Path and the timers are only populated when the
+// full httplog regex matches — a line can have a valid Time/StatusCode from
+// the looser fallback matchers above while still leaving these zero.
 type Line struct {
 	Raw        string
 	Time       time.Time
 	StatusCode int
+
+	ClientIP string
+	Frontend string
+	Backend  string
+	Server   string
+	Method   string
+	Path     string
+
+	// Timers, in milliseconds, as HAProxy's httplog reports them:
+	// Tq/Tw/Tc/Tr/Tt. -1 means "not applicable" per HAProxy's own convention.
+	Tq, Tw, Tc, Tr, Tt int
+	Termination        string
 }
 
 // Filter narrows Read's results. A zero Date means no date filtering; an
@@ -49,6 +64,26 @@ var month = map[string]time.Month{
 // ("... status_code bytes_read ..."), which always follows the timers.
 var statusRE = regexp.MustCompile(`\s(\d{3})\s\d+\s`)
 
+// httplogRE matches a full HAProxy httplog line, e.g.:
+//
+//	::ffff:3.111.138.44:39516 [26/Sep/2026:08:21:10.602] https_in~ https_oms/node02 0/0/3/13/16 200 1045 - - --NI 3/2/0/0/0 0/0 {oms.cni.net.id} "HEAD / HTTP/1.1"
+//
+// The client address itself may contain colons (IPv6, or an IPv6-mapped
+// IPv4 like "::ffff:3.111.138.44"), so it's matched with a character class
+// restricted to hex digits, dots and colons rather than a generic ".+" —
+// that lets the match start anywhere in the line (no "^" anchor), skipping
+// past whatever syslog prefix (host, timestamp, program[pid]:) precedes the
+// httplog fields, since that prefix's letters fall outside the class. The
+// captured-header block ("{...}") is optional — internal routes like
+// haproxy_gui/local emit none.
+var httplogRE = regexp.MustCompile(
+	`([0-9a-fA-F.:]+):(\d+)\s+\[[^\]]+\]\s+(\S+)\s+(\S+)/(\S+)\s+` +
+		`(-?\d+)/(-?\d+)/(-?\d+)/(-?\d+)/(-?\d+)\s+` +
+		`(\d{3})\s+\d+\s+\S+\s+\S+\s+(\S{4})\s+` +
+		`\d+/\d+/\d+/\d+/\d+\s+\d+/\d+\s+` +
+		`(?:\{[^}]*\}\s+)?"(\S+)(?:\s+(\S+))?[^"]*"`,
+)
+
 func parseLine(raw string) Line {
 	l := Line{Raw: raw}
 	if m := acceptDateRE.FindStringSubmatch(raw); m != nil {
@@ -65,7 +100,38 @@ func parseLine(raw string) Line {
 	if m := statusRE.FindStringSubmatch(raw); m != nil {
 		l.StatusCode, _ = strconv.Atoi(m[1])
 	}
+	if m := httplogRE.FindStringSubmatch(raw); m != nil {
+		l.ClientIP = m[1]
+		l.Frontend = m[3]
+		l.Backend = m[4]
+		l.Server = m[5]
+		l.Tq, _ = strconv.Atoi(m[6])
+		l.Tw, _ = strconv.Atoi(m[7])
+		l.Tc, _ = strconv.Atoi(m[8])
+		l.Tr, _ = strconv.Atoi(m[9])
+		l.Tt, _ = strconv.Atoi(m[10])
+		l.Termination = m[12]
+		l.Method = m[13]
+		l.Path = normalizePath(m[14])
+	}
 	return l
+}
+
+// normalizePath reduces a request-line target to just its path, stripping
+// the query string and, for absolute-form targets (HTTP/2 sends the full
+// "https://host:port/path"), the scheme and authority as well.
+func normalizePath(target string) string {
+	if i := strings.Index(target, "://"); i >= 0 {
+		if j := strings.IndexByte(target[i+3:], '/'); j >= 0 {
+			target = target[i+3+j:]
+		} else {
+			target = "/"
+		}
+	}
+	if i := strings.IndexByte(target, '?'); i >= 0 {
+		target = target[:i]
+	}
+	return target
 }
 
 // Read scans path and returns up to filter.Limit matching lines, most

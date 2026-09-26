@@ -98,6 +98,57 @@ func TestRead_UnparseableLineHasZeroTimeAndStatus(t *testing.T) {
 	}
 }
 
+func TestParseLine_FullHTTPLogLine(t *testing.T) {
+	raw := `Sep 26 08:21:10 haproxy-programmer haproxy[28813]: ::ffff:3.111.138.44:39516 [26/Sep/2026:08:21:10.602] https_in~ https_oms/node02 0/0/3/13/16 200 1045 - - --NI 3/2/0/0/0 0/0 {oms.cni.net.id} "HEAD / HTTP/1.1"`
+	l := parseLine(raw)
+	if l.ClientIP != "::ffff:3.111.138.44" {
+		t.Errorf("ClientIP = %q", l.ClientIP)
+	}
+	if l.Frontend != "https_in~" {
+		t.Errorf("Frontend = %q", l.Frontend)
+	}
+	if l.Backend != "https_oms" || l.Server != "node02" {
+		t.Errorf("Backend/Server = %q/%q", l.Backend, l.Server)
+	}
+	if l.Tq != 0 || l.Tw != 0 || l.Tc != 3 || l.Tr != 13 || l.Tt != 16 {
+		t.Errorf("timers = %d/%d/%d/%d/%d", l.Tq, l.Tw, l.Tc, l.Tr, l.Tt)
+	}
+	if l.StatusCode != 200 {
+		t.Errorf("StatusCode = %d", l.StatusCode)
+	}
+	if l.Termination != "--NI" {
+		t.Errorf("Termination = %q", l.Termination)
+	}
+	if l.Method != "HEAD" || l.Path != "/" {
+		t.Errorf("Method/Path = %q/%q", l.Method, l.Path)
+	}
+}
+
+func TestParseLine_NoCapturedHeaderBlock(t *testing.T) {
+	raw := `Sep 26 08:21:11 haproxy-programmer haproxy[28813]: ::ffff:103.31.159.16:55768 [26/Sep/2026:08:21:10.939] https_gui_in~ haproxy_gui/local 0/0/0/338/513 200 267689 - - ---- 2/1/0/0/0 0/0 "GET https://103.31.159.8:9443/logs HTTP/2.0"`
+	l := parseLine(raw)
+	if l.Backend != "haproxy_gui" || l.Server != "local" {
+		t.Errorf("Backend/Server = %q/%q", l.Backend, l.Server)
+	}
+	if l.Method != "GET" || l.Path != "/logs" {
+		t.Errorf("Method/Path = %q/%q, want GET /logs (absolute-form target reduced to path)", l.Method, l.Path)
+	}
+}
+
+func TestParseLine_QueryStringStripped(t *testing.T) {
+	raw := `Sep 26 08:21:12 haproxy-programmer haproxy[28813]: 10.0.0.9:1234 [26/Sep/2026:08:21:12.000] http_in http_oms/node1 0/0/0/1/1 200 100 - - ---- 1/1/0/0/0 0/0 "GET /search?q=1 HTTP/1.1"`
+	l := parseLine(raw)
+	if l.Path != "/search" {
+		t.Errorf("Path = %q, want query string stripped", l.Path)
+	}
+}
+
+func TestParseLine_BadRequestLineDoesNotPanic(t *testing.T) {
+	raw := `Sep 26 08:21:13 haproxy-programmer haproxy[28813]: 10.0.0.9:1234 [26/Sep/2026:08:21:13.000] http_in http_oms/<NOSRV> -1/-1/-1/-1/0 400 0 - - CR-- 1/1/0/0/0 0/0 "<BADREQ>"`
+	l := parseLine(raw) // must not panic; fields may be zero
+	_ = l
+}
+
 func TestRead_MissingFile_Errors(t *testing.T) {
 	if _, err := Read(filepath.Join(t.TempDir(), "missing.log"), Filter{}); err == nil {
 		t.Fatal("expected an error for a missing log file")
