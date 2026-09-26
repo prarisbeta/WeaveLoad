@@ -77,6 +77,42 @@ CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
 );
+
+-- rule, severity and status are validated in Go, not with a CHECK
+-- constraint — see migrateRoles above for why an enum-like CHECK column is
+-- painful to extend later in SQLite.
+CREATE TABLE IF NOT EXISTS security_events (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	fingerprint  TEXT NOT NULL UNIQUE,
+	rule         TEXT NOT NULL,
+	severity     TEXT NOT NULL,
+	subject_type TEXT NOT NULL,
+	subject      TEXT NOT NULL,
+	pool         TEXT NOT NULL DEFAULT '',
+	first_seen   TEXT NOT NULL,
+	last_seen    TEXT NOT NULL,
+	count        INTEGER NOT NULL DEFAULT 1,
+	evidence     TEXT NOT NULL DEFAULT '{}',
+	status       TEXT NOT NULL DEFAULT 'open',
+	incident_id  INTEGER,
+	acked_by     TEXT NOT NULL DEFAULT '',
+	acked_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_secev_last ON security_events(last_seen DESC);
+CREATE INDEX IF NOT EXISTS idx_secev_subject ON security_events(subject_type, subject);
+CREATE INDEX IF NOT EXISTS idx_secev_incident ON security_events(incident_id);
+
+CREATE TABLE IF NOT EXISTS ip_risk (
+	ip              TEXT PRIMARY KEY,
+	score           REAL NOT NULL,
+	state           TEXT NOT NULL,
+	first_seen      TEXT NOT NULL,
+	last_seen       TEXT NOT NULL,
+	detections_24h  INTEGER NOT NULL DEFAULT 0,
+	state_override  TEXT,
+	override_by     TEXT NOT NULL DEFAULT '',
+	override_reason TEXT NOT NULL DEFAULT ''
+);
 `
 
 func (s *Store) migrate() error {
