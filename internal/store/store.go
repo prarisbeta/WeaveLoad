@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS users (
 	sso_subject   TEXT,
 	password_hash TEXT,
 	enabled       INTEGER NOT NULL DEFAULT 1,
+	language      TEXT NOT NULL DEFAULT 'id',
 	created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
@@ -113,13 +114,40 @@ CREATE TABLE IF NOT EXISTS ip_risk (
 	override_by     TEXT NOT NULL DEFAULT '',
 	override_reason TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS incidents (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	title       TEXT NOT NULL,
+	severity    TEXT NOT NULL DEFAULT 'medium',
+	status      TEXT NOT NULL DEFAULT 'open',
+	owner       TEXT NOT NULL DEFAULT '',
+	summary     TEXT NOT NULL DEFAULT '',
+	created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+	updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+	resolved_at TEXT,
+	resolved_by TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_incidents_updated ON incidents(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS incident_notes (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	incident_id INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+	author      TEXT NOT NULL,
+	content     TEXT NOT NULL,
+	created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_incident_notes_inc ON incident_notes(incident_id, created_at ASC);
 `
 
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(schema); err != nil {
 		return err
 	}
-	return s.migrateRoles()
+	if err := s.migrateRoles(); err != nil {
+		return err
+	}
+	return s.migrateLanguage()
 }
 
 // migrateRoles upgrades a users table created before the 8-role RBAC model
@@ -161,15 +189,16 @@ func (s *Store) migrateRoles() error {
 		sso_subject   TEXT,
 		password_hash TEXT,
 		enabled       INTEGER NOT NULL DEFAULT 1,
+		language      TEXT NOT NULL DEFAULT 'id',
 		created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 	)`); err != nil {
 		return fmt.Errorf("recreate users table: %w", err)
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO users (id, email, name, role, sso_subject, password_hash, enabled, created_at)
+		INSERT INTO users (id, email, name, role, sso_subject, password_hash, enabled, language, created_at)
 		SELECT id, email, name,
 			CASE role WHEN 'admin' THEN 'platform_admin' WHEN 'operator' THEN 'noc_operator' ELSE role END,
-			sso_subject, password_hash, enabled, created_at
+			sso_subject, password_hash, enabled, 'id', created_at
 		FROM users_pre_rbac_migration`); err != nil {
 		return fmt.Errorf("copy users to migrated table: %w", err)
 	}
@@ -177,4 +206,38 @@ func (s *Store) migrateRoles() error {
 		return fmt.Errorf("drop old users table: %w", err)
 	}
 	return tx.Commit()
+}
+
+func (s *Store) migrateLanguage() error {
+	// Add language column if it doesn't exist
+	var hasLanguage bool
+	rows, err := s.db.Query(`PRAGMA table_info(users)`)
+	if err != nil {
+		return fmt.Errorf("inspect users columns: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dfltValue interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		if name == "language" {
+			hasLanguage = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if !hasLanguage {
+		if _, err := s.db.Exec(`ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'id'`); err != nil {
+			return fmt.Errorf("add language column: %w", err)
+		}
+	}
+	return nil
 }

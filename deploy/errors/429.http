@@ -1,0 +1,256 @@
+HTTP/1.1 429 Too Many Requests
+Content-Type: text/html; charset=UTF-8
+Retry-After: 5
+Cache-Control: no-cache, no-store, must-revalidate
+Connection: close
+
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<title>Virtual Waiting Room | Error 429</title>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="refresh" content="5" />
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #404040;
+    background-color: #f7f7f8;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .cf-container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 60px;
+  }
+  .cf-header {
+    border-bottom: 1px solid #dedede;
+    padding-bottom: 24px;
+    margin-bottom: 36px;
+  }
+  .cf-error-title {
+    font-size: 32px;
+    font-weight: 400;
+    color: #222222;
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+  }
+  .cf-error-code {
+    font-size: 14px;
+    font-weight: 600;
+    color: #999999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .cf-badge-waiting {
+    display: inline-block;
+    background-color: #0284c7;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .cf-waiting-card {
+    background-color: #ffffff;
+    border: 1px solid #dedede;
+    border-radius: 8px;
+    padding: 32px 28px;
+    margin-bottom: 36px;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .cf-queue-icon {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background-color: #e0f2fe;
+    color: #0284c7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+  }
+  .cf-countdown-box {
+    margin: 20px auto;
+    max-width: 320px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .cf-countdown-num {
+    font-size: 34px;
+    font-weight: 700;
+    color: #0284c7;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+  .cf-progress-track {
+    width: 100%;
+    height: 6px;
+    background-color: #e2e8f0;
+    border-radius: 3px;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .cf-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #0284c7, #38bdf8);
+    border-radius: 3px;
+    width: 100%;
+    animation: cf-progress-anim 5s linear infinite;
+  }
+  @keyframes cf-progress-anim {
+    0% { width: 100%; }
+    100% { width: 0%; }
+  }
+  .cf-columns {
+    display: flex;
+    gap: 48px;
+    margin-bottom: 40px;
+  }
+  .cf-column {
+    flex: 1;
+  }
+  .cf-column h2 {
+    font-size: 20px;
+    font-weight: 500;
+    color: #222222;
+    margin: 0 0 14px 0;
+  }
+  .cf-column p {
+    margin: 0 0 16px 0;
+    color: #555555;
+    font-size: 14.5px;
+  }
+  .cf-footer {
+    border-top: 1px solid #dedede;
+    padding-top: 24px;
+    margin-top: 40px;
+    font-size: 13px;
+    color: #888888;
+  }
+  .cf-footer-item {
+    margin-bottom: 6px;
+  }
+  .cf-footer-item strong {
+    color: #444444;
+  }
+  .cf-ray-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: #222222;
+    font-size: 13px;
+    background: #eaeaea;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .cf-btn {
+    display: inline-block;
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #ffffff;
+    background-color: #0051c3;
+    border: 1px solid #0051c3;
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color .15s ease;
+  }
+  .cf-btn:hover {
+    background-color: #003e96;
+  }
+  @media (max-width: 768px) {
+    .cf-columns {
+      flex-direction: column;
+      gap: 28px;
+    }
+    .cf-error-title {
+      font-size: 26px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="cf-container">
+  <div class="cf-header">
+    <div class="cf-error-code">Status 429 <span class="cf-badge-waiting">Waiting Room</span></div>
+    <h1 class="cf-error-title">You are in a virtual waiting room</h1>
+    <div style="font-size: 14px; color: #666; margin-top: 4px;">
+      This website is experiencing high traffic volume. Please wait while we connect you safely.
+    </div>
+  </div>
+
+  <div class="cf-waiting-card">
+    <div class="cf-queue-icon">&#9203;</div>
+    <h2 style="font-size:22px; font-weight:600; color:#1e293b; margin:0 0 8px;">Please hold on for a moment</h2>
+    <p style="color:#64748b; font-size:14.5px; max-width:540px; margin:0 auto;">
+      To protect service stability and ensure secure transactions, incoming requests are automatically paced. You will be connected automatically when a slot opens.
+    </p>
+
+    <div class="cf-countdown-box">
+      <div style="font-size:12px; color:#64748b; margin-bottom:4px;">Auto-refreshing in:</div>
+      <div class="cf-countdown-num" id="countdown-val">5</div>
+      <div class="cf-progress-track">
+        <div class="cf-progress-bar"></div>
+      </div>
+    </div>
+
+    <button class="cf-btn" id="btn-manual-reload" onclick="location.reload()">Refresh Now</button>
+  </div>
+
+  <div class="cf-columns">
+    <div class="cf-column">
+      <h2>What happened?</h2>
+      <p>
+        The rate limiting and traffic management engine has placed your connection into a temporary queue because the request capacity threshold was reached.
+      </p>
+    </div>
+
+    <div class="cf-column">
+      <h2>What should I do?</h2>
+      <p>
+        Do not close this page or submit rapid repeated requests. The page refreshes itself automatically every 5 seconds until capacity becomes available.
+      </p>
+    </div>
+  </div>
+
+  <div class="cf-footer">
+    <div class="cf-footer-item">
+      Performance &amp; security by Cloud Network &bull; Waiting Room ID: <span class="cf-ray-id" id="ray-id">8f429a12b3c4d5</span>
+    </div>
+    <div class="cf-footer-item">
+      Timestamp: <span id="cf-time">2026-09-27 10:02:00 UTC</span> &bull; Your IP: <em>Paced / Protected</em>
+    </div>
+  </div>
+</div>
+
+<script>
+  try {
+    var now = new Date();
+    document.getElementById('cf-time').textContent = now.toISOString().replace('T', ' ').substr(0, 19) + ' UTC';
+    var hash = Array.prototype.map.call(new Uint8Array(8), function(x){return ('00'+((Math.random()*256)|0).toString(16)).slice(-2)}).join('');
+    document.getElementById('ray-id').textContent = '8f' + hash;
+
+    var sec = 5;
+    var el = document.getElementById('countdown-val');
+    setInterval(function(){
+      sec--;
+      if (el) el.textContent = sec > 0 ? sec : 0;
+      if (sec <= 0) location.reload();
+    }, 1000);
+  } catch(e){}
+</script>
+
+</body>
+</html>

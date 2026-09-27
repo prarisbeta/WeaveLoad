@@ -1,36 +1,158 @@
 {{define "queue.html"}}{{template "chrome_header" .}}{{template "queue_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "queue_content"}}
-<h1>Antrean</h1>
-<p class="hint">Kejadian Batas Laju (Rate Limit) yang ditolak dikirim ke antrean Redis untuk diproses sistem lain (mis. Incident Management, atau sistem eksternal lewat API konsumsi). Halaman ini hanya mengintip isi antrean — tidak menghapusnya. Konfigurasi koneksi Redis dan token API konsumsi ada di halaman <a href="/settings">Pengaturan</a>.</p>
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
+  <div>
+    <h1>Pusat Manajemen Antrean &amp; Ruang Tunggu</h1>
+    <p class="hint">Pantau dan kelola antrean trafik padat, lonjakan pembatasan laju (Rate Limit), serta halaman ruang tunggu pengunjung (Virtual Waiting Room) secara terpusat.</p>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a href="/queue/waiting-room" target="_blank" class="btn" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
+      🪑 Buka Halaman Ruang Tunggu (Visitor View) ↗
+    </a>
+    <a href="/config/error-pages?code=429" class="btn" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
+      🎨 Kustomisasi Desain Ruang Tunggu
+    </a>
+  </div>
+</div>
 
 {{if not .Configured}}
 <div class="panel empty-state">
-  <h3>Antrean belum dikonfigurasi</h3>
-  <p>Simpan koneksi Redis di halaman <a href="/settings">Pengaturan</a> terlebih dahulu untuk mengaktifkan fitur ini.</p>
+  <h3>Antrean &amp; Engine Redis belum dikonfigurasi</h3>
+  <p>Simpan koneksi Redis di halaman <a href="/settings">Pengaturan</a> terlebih dahulu untuk mengaktifkan pemantauan antrean rate-limit otomatis.</p>
 </div>
 {{else}}
+
+<!-- KPI Metrics & Status Cards -->
+<div class="dashboard-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:20px;">
+  <div class="panel kpi-card" style="margin-bottom:0; background:rgba(15, 23, 42, 0.6); border-left:4px solid var(--accent);">
+    <div class="kpi-label" style="font-size:12px; color:var(--muted); margin-bottom:4px;">Total Kejadian di Antrean</div>
+    <div class="kpi-value" style="font-size:28px; font-weight:800; color:var(--text);" id="queue-depth-val">{{.Total}}</div>
+    <div style="font-size:11px; color:var(--muted); margin-top:4px;">Menampilkan {{.Shown}} data terbaru</div>
+  </div>
+
+  <div class="panel kpi-card" style="margin-bottom:0; background:rgba(15, 23, 42, 0.6); border-left:4px solid #34d399;">
+    <div class="kpi-label" style="font-size:12px; color:var(--muted); margin-bottom:4px;">Status Virtual Waiting Room</div>
+    <div class="kpi-value" style="font-size:18px; font-weight:700; color:#34d399; display:flex; align-items:center; gap:6px;">
+      <span style="width:10px; height:10px; border-radius:50%; background:#34d399; display:inline-block;"></span> Aktif &amp; Siap
+    </div>
+    <div style="font-size:11px; color:var(--muted); margin-top:4px;">HTTP 429 auto-reload (5s)</div>
+  </div>
+
+  <div class="panel kpi-card" style="margin-bottom:0; background:rgba(15, 23, 42, 0.6); border-left:4px solid #818cf8;">
+    <div class="kpi-label" style="font-size:12px; color:var(--muted); margin-bottom:4px;">Engine Storage Antrean</div>
+    <div class="kpi-value" style="font-size:18px; font-weight:700; color:#818cf8;">Redis Queue</div>
+    <div style="font-size:11px; color:var(--muted); margin-top:4px;"><code>haproxy:ratelimit:events</code></div>
+  </div>
+</div>
+
+<!-- Queue Management Panel -->
 <div class="panel">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+    <div>
+      <h3 style="margin:0; font-size:16px;">Daftar Kejadian Antrean &amp; Pembatasan Laju</h3>
+      <span class="muted" style="font-size:12px;">Pengunjung yang melampaui ambang batas request diarahkan sementara ke ruang tunggu.</span>
+    </div>
+    
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button type="button" class="btn" id="btn-refresh-queue" style="font-size:12px; padding:6px 12px;">
+        🔄 Segarkan Antrean
+      </button>
+      <button type="button" class="btn danger" id="btn-clear-queue" style="font-size:12px; padding:6px 12px;">
+        ⚡ Kosongkan / Lepaskan Semua Antrean
+      </button>
+    </div>
+  </div>
+
+  <div id="queue-action-feedback" style="margin-bottom:12px;"></div>
+
   {{if not .Events}}
-  <div class="empty-state"><h3>Antrean kosong</h3><p>Belum ada kejadian rate-limit yang tercatat.</p></div>
+  <div class="empty-state">
+    <div style="font-size:36px; margin-bottom:10px;">🟢</div>
+    <h3>Antrean Bersih</h3>
+    <p>Belum ada lonjakan trafik atau kejadian rate-limit yang tercatat. Semua permintaan pengunjung berjalan lancar.</p>
+  </div>
   {{else}}
-  <p class="hint" style="margin-bottom:10px">Menampilkan {{.Shown}} kejadian terbaru dari total {{.Total}} yang ada di antrean, terbaru di atas.</p>
   <div class="table-scroll">
-  <table>
-    <tr><th>Waktu</th><th>Pool</th><th>Status</th><th>Baris mentah</th></tr>
-    {{range .Events}}
-    <tr>
-      <td class="muted" style="white-space:nowrap">{{if .Time.IsZero}}—{{else}}{{.Time.Format "2006-01-02 15:04:05"}}{{end}}</td>
-      <td>{{if .Pool}}{{.Pool}}{{else}}<span class="muted">—</span>{{end}}</td>
-      <td>
-        {{if .Status}}<span class="badge badge-down">{{.Status}}</span>{{else}}<span class="muted">—</span>{{end}}
-      </td>
-      <td style="font: 12px/1.4 ui-monospace, monospace; word-break: break-all;">{{if .Raw}}{{.Raw}}{{else if .RawJSON}}{{.RawJSON}}{{else}}—{{end}}</td>
-    </tr>
-    {{end}}
-  </table>
+    <table>
+      <thead>
+        <tr>
+          <th>Waktu</th>
+          <th>IP Klien / Pengunjung</th>
+          <th>Kelompok (Pool)</th>
+          <th>Status</th>
+          <th>Detail Permintaan</th>
+          <th style="text-align:right;">Tindakan Cepat Enterprise</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Events}}
+        <tr>
+          <td class="muted" style="white-space:nowrap; font-size:12px;">
+            {{if .Time.IsZero}}-{{else}}{{.Time.Format "2006-01-02 15:04:05"}}{{end}}
+          </td>
+          <td style="font-weight:600; font-family:ui-monospace, monospace;">
+            {{if .ClientIP}}{{.ClientIP}}{{else}}<span class="muted">-</span>{{end}}
+          </td>
+          <td>
+            {{if .Pool}}
+              <span class="badge badge-pool" style="background:rgba(56, 189, 248, 0.15); color:var(--accent);">{{.Pool}}</span>
+            {{else}}
+              <span class="muted">-</span>
+            {{end}}
+          </td>
+          <td>
+            {{if .Status}}
+              <span class="badge badge-down" style="background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.3);">
+                HTTP {{.Status}}
+              </span>
+            {{else}}
+              <span class="muted">-</span>
+            {{end}}
+          </td>
+          <td style="font: 11px/1.4 ui-monospace, monospace; word-break: break-all; max-width:320px; color:var(--muted);">
+            {{if .Raw}}{{.Raw}}{{else if .RawJSON}}{{.RawJSON}}{{else}}-{{end}}
+          </td>
+          <td style="text-align:right; white-space:nowrap;">
+            {{if .ClientIP}}
+            <div style="display:inline-flex; gap:6px;">
+              <button type="button" class="btn btn-release-ip" data-ip="{{.ClientIP}}" data-pool="{{.Pool}}" style="font-size:11px; padding:4px 8px;" title="Lepaskan batas laju IP ini dari stick-table HAProxy">
+                Lepas IP
+              </button>
+              <button type="button" class="btn btn-whitelist-ip" data-ip="{{.ClientIP}}" style="font-size:11px; padding:4px 8px;" title="Bebaskan IP ini ke Allowlist">
+                Whitelist
+              </button>
+              <button type="button" class="btn btn-forward-incident" data-ip="{{.ClientIP}}" data-pool="{{.Pool}}" style="font-size:11px; padding:4px 8px; color:#f59e0b;" title="Eskalasi ke Incident Management">
+                Buat Insiden
+              </button>
+            </div>
+            {{else}}
+            <span class="muted">-</span>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
   </div>
   {{end}}
+</div>
+
+<!-- Virtual Waiting Room Live Preview Section -->
+<div class="panel" style="margin-top:24px; background:rgba(9, 13, 22, 0.85); border:1px solid var(--border);">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div>
+      <h3 style="margin:0; font-size:16px;">Pratinjau Langsung: Halaman Ruang Tunggu Pengunjung (Virtual Waiting Room)</h3>
+      <span class="muted" style="font-size:12px;">Simulasi visual respons HTTP 429 yang ditampilkan kepada pengunjung saat kapasitas antrean penuh.</span>
+    </div>
+    <a href="/config/error-pages?code=429" class="btn" style="font-size:12px; padding:6px 12px;">
+      Edit Template &amp; Styling
+    </a>
+  </div>
+
+  <div style="border-radius:10px; overflow:hidden; border:1px solid rgba(255,255,255,0.1); background:#000;">
+    <iframe src="/queue/waiting-room" style="width:100%; height:450px; border:none;" sandbox="allow-scripts allow-same-origin"></iframe>
+  </div>
 </div>
 {{end}}
 {{end}}

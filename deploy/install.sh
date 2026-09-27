@@ -18,6 +18,26 @@ echo "==> creating directories"
 install -d -o haproxy-gui -g haproxy -m 750 /var/lib/haproxy-gui
 install -d -o haproxy-gui -g haproxy -m 750 /var/lib/haproxy-gui/staging
 install -d -o root -g root -m 750 /etc/haproxy-gui
+install -d -o root -g haproxy -m 775 /etc/haproxy/errors
+if [ -d "$HERE/errors" ]; then
+  install -o root -g haproxy -m 664 "$HERE/errors/"*.http /etc/haproxy/errors/ 2>/dev/null || true
+fi
+install -d -o root -g haproxy -m 775 /etc/haproxy/backups
+for oldbak in /etc/haproxy/haproxy.cfg.bak-*; do
+  if [ -f "$oldbak" ]; then
+    mv -f "$oldbak" /etc/haproxy/backups/
+    chown root:haproxy "/etc/haproxy/backups/$(basename "$oldbak")" 2>/dev/null || true
+    chmod 664 "/etc/haproxy/backups/$(basename "$oldbak")" 2>/dev/null || true
+  fi
+done
+install -d -o root -g haproxy -m 775 /etc/haproxy/maps
+for mapfile in blocklist_ip.lst allowlist_ip.lst ratelimit_host.map hosts_http.map hosts_https.map https_redirect.lst admin_allow.lst; do
+  if [ ! -f "/etc/haproxy/maps/$mapfile" ]; then
+    echo "# $mapfile - managed by haproxy-gui" > "/etc/haproxy/maps/$mapfile"
+    chown root:haproxy "/etc/haproxy/maps/$mapfile"
+    chmod 664 "/etc/haproxy/maps/$mapfile"
+  fi
+done
 # root:root 0755, not haproxy-gui-writable: the apply helper (root) dumps
 # HAProxy server state here before every reload. It must stay outside
 # /var/lib/haproxy (the HAProxy worker's chroot) and outside anything the

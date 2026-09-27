@@ -14,7 +14,12 @@ type LoginHandler struct{ Templates *template.Template }
 func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	errMsg := r.URL.Query().Get("error")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = h.Templates.ExecuteTemplate(w, "login.html", struct{ Error string }{Error: errMsg})
+	al := r.Header.Get("Accept-Language")
+	lang := "id"
+	if len(al) >= 2 && (al[0:2] == "id" || al[0:2] == "en") {
+		lang = al[0:2]
+	}
+	_ = h.Templates.ExecuteTemplate(w, "login.html", struct{ Error, Language string }{Error: errMsg, Language: lang})
 }
 
 // BeginLoginHandler starts the OIDC flow (GET /auth/login).

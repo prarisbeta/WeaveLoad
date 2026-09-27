@@ -16,7 +16,15 @@
         {{if eq .SubjectType "ip"}}<a href="/security/ip/{{.Subject}}">{{.Subject}}</a>{{else}}{{.Subject}}{{end}}
       </td>
       <td>{{.Count}}</td>
-      <td><a href="/security/events/{{.ID}}">{{.Status}}</a></td>
+      <td>
+        <a href="/security/events/{{.ID}}" style="text-decoration:none">
+          {{if eq .Status "acknowledged"}}<span class="badge badge-up">✓ Ditinjau</span>
+          {{else if eq .Status "dismissed"}}<span class="badge badge-nocheck">✕ Diabaikan</span>
+          {{else if eq .Status "escalated"}}<span class="badge badge-down">⚠ Dieskalasi</span>
+          {{else if eq .Status "open"}}<span class="badge badge-maint">Terbuka</span>
+          {{else}}<span class="badge badge-nocheck">{{.Status}}</span>{{end}}
+        </a>
+      </td>
     </tr>
     {{end}}
   </table>

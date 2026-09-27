@@ -2,11 +2,11 @@
 
 {{define "users_content"}}
 <h1>Pengguna</h1>
-<p class="hint">Semua orang masuk lewat akun SSO kantor. Saat login pertama kali, akun otomatis dibuat sebagai "Pengamat" (hanya bisa melihat) — naikkan perannya di sini agar bisa mengoperasikan atau mengelola sistem.</p>
+<p class="hint">Semua pengguna masuk melalui akun SSO kantor. Saat login pertama kali, akun otomatis dibuat sebagai "Pengamat" (hanya melihat). Naikkan perannya di sini agar dapat mengoperasikan atau mengelola sistem.</p>
 
 <div class="panel">
   <h3>Tambah pengguna dari SSO OMS CNI</h3>
-  <p class="hint">Cari nama atau email di direktori SSO kantor, lalu pilih perannya dan tambahkan — orang tersebut tidak perlu login dulu. Begitu dia login dengan SSO nanti, akun ini otomatis tersambung dan perannya tetap seperti yang dipilih di sini.</p>
+  <p class="hint">Cari nama atau email di direktori SSO kantor, lalu pilih perannya dan tambahkan. Pengguna tersebut tidak perlu login terlebih dahulu; saat login dengan SSO nanti, akun otomatis tersambung dengan peran yang telah ditentukan di sini.</p>
   <input type="text" name="q" placeholder="Ketik nama atau email untuk mencari..."
     hx-get="/api/users/search" hx-target="#user-search-results" hx-trigger="keyup changed delay:400ms, search"
     aria-label="Cari pengguna di direktori SSO">
@@ -59,7 +59,7 @@
       <form class="field-inline" hx-post="/api/users/update" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
         <input type="hidden" name="user_id" value="{{.ID}}">
         <input type="hidden" name="action" value="set_role">
-        <select name="role" onchange="this.form.requestSubmit()" aria-label="Peran untuk {{.Email}}">
+        <select name="role" aria-label="Peran untuk {{.Email}}">
           {{template "role_options" .Role}}
         </select>
       </form>

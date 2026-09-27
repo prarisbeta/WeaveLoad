@@ -14,12 +14,18 @@ import (
 	"haproxy-gui/internal/store"
 )
 
+// ServerStateSetter is the subset of runtime.Client used to change server states.
+type ServerStateSetter interface {
+	SetServerState(backend, server string, state runtime.ServerState) error
+}
+
 // PoolService holds what every pool/node page and action needs. One shared
 // instance is wired into all the handlers below so its mutex serialises
 // every read-modify-apply cycle on haproxy.cfg made through this page.
 type PoolService struct {
 	Config    ConfigStore
 	Stats     StatsSource
+	Runtime   ServerStateSetter
 	Audit     AuditRecorder
 	Templates *template.Template
 
@@ -212,16 +218,80 @@ func (h *NodesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	renderTemplate(w, h.Templates, "nodes.html", struct {
 		Chrome
-		Nodes    []nodeView
-		Pools    []string
-		StatsErr string
-		CanAdmin bool
-	}{NewChrome(r, "nodes"), nodes, poolNames, statsErr, userIsAdmin(r)})
+		Nodes      []nodeView
+		Pools      []string
+		StatsErr   string
+		CanAdmin   bool
+		CanRuntime bool
+	}{NewChrome(r, "nodes"), nodes, poolNames, statsErr, userIsAdmin(r), userCanRuntime(r)})
 }
 
 func userIsAdmin(r *http.Request) bool {
 	u, _ := auth.UserFromContext(r.Context())
 	return u.Role.Can(store.CapManageConfig)
+}
+
+func userCanRuntime(r *http.Request) bool {
+	u, _ := auth.UserFromContext(r.Context())
+	return u.Role.Can(store.CapRuntimeControl)
+}
+
+// NodeActionHandler enables, drains, or maintenance-disables a node across all
+// pools where it is used.
+type NodeActionHandler struct{ *PoolService }
+
+func (h *NodeActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	host := strings.TrimSpace(r.FormValue("host"))
+	action := strings.TrimSpace(r.FormValue("action"))
+	if host == "" {
+		http.Error(w, "host tidak boleh kosong", http.StatusBadRequest)
+		return
+	}
+	var state runtime.ServerState
+	switch action {
+	case "ready":
+		state = runtime.StateReady
+	case "drain":
+		state = runtime.StateDrain
+	case "maint":
+		state = runtime.StateMaint
+	default:
+		http.Error(w, "aksi tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	cfg, _, _, err := h.load()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var affected []string
+	if h.Runtime != nil {
+		for _, n := range cfg.Nodes() {
+			if n.Host == host {
+				for _, use := range n.Uses {
+					affected = append(affected, use.Pool+"/"+use.Server)
+					_ = h.Runtime.SetServerState(use.Pool, use.Server, state)
+				}
+				break
+			}
+		}
+	}
+
+	u, _ := auth.UserFromContext(r.Context())
+	if h.Audit != nil {
+		_ = h.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email,
+			RemoteIP:  clientIP(r),
+			Action:    "node." + action,
+			Target:    host,
+			Detail:    strings.Join(affected, ", "),
+		})
+	}
+
+	w.Header().Set("HX-Refresh", "true")
+	http.Redirect(w, r, "/nodes", http.StatusSeeOther)
 }
 
 // NodeAddRedirect sends the Nodes page's "add to pool" form to the chosen

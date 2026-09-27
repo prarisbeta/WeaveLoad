@@ -419,7 +419,7 @@ func TestSetRateLimit_UnknownPool_Errors(t *testing.T) {
 	}
 }
 
-func TestRemoveRateLimit_RemovesAllFourLines(t *testing.T) {
+func TestRemoveRateLimit_RemovesAllSixLines(t *testing.T) {
 	withLimit, _, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny"})
 	if err != nil {
 		t.Fatal(err)
@@ -452,6 +452,116 @@ func TestRemoveRateLimit_UnknownPool_Errors(t *testing.T) {
 	}
 }
 
+func TestSetRateLimit_CloudflareSupport(t *testing.T) {
+	withLimit, block, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{
+		RPS: 50, Action: "deny", IgnoreCloudflare: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(block, "ignore_cf=true") || !strings.Contains(block, "is_cloudflare") {
+		t.Errorf("block missing cloudflare integration: %s", block)
+	}
+	p, _ := Parse(withLimit).Pool("http_oms")
+	if p.RateLimit == nil || !p.RateLimit.IgnoreCloudflare || p.RateLimit.RPS != 50 {
+		t.Fatalf("parsed RateLimit = %+v", p.RateLimit)
+	}
+	// Test removal of the 8-line Cloudflare block
+	clean, err := RemoveRateLimit(withLimit, "http_oms")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(clean, "is_cloudflare") || strings.Contains(clean, "haproxy-gui:rate-limit") {
+		t.Errorf("cloudflare rate limit not cleanly removed:\n%s", clean)
+	}
+}
+
+func TestAddPool_Profiles(t *testing.T) {
+	// 1. Web with Cloudflare & Cookie
+	_, blockWeb, err := AddPool(sampleCfg, PoolSpec{
+		Name:            "web_app",
+		Mode:            "http",
+		Balance:         "roundrobin",
+		HealthCheckType: "httpchk",
+		HealthCheckPath: "/health",
+		HealthCheckHost: "example.com",
+		ForwardFor:      true,
+		TrustCloudflare: true,
+		CookieSticky:    true,
+		Member: MemberSpec{
+			Name: "web01", Host: "192.168.1.50", Port: "8080",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AddPool Web failed: %v", err)
+	}
+	if !strings.Contains(blockWeb, "http-request set-header X-Forwarded-For %[req.hdr(CF-Connecting-IP)]") {
+		t.Errorf("web pool missing CF header mapping:\n%s", blockWeb)
+	}
+	if !strings.Contains(blockWeb, "cookie SERVERID insert indirect nocache") {
+		t.Errorf("web pool missing cookie sticky:\n%s", blockWeb)
+	}
+
+	// 2. MySQL Profile
+	outMySQL, blockMySQL, err := AddPool(sampleCfg, PoolSpec{
+		Name:            "mysql_cluster",
+		Mode:            "tcp",
+		ListenPort:      "3306",
+		Balance:         "leastconn",
+		HealthCheckType: "mysql-check",
+		HealthCheckUser: "haproxy_check",
+		TimeoutClient:   "8h",
+		TimeoutServer:   "8h",
+		Member: MemberSpec{
+			Name: "db01", Host: "192.168.1.60", Port: "3306",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AddPool MySQL failed: %v", err)
+	}
+	if !strings.Contains(blockMySQL, "listen mysql_cluster") || !strings.Contains(blockMySQL, "option mysql-check user haproxy_check") {
+		t.Errorf("MySQL pool invalid:\n%s", blockMySQL)
+	}
+	if !strings.Contains(outMySQL, "timeout client 8h") || !strings.Contains(outMySQL, "timeout server 8h") {
+		t.Errorf("MySQL pool timeouts missing:\n%s", outMySQL)
+	}
+
+	// 3. PostgreSQL Profile
+	_, blockPG, err := AddPool(sampleCfg, PoolSpec{
+		Name:            "pg_cluster",
+		Mode:            "tcp",
+		Balance:         "leastconn",
+		HealthCheckType: "pgsql-check",
+		HealthCheckUser: "postgres",
+		Member: MemberSpec{
+			Name: "pg01", Host: "192.168.1.70", Port: "5432",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AddPool PG failed: %v", err)
+	}
+	if !strings.Contains(blockPG, "option pgsql-check user postgres") {
+		t.Errorf("PG pool invalid:\n%s", blockPG)
+	}
+
+	// 4. Redis Profile
+	_, blockRedis, err := AddPool(sampleCfg, PoolSpec{
+		Name:            "redis_cache",
+		Mode:            "tcp",
+		Balance:         "first",
+		HealthCheckType: "redis-check",
+		Member: MemberSpec{
+			Name: "redis01", Host: "192.168.1.80", Port: "6379",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AddPool Redis failed: %v", err)
+	}
+	if !strings.Contains(blockRedis, "tcp-check expect string +PONG") {
+		t.Errorf("Redis pool check invalid:\n%s", blockRedis)
+	}
+}
+
 func TestSetRateLimit_PreservesCRLF(t *testing.T) {
 	crlf := strings.ReplaceAll("backend b\n  server s1 10.0.0.1:80 check\n", "\n", "\r\n")
 	out, _, err := SetRateLimit(crlf, "b", RateLimitSpec{RPS: 10, Action: "deny"})
@@ -462,3 +572,54 @@ func TestSetRateLimit_PreservesCRLF(t *testing.T) {
 		t.Errorf("CRLF not preserved: %q", out)
 	}
 }
+
+func TestSetPoolDisabled_Toggle(t *testing.T) {
+	cfg := `backend test_pool
+        mode http
+        server s1 10.0.0.1:80 check
+`
+	// 1. Disable
+	disabledCfg, err := SetPoolDisabled(cfg, "test_pool", true)
+	if err != nil {
+		t.Fatalf("SetPoolDisabled true: %v", err)
+	}
+	p := Parse(disabledCfg)
+	pool, ok := p.Pool("test_pool")
+	if !ok || !pool.Disabled {
+		t.Fatalf("expected pool to be disabled:\n%s", disabledCfg)
+	}
+
+	// 2. Enable
+	enabledCfg, err := SetPoolDisabled(disabledCfg, "test_pool", false)
+	if err != nil {
+		t.Fatalf("SetPoolDisabled false: %v", err)
+	}
+	p2 := Parse(enabledCfg)
+	pool2, ok := p2.Pool("test_pool")
+	if !ok || pool2.Disabled {
+		t.Fatalf("expected pool to be enabled:\n%s", enabledCfg)
+	}
+}
+
+func TestDeletePool(t *testing.T) {
+	cfg := `backend pool_a
+        mode http
+        server a1 10.0.0.1:80 check
+
+backend pool_b
+        mode http
+        server b1 10.0.0.2:80 check
+`
+	out, err := DeletePool(cfg, "pool_a")
+	if err != nil {
+		t.Fatalf("DeletePool: %v", err)
+	}
+	p := Parse(out)
+	if _, ok := p.Pool("pool_a"); ok {
+		t.Errorf("pool_a should have been deleted:\n%s", out)
+	}
+	if _, ok := p.Pool("pool_b"); !ok {
+		t.Errorf("pool_b should still exist:\n%s", out)
+	}
+}
+

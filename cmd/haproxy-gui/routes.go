@@ -12,6 +12,7 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/errorpages"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/store"
@@ -92,13 +93,14 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /{$}", chain(dashboard, requireAuth))
 	mux.Handle("GET /api/dashboard", chain(dashboard, requireAuth))
 
-	pools := &web.PoolService{Config: d.cfgfile, Stats: d.runtime, Audit: d.store, Templates: d.templates}
+	pools := &web.PoolService{Config: d.cfgfile, Stats: d.runtime, Runtime: d.runtime, Audit: d.store, Templates: d.templates}
 	mux.Handle("GET /pools", chain(&web.PoolsHandler{PoolService: pools}, requireAuth))
 	mux.Handle("GET /pools/new", chain(&web.PoolNewFormHandler{PoolService: pools}, requireAuth, requireManageConfig))
 	mux.Handle("GET /pools/{name}", chain(&web.PoolDetailHandler{PoolService: pools}, requireAuth))
 	mux.Handle("GET /pools/{name}/members/{member}/edit", chain(&web.PoolMemberEditForm{PoolService: pools}, requireAuth, requireManageConfig))
 	mux.Handle("GET /nodes", chain(&web.NodesHandler{PoolService: pools}, requireAuth))
 	mux.Handle("GET /nodes/add-to-pool", chain(http.HandlerFunc(web.NodeAddRedirect), requireAuth, requireManageConfig))
+	mux.Handle("POST /api/nodes/action", chain(&web.NodeActionHandler{PoolService: pools}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
 
 	auditHandler := &web.AuditHandler{Store: d.store, Templates: d.templates}
 	mux.Handle("GET /audit", chain(auditHandler, requireAuth, requireViewAudit))
@@ -110,8 +112,20 @@ func buildRoutes(d routeDeps) http.Handler {
 	logHandler := &web.LogHandler{Path: d.cfg.LogPath, Templates: d.templates}
 	mux.Handle("GET /logs", chain(logHandler, requireAuth, requireViewLogs))
 
-	queueHandler := &web.QueueHandler{Store: d.store, Templates: d.templates}
+	errPagesMgr := errorpages.NewManager("")
+	errorPagesHandler := &web.ErrorPagesHandler{Manager: errPagesMgr, Audit: d.store, Templates: d.templates}
+	mux.Handle("GET /config/error-pages", chain(errorPagesHandler, requireAuth, requireManageConfig))
+	mux.Handle("POST /api/config/error-pages/{code}", chain(&web.ErrorPageSaveAction{Manager: errPagesMgr, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("GET /api/config/error-pages/{code}/preview", &web.ErrorPagePreviewHandler{Manager: errPagesMgr})
+	mux.Handle("POST /api/config/error-pages/{code}/preview", &web.ErrorPagePreviewHandler{Manager: errPagesMgr})
+	mux.Handle("GET /api/config/error-pages/{code}/preset", &web.ErrorPagePresetHandler{})
+
+	queueHandler := &web.QueueHandler{Store: d.store, Runtime: d.runtime, Templates: d.templates}
 	mux.Handle("GET /queue", chain(queueHandler, requireAuth, requireViewQueue))
+	mux.Handle("POST /api/queue/clear", chain(&web.QueueClearAction{Store: d.store, Audit: d.store}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	mux.Handle("POST /api/queue/release-ip", chain(&web.QueueReleaseIPAction{Runtime: d.runtime, Audit: d.store}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	mux.Handle("POST /api/queue/forward-incident", chain(&web.QueueForwardIncidentAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
+	mux.Handle("GET /queue/waiting-room", &web.QueueWaitingRoomHandler{Manager: errPagesMgr})
 
 	securityHandler := &web.SecurityHandler{Store: d.store, Templates: d.templates}
 	mux.Handle("GET /security", chain(securityHandler, requireAuth, requireViewSecurity))
@@ -119,12 +133,25 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /security/ip/{ip}", chain(&web.SecurityIPHandler{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
 	mux.Handle("POST /api/security/events/{id}/status", chain(&web.SecurityEventStatusAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 
+	// --- incident management & evidence bundle (P7) ---
+	mux.Handle("GET /incidents", chain(&web.IncidentsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
+	mux.Handle("GET /incidents/new", chain(&web.IncidentNewHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageIncidents))
+	mux.Handle("POST /incidents/new", chain(&web.IncidentNewHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageIncidents, auth.RequireCSRF))
+	mux.Handle("GET /incidents/{id}", chain(&web.IncidentDetailHandler{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
+	mux.Handle("GET /incidents/{id}/export", chain(&web.IncidentExportHandler{Store: d.store}, requireAuth, requireViewSecurity))
+	mux.Handle("POST /api/incidents/{id}/status", chain(&web.IncidentStatusAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
+	mux.Handle("POST /api/incidents/{id}/notes", chain(&web.IncidentNoteAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
+	mux.Handle("POST /api/incidents/{id}/link", chain(&web.IncidentLinkAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
+
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
 			{Label: "HTTP host routing", Path: "/etc/haproxy/maps/hosts_http.map", HasValue: true, ValueIsPool: true},
 			{Label: "HTTPS host routing", Path: "/etc/haproxy/maps/hosts_https.map", HasValue: true, ValueIsPool: true},
 			{Label: "HTTP -> HTTPS redirect list", Path: "/etc/haproxy/maps/https_redirect.lst", HasValue: false},
 			{Label: "Stats page allowed IPs", Path: "/etc/haproxy/maps/admin_allow.lst", HasValue: false},
+			{Label: "Blocklist IP", Path: "/etc/haproxy/maps/blocklist_ip.lst", HasValue: false},
+			{Label: "Allowlist IP (Bypass limit & block)", Path: "/etc/haproxy/maps/allowlist_ip.lst", HasValue: false},
+			{Label: "Rate Limit Host", Path: "/etc/haproxy/maps/ratelimit_host.map", HasValue: true, ValueIsPool: false},
 		},
 		Runtime:   d.runtime,
 		Audit:     d.store,
@@ -146,6 +173,8 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/config/rollback", chain(&web.RollbackAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("GET /api/config/backup/download", chain(&web.BackupDownloadAction{Config: d.cfgfile}, requireAuth, requireManageConfig))
+	mux.Handle("POST /api/config/backup/delete", chain(&web.BackupDeleteAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/haproxy/restart", chain(&web.RestartServiceAction{Service: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
 	// Adding/removing pool members rewrites haproxy.cfg and reloads, so it
@@ -161,6 +190,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/pools/{name}/rate-limit/preview", chain(&web.RateLimitPreview{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/{name}/rate-limit/apply", chain(&web.RateLimitApply{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/{name}/rate-limit/remove", chain(&web.RateLimitRemove{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/toggle-state", chain(&web.PoolToggleStateAction{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/pools/{name}/delete", chain(&web.PoolDeleteAction{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
+
 
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,
@@ -172,11 +204,21 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageUsers, auth.RequireCSRF))
 	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageUsers, auth.RequireCSRF))
 	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireManageUsers))
+	
+	mux.Handle("POST /api/profile/language", chain(&web.ProfileLanguageHandler{Store: d.store}, requireAuth, auth.RequireCSRF))
 
 	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireManageSettings))
 	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
+
+	// --- HTTP API /api/v1 (C1-4) ---
+	mux.Handle("GET /api/v1/status", chain(&web.APIV1StatusHandler{Stats: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths}, requireAuth))
+	mux.Handle("GET /api/v1/backends", chain(&web.APIV1BackendsHandler{Stats: d.runtime, Config: d.cfgfile}, requireAuth))
+	mux.Handle("GET /api/v1/servers", chain(&web.APIV1ServersHandler{Stats: d.runtime}, requireAuth))
+	mux.Handle("GET /api/v1/nodes", chain(&web.APIV1NodesHandler{Config: d.cfgfile, Stats: d.runtime}, requireAuth))
+	mux.Handle("GET /api/v1/incidents", chain(&web.APIV1IncidentsHandler{Store: d.store}, requireAuth, requireViewSecurity))
+	mux.Handle("GET /api/v1/incidents/{id}", chain(&web.APIV1IncidentDetailHandler{Store: d.store}, requireAuth, requireViewSecurity))
 
 	// --- external API (own bearer-token auth, not the browser session/CSRF
 	// flow above — callers here are the Incident Management module or an
@@ -188,14 +230,14 @@ func buildRoutes(d routeDeps) http.Handler {
 
 // securityHeaders sets a strict, no-CDN Content-Security-Policy and other
 // standard hardening headers on every response. htmx is served locally from
-// /static, so 'self' is sufficient — no external script/style origins are
-// ever needed.
+// /static, so 'self' is sufficient. frame-ancestors 'self' and SAMEORIGIN allow
+// internal sandboxed live preview iframes (such as the error page previewer).
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Frame-Options", "SAMEORIGIN")
 		h.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})

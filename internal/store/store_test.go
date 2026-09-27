@@ -325,3 +325,40 @@ func TestSetRole_RejectsUnknownRole(t *testing.T) {
 		t.Error("expected error for invalid role")
 	}
 }
+
+func TestRecordAndPruneAudit(t *testing.T) {
+	s := newTestDB(t)
+	if err := s.Record(AuditEntry{
+		UserEmail: "alice@example.com",
+		RemoteIP:  "127.0.0.1",
+		Action:    "server.ready",
+		Target:    "web/node1",
+		Detail:    "test",
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	entries, err := s.ListAudit(AuditFilter{})
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("ListAudit: err=%v len=%d", err, len(entries))
+	}
+
+	// Insert an old entry manually
+	oldTS := time.Now().UTC().Add(-40 * 24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
+	if _, err := s.db.Exec(`INSERT INTO audit_log (ts, user_email, remote_ip, action, target, detail) VALUES (?, 'bob@example.com', '127.0.0.1', 'server.drain', 'web/node2', 'old')`, oldTS); err != nil {
+		t.Fatalf("insert old audit: %v", err)
+	}
+
+	pruned, err := s.PruneAudit(30 * 24 * time.Hour)
+	if err != nil {
+		t.Fatalf("PruneAudit: %v", err)
+	}
+	if pruned != 1 {
+		t.Errorf("pruned = %d, want 1", pruned)
+	}
+
+	remaining, _ := s.ListAudit(AuditFilter{})
+	if len(remaining) != 1 || remaining[0].UserEmail != "alice@example.com" {
+		t.Errorf("remaining = %+v, want only alice's recent audit", remaining)
+	}
+}

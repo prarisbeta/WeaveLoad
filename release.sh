@@ -19,6 +19,9 @@ rm -rf "dist/haproxy-gui-${VER}" "dist/haproxy-gui-${VER}.tar.gz" "dist/haproxy-
 mkdir -p "$DIST/bin" "$DIST/deploy"
 cp bin/haproxy-gui "$DIST/bin/"
 cp deploy/*.sh deploy/*.service deploy/*.example deploy/*.snippet deploy/sudoers.haproxy-gui "$DIST/deploy/"
+if [ -d "deploy/errors" ]; then
+  cp -r deploy/errors "$DIST/deploy/"
+fi
 cp README.md "$DIST/"
 
 ( cd dist && tar czf "haproxy-gui-${VER}.tar.gz" "haproxy-gui-${VER}" )

@@ -2,7 +2,7 @@
 
 {{define "logs_content"}}
 <h1>Log Trafik</h1>
-<p class="hint">Catatan mentah setiap permintaan yang melewati sistem — gunakan untuk menelusuri masalah spesifik (mis. kenapa satu pengguna mendapat error). Defaultnya menampilkan 500 baris terbaru.</p>
+<p class="hint">Catatan mentah setiap permintaan yang melewati sistem. Gunakan untuk menelusuri masalah spesifik, misalnya mencari alasan seorang pengguna mendapat pesan galat. Defaultnya menampilkan 500 baris terbaru.</p>
 
 <div class="panel">
   <form method="get" action="/logs" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
@@ -38,11 +38,11 @@
     <tr><th>Waktu</th><th>Status</th><th>Baris log</th></tr>
     {{range .Lines}}
     <tr>
-      <td class="muted" style="white-space:nowrap">{{if .Time.IsZero}}—{{else}}{{.Time.Format "15:04:05"}}{{end}}</td>
+      <td class="muted" style="white-space:nowrap">{{if .Time.IsZero}}-{{else}}{{.Time.Format "15:04:05"}}{{end}}</td>
       <td>
         {{if .StatusCode}}
         <span class="badge {{if lt .StatusCode 300}}badge-up{{else if lt .StatusCode 400}}badge-nocheck{{else if lt .StatusCode 500}}badge-maint{{else}}badge-down{{end}}">{{.StatusCode}}</span>
-        {{else}}<span class="muted">—</span>{{end}}
+        {{else}}<span class="muted">-</span>{{end}}
       </td>
       <td style="font: 12px/1.4 ui-monospace, monospace; word-break: break-all;">{{.Raw}}</td>
     </tr>

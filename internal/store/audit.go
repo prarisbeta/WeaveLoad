@@ -82,3 +82,14 @@ func (s *Store) ListAudit(f AuditFilter) ([]AuditEntry, error) {
 	}
 	return out, rows.Err()
 }
+
+// PruneAudit removes audit entries older than the given duration (e.g. 30 days).
+// Returns the number of pruned rows.
+func (s *Store) PruneAudit(olderThan time.Duration) (int64, error) {
+	cutoff := time.Now().UTC().Add(-olderThan).Format("2006-01-02T15:04:05.000Z")
+	res, err := s.db.Exec(`DELETE FROM audit_log WHERE ts < ?`, cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("prune audit log: %w", err)
+	}
+	return res.RowsAffected()
+}

@@ -1,8 +1,8 @@
 {{define "dashboard.html"}}{{template "chrome_header" .}}{{template "dashboard_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "dashboard_content"}}
-<h1>Ringkasan Trafik</h1>
-<p class="hint">Kondisi jaringan saat ini, diperbarui otomatis setiap beberapa detik. Warna hijau berarti sehat, kuning berarti sengaja dinonaktifkan sementara, merah berarti butuh perhatian.</p>
+<h1>{{t .Language "dash_title"}}</h1>
+<p class="hint">{{t .Language "dash_hint"}}</p>
 <div id="dashboard-root" hx-get="/api/dashboard" hx-trigger="every 5s" hx-swap="innerHTML">
 {{template "dashboard_table.html" .}}
 </div>
@@ -13,27 +13,27 @@
 <div class="stat-row">
   <div class="stat-tile {{if eq $sum.FrontendsUp $sum.FrontendsTotal}}ok{{else}}bad{{end}}">
     <div class="stat-value">{{$sum.FrontendsUp}}/{{$sum.FrontendsTotal}}</div>
-    <div class="stat-label">Pintu masuk aktif</div>
+    <div class="stat-label">{{t $.Language "dash_frontends_up"}}</div>
   </div>
   <div class="stat-tile {{if eq $sum.BackendsUp $sum.BackendsTotal}}ok{{else}}bad{{end}}">
     <div class="stat-value">{{$sum.BackendsUp}}/{{$sum.BackendsTotal}}</div>
-    <div class="stat-label">Kelompok server sehat</div>
+    <div class="stat-label">{{t $.Language "dash_backends_up"}}</div>
   </div>
   <div class="stat-tile {{if eq $sum.ServersDown 0}}ok{{else}}bad{{end}}">
     <div class="stat-value">{{$sum.ServersDown}}</div>
-    <div class="stat-label">Server bermasalah</div>
+    <div class="stat-label">{{t $.Language "dash_servers_down"}}</div>
   </div>
   <div class="stat-tile">
     <div class="stat-value">{{$sum.Sessions}}</div>
-    <div class="stat-label">Koneksi aktif saat ini</div>
+    <div class="stat-label">{{t $.Language "dash_active_conns"}}</div>
   </div>
 </div>
 
 {{$sys := .Sys}}
 <div class="two-col">
   <div class="panel">
-    <h3>Sumber daya server</h3>
-    <p class="hint">Kondisi mesin yang menjalankan gateway ini — bukan trafik jaringan, tapi perangkat kerasnya sendiri.</p>
+    <h3>{{t $.Language "dash_sys_resources"}}</h3>
+    <p class="hint">{{t $.Language "dash_sys_hint"}}</p>
     <div class="chart-row">
       <div class="chart-label"><span>CPU</span><span class="muted">{{printf "%.0f" $sys.CPU.UsedPercent}}%</span></div>
       <div class="chart-track"><div class="chart-fill" style="width:{{printf "%.0f" $sys.CPU.UsedPercent}}%"></div></div>
@@ -51,18 +51,18 @@
   </div>
 
   <div class="panel">
-    <h3>Antarmuka jaringan</h3>
-    <p class="hint">Kartu jaringan fisik/virtual di server ini dan total lalu lintas sejak server terakhir menyala.</p>
+    <h3>{{t $.Language "dash_net_interfaces"}}</h3>
+    <p class="hint">{{t $.Language "dash_net_hint"}}</p>
     {{if not $sys.Nets}}
-    <div class="empty-state"><p>Tidak ada antarmuka jaringan yang terdeteksi.</p></div>
+    <div class="empty-state"><p>{{t $.Language "dash_no_net"}}</p></div>
     {{else}}
     <div class="table-scroll">
     <table>
-      <tr><th>Antarmuka</th><th>Status</th><th>Alamat</th><th>Terkirim / Diterima</th></tr>
+      <tr><th>{{t $.Language "dash_col_interface"}}</th><th>{{t $.Language "status"}}</th><th>{{t $.Language "dash_col_address"}}</th><th>{{t $.Language "dash_col_tx_rx"}}</th></tr>
       {{range $sys.Nets}}
       <tr>
         <td>{{.Name}}</td>
-        <td><span class="badge {{if .Up}}badge-up{{else}}badge-down{{end}}">{{if .Up}}Aktif{{else}}Nonaktif{{end}}</span></td>
+        <td><span class="badge {{if .Up}}badge-up{{else}}badge-down{{end}}">{{if .Up}}{{t $.Language "active"}}{{else}}{{t $.Language "inactive"}}{{end}}</span></td>
         <td class="muted">{{range .Addrs}}{{.}} {{end}}</td>
         <td class="muted">{{bytes .TxBytes}} / {{bytes .RxBytes}}</td>
       </tr>
@@ -75,40 +75,40 @@
 
 {{if not .Snapshot.Backends}}
 <div class="panel">
-  <h3>Pintu masuk trafik</h3>
-  <p class="hint">Ini adalah alamat yang menerima permintaan dari pengguna sebelum diteruskan ke server tujuan.</p>
+  <h3>{{t $.Language "dash_frontends_title"}}</h3>
+  <p class="hint">{{t $.Language "dash_frontends_hint"}}</p>
   {{if not .Snapshot.Frontends}}
-  <div class="empty-state"><h3>Belum ada data</h3><p>Sistem belum melaporkan pintu masuk trafik apa pun.</p></div>
+  <div class="empty-state"><h3>{{t $.Language "dash_no_frontends"}}</h3></div>
   {{else}}
   <div class="table-scroll">
   <table>
-    <tr><th>Nama</th><th>Status</th></tr>
+    <tr><th>{{t $.Language "name"}}</th><th>{{t $.Language "status"}}</th></tr>
     {{range .Snapshot.Frontends}}
     <tr>
       <td>{{.Name}}</td>
-      <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{if eq .Status "OPEN"}}Aktif{{else}}{{.Status}}{{end}}</span></td>
+      <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{if eq .Status "OPEN"}}{{t $.Language "active"}}{{else}}{{.Status}}{{end}}</span></td>
     </tr>
     {{end}}
   </table>
   </div>
   {{end}}
 </div>
-<div class="panel"><div class="empty-state"><h3>Belum ada kelompok server</h3><p>Belum ada backend yang terdaftar untuk menerima trafik.</p></div></div>
+<div class="panel"><div class="empty-state"><h3>{{t $.Language "dash_no_backends"}}</h3></div></div>
 {{else}}
 <div class="two-col">
   <div class="panel">
-    <h3>Pintu masuk trafik</h3>
-    <p class="hint">Ini adalah alamat yang menerima permintaan dari pengguna sebelum diteruskan ke server tujuan.</p>
+    <h3>{{t $.Language "dash_frontends_title"}}</h3>
+    <p class="hint">{{t $.Language "dash_frontends_hint"}}</p>
     {{if not .Snapshot.Frontends}}
-    <div class="empty-state"><h3>Belum ada data</h3><p>Sistem belum melaporkan pintu masuk trafik apa pun.</p></div>
+    <div class="empty-state"><h3>{{t $.Language "dash_no_frontends"}}</h3></div>
     {{else}}
     <div class="table-scroll">
     <table>
-      <tr><th>Nama</th><th>Status</th></tr>
+      <tr><th>{{t $.Language "name"}}</th><th>{{t $.Language "status"}}</th></tr>
       {{range .Snapshot.Frontends}}
       <tr>
         <td>{{.Name}}</td>
-        <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{if eq .Status "OPEN"}}Aktif{{else}}{{.Status}}{{end}}</span></td>
+        <td><span class="badge {{if eq .Status "OPEN"}}badge-up{{else}}badge-down{{end}}">{{if eq .Status "OPEN"}}{{t $.Language "active"}}{{else}}{{.Status}}{{end}}</span></td>
       </tr>
       {{end}}
     </table>

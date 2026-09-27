@@ -32,6 +32,9 @@ func (f *fakeRuntime) SetServerState(backend, server string, state runtime.Serve
 	if f.err != nil {
 		return f.err
 	}
+	if f.states == nil {
+		f.states = make(map[string]runtime.ServerState)
+	}
 	f.states[backend+"/"+server] = state
 	return nil
 }
@@ -39,6 +42,9 @@ func (f *fakeRuntime) SetServerState(backend, server string, state runtime.Serve
 func (f *fakeRuntime) SetServerWeight(backend, server, weight string) error {
 	if f.err != nil {
 		return f.err
+	}
+	if f.weights == nil {
+		f.weights = make(map[string]string)
 	}
 	f.weights[backend+"/"+server] = weight
 	return nil

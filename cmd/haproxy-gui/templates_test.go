@@ -12,6 +12,7 @@ import (
 
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/i18n"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
 	"haproxy-gui/internal/web"
@@ -32,6 +33,8 @@ func (f fileConfig) Apply(string) (cfgfile.ApplyResult, error) {
 	return cfgfile.ApplyResult{OK: true}, nil
 }
 func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) { return nil, nil }
+func (f fileConfig) GetBackupPath(name string) (string, error) { return "", nil }
+func (f fileConfig) DeleteBackup(name string) error { return nil }
 
 type fixedSettings struct{ redis store.RedisSettings }
 
@@ -61,6 +64,23 @@ func (fixedSecurity) GetIPRisk(ip string) (store.IPRisk, error) {
 func (fixedSecurity) ListTopRisk(n int) ([]store.IPRisk, error) {
 	return []store.IPRisk{{IP: "10.0.0.9", Score: 42, State: "suspicious"}}, nil
 }
+func (fixedSecurity) CreateIncident(store.Incident, []int64) (int64, error) { return 1, nil }
+func (fixedSecurity) GetIncident(id int64) (store.Incident, []store.SecurityEvent, []store.IncidentNote, error) {
+	return store.Incident{ID: 1, Title: "Serangan Brute Force", Severity: "high", Status: "open", Owner: "admin@cni.net.id"},
+		[]store.SecurityEvent{{ID: 1, Rule: "brute_force", Severity: "high", Subject: "10.0.0.9", Count: 12}},
+		[]store.IncidentNote{{ID: 1, IncidentID: 1, Author: "admin@cni.net.id", Content: "Analisis awal berjalan"}},
+		nil
+}
+func (fixedSecurity) ListIncidents(store.IncidentFilter) ([]store.Incident, int, error) {
+	return []store.Incident{{ID: 1, Title: "Serangan Brute Force", Severity: "high", Status: "open", Owner: "admin@cni.net.id"}}, 1, nil
+}
+func (fixedSecurity) UpdateIncidentStatus(int64, string, string, string, string) error { return nil }
+func (fixedSecurity) AddIncidentNote(int64, string, string) (int64, error) { return 1, nil }
+func (fixedSecurity) LinkEventsToIncident(int64, []int64) error { return nil }
+func (fixedSecurity) UnlinkEventFromIncident(int64) error { return nil }
+func (fixedSecurity) CorrelateCandidateEvents(string, string, int) ([]store.SecurityEvent, error) {
+	return nil, nil
+}
 
 type fixedStats string
 
@@ -81,6 +101,7 @@ func realTemplates(t *testing.T) *template.Template {
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"upper": strings.ToUpper,
 		"bytes": sysinfo.FormatBytes,
+		"t":     i18n.T,
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		t.Fatal(err)
@@ -114,6 +135,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("GET /security", &web.SecurityHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
 	mux.Handle("GET /security/events/{id}", &web.SecurityEventDetail{Store: fixedSecurity{}, Templates: realTemplates(t)})
 	mux.Handle("GET /security/ip/{ip}", &web.SecurityIPHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
+	mux.Handle("GET /incidents", &web.IncidentsHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
+	mux.Handle("GET /incidents/new", &web.IncidentNewHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
+	mux.Handle("GET /incidents/{id}", &web.IncidentDetailHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
 
 	pages := []struct {
 		file, method, target string
@@ -140,6 +164,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"security.html", http.MethodGet, "/security", nil, "10.0.0.9"},
 		{"security_event.html", http.MethodGet, "/security/events/1", nil, "brute_force"},
 		{"security_ip.html", http.MethodGet, "/security/ip/10.0.0.9", nil, "10.0.0.9"},
+		{"incidents.html", http.MethodGet, "/incidents", nil, "Serangan Brute Force"},
+		{"incident_new.html", http.MethodGet, "/incidents/new", nil, "Buat Insiden Baru"},
+		{"incident_detail.html", http.MethodGet, "/incidents/1", nil, "Serangan Brute Force"},
 	}
 	for _, p := range pages {
 		var req *http.Request

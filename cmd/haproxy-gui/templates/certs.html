@@ -31,7 +31,7 @@
 {{if .CanUpload}}
 <div class="panel">
   <h3>Tambah atau ganti sertifikat</h3>
-  <p class="hint">Unggah satu berkas PEM berisi sertifikat, rantai sertifikat, dan kunci privat digabung jadi satu. Setelah diunggah, sertifikat belum otomatis aktif — hubungkan lewat menu Konfigurasi.</p>
+  <p class="hint">Unggah satu berkas PEM berisi sertifikat, rantai sertifikat, dan kunci privat digabung jadi satu. Setelah diunggah, sertifikat belum otomatis aktif; hubungkan lewat menu Konfigurasi.</p>
   <form hx-encoding="multipart/form-data" hx-post="/api/certs/upload" hx-target="#upload-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
     <p>Nama berkas (harus diakhiri .pem): <input type="text" name="filename" required></p>
     <p>Berkas PEM: <input type="file" name="bundle" required></p>

@@ -285,7 +285,8 @@ func rateLimitSpecFromForm(r *http.Request) haproxycfg.RateLimitSpec {
 	if action == "" {
 		action = "deny"
 	}
-	return haproxycfg.RateLimitSpec{RPS: rps, Action: action}
+	ignoreCF := r.FormValue("ignore_cf") == "1" || r.FormValue("ignore_cf") == "true"
+	return haproxycfg.RateLimitSpec{RPS: rps, Action: action, IgnoreCloudflare: ignoreCF}
 }
 
 type rateLimitPreviewData struct {
@@ -438,3 +439,67 @@ func (s *PoolService) applyChange(w http.ResponseWriter, r *http.Request, action
 	w.Header().Set("HX-Trigger", memberChangedEvent)
 	renderTemplate(w, s.Templates, "pool_result.html", poolResult{OK: true, Message: okMsg, Output: res.Output})
 }
+
+// PoolToggleStateAction enables or disables an entire pool.
+type PoolToggleStateAction struct{ *PoolService }
+
+func (h *PoolToggleStateAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	pool := r.PathValue("name")
+	disabledStr := r.FormValue("disabled")
+	disabled := disabledStr == "true" || disabledStr == "1"
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	updated, err := haproxycfg.SetPoolDisabled(content, pool, disabled)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+
+	actionName := "pool.enable"
+	actionDesc := fmt.Sprintf("Kelompok %s diaktifkan kembali.", pool)
+	if disabled {
+		actionName = "pool.disable"
+		actionDesc = fmt.Sprintf("Kelompok %s dinonaktifkan.", pool)
+	}
+
+	h.applyChange(w, r, actionName, pool, actionDesc, updated, actionDesc)
+}
+
+// PoolDeleteAction deletes an entire pool and cleans up domain mappings.
+type PoolDeleteAction struct{ *PoolService }
+
+func (h *PoolDeleteAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	pool := r.PathValue("name")
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	content, err := h.Config.Active()
+	if err != nil {
+		http.Error(w, "Konfigurasi tidak bisa dibaca: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	updated, err := haproxycfg.DeletePool(content, pool)
+	if err != nil {
+		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
+		return
+	}
+
+	actionDesc := fmt.Sprintf("Kelompok %s berhasil dihapus dari konfigurasi.", pool)
+	h.applyChange(w, r, "pool.delete", pool, "deleted pool "+pool, updated, actionDesc)
+}
+
+

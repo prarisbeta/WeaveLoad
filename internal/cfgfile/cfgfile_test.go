@@ -292,6 +292,7 @@ func TestRestart_ReportsFailureWithoutError(t *testing.T) {
 
 func TestListBackups_SortedNewestFirst(t *testing.T) {
 	s := newTestStore(t)
+	_ = os.MkdirAll(s.BackupDir, 0o750)
 	older := filepath.Join(s.BackupDir, "haproxy.cfg.bak-100")
 	newer := filepath.Join(s.BackupDir, "haproxy.cfg.bak-200")
 	for _, p := range []string{older, newer} {
@@ -310,13 +311,14 @@ func TestListBackups_SortedNewestFirst(t *testing.T) {
 	if len(backups) != 2 {
 		t.Fatalf("backups = %d, want 2", len(backups))
 	}
-	if backups[0].Path != newer {
-		t.Errorf("newest backup = %q, want %q", backups[0].Path, newer)
+	if backups[0].Path != newer || backups[0].Name != "haproxy.cfg.bak-200" {
+		t.Errorf("newest backup = %+v, want %q", backups[0], newer)
 	}
 }
 
 func TestListBackups_IgnoresUnrelatedFiles(t *testing.T) {
 	s := newTestStore(t)
+	_ = os.MkdirAll(s.BackupDir, 0o750)
 	if err := os.WriteFile(filepath.Join(s.BackupDir, "dhparam.pem"), []byte("x"), 0o640); err != nil {
 		t.Fatal(err)
 	}
@@ -326,5 +328,35 @@ func TestListBackups_IgnoresUnrelatedFiles(t *testing.T) {
 	}
 	if len(backups) != 0 {
 		t.Errorf("backups = %+v, want none", backups)
+	}
+}
+
+func TestGetBackupPath_And_DeleteBackup(t *testing.T) {
+	s := newTestStore(t)
+	_ = os.MkdirAll(s.BackupDir, 0o750)
+	target := filepath.Join(s.BackupDir, "haproxy.cfg.bak-12345")
+	if err := os.WriteFile(target, []byte("backup content"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := s.GetBackupPath("haproxy.cfg.bak-12345")
+	if err != nil {
+		t.Fatalf("GetBackupPath: %v", err)
+	}
+	if p != target {
+		t.Errorf("GetBackupPath = %q, want %q", p, target)
+	}
+
+	// Rejects invalid names / traversal attempts
+	if _, err := s.GetBackupPath("../../../etc/passwd"); err == nil {
+		t.Error("GetBackupPath should reject traversal path")
+	}
+
+	// Delete
+	if err := s.DeleteBackup("haproxy.cfg.bak-12345"); err != nil {
+		t.Fatalf("DeleteBackup: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("file still exists after DeleteBackup")
 	}
 }

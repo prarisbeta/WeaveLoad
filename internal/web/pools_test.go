@@ -137,6 +137,38 @@ func TestNodeAddRedirect(t *testing.T) {
 	}
 }
 
+func TestNodeActionHandler_SetsStateOnAllUsesAndAudits(t *testing.T) {
+	audit := &fakeAudit{}
+	rt := &fakeRuntime{}
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, audit)
+	svc.Runtime = rt
+
+	form := url.Values{"host": {"10.0.0.1"}, "action": {"drain"}}
+	req := adminReq(http.MethodPost, "/api/nodes/action", form)
+	rec := serve(&NodeActionHandler{svc}, "POST /api/nodes/action", req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("code=%d want 303", rec.Code)
+	}
+	if len(audit.entries) != 1 {
+		t.Fatalf("audit entries = %d, want 1", len(audit.entries))
+	}
+	if audit.entries[0].Action != "node.drain" || audit.entries[0].Target != "10.0.0.1" {
+		t.Errorf("audit = %+v", audit.entries[0])
+	}
+}
+
+func TestNodeActionHandler_RejectsBadAction(t *testing.T) {
+	svc := newPoolService(t, &fakeConfigStore{active: poolCfg}, &fakeAudit{})
+	form := url.Values{"host": {"10.0.0.1"}, "action": {"destroy"}}
+	req := adminReq(http.MethodPost, "/api/nodes/action", form)
+	rec := serve(&NodeActionHandler{svc}, "POST /api/nodes/action", req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d want 400", rec.Code)
+	}
+}
+
 func memberForm() url.Values {
 	return url.Values{"name": {"node03"}, "host": {"10.0.0.3"}, "port": {"443"}, "clone_from": {"node01"}}
 }
@@ -485,6 +517,26 @@ func TestRateLimitApply_AppliesAndAudits(t *testing.T) {
 	}
 	if len(audit.entries) != 1 || audit.entries[0].Action != "pool.rate_limit.set" || audit.entries[0].Target != "web" {
 		t.Errorf("audit = %+v", audit.entries)
+	}
+}
+
+func TestRateLimitApply_CloudflareSupport(t *testing.T) {
+	cs := &fakeConfigStore{
+		active: poolCfg, validateRes: cfgfile.ValidateResult{OK: true},
+		draftPath: "/staging/d.cfg", applyRes: cfgfile.ApplyResult{OK: true},
+	}
+	audit := &fakeAudit{}
+	svc := newPoolService(t, cs, audit)
+	form := rateLimitForm()
+	form.Set("ignore_cf", "1")
+	rec := serve(&RateLimitApply{svc}, "POST /api/pools/{name}/rate-limit/apply",
+		adminReq(http.MethodPost, "/api/pools/web/rate-limit/apply", form))
+
+	if !strings.Contains(rec.Body.String(), "RESULT ok=true") {
+		t.Fatalf("body = %q", rec.Body.String())
+	}
+	if len(cs.savedDrafts) != 1 || !strings.Contains(cs.savedDrafts[0], "ignore_cf=true") || !strings.Contains(cs.savedDrafts[0], "is_cloudflare") {
+		t.Errorf("draft missing cloudflare rules = %v", cs.savedDrafts)
 	}
 }
 

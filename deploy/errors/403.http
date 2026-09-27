@@ -1,0 +1,239 @@
+HTTP/1.1 403 Forbidden
+Content-Type: text/html; charset=UTF-8
+Cache-Control: no-cache, no-store, must-revalidate
+Connection: close
+
+<!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+<!--[if IE 7]>    <html class="no-js ie7 oldie" lang="en-US"> <![endif]-->
+<!--[if IE 8]>    <html class="no-js ie8 oldie" lang="en-US"> <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en-US"> <!--<![endif]-->
+<head>
+<title>Access denied | Error 403</title>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --text: #404040;
+    --heading: #222222;
+    --border: #dedede;
+    --card-bg: #ffffff;
+    --card-border: #e0e0e0;
+    --ray-bg: #eaeaea;
+    --ray-text: #222222;
+    --btn-bg: #0051c3;
+    --btn-hover: #003e96;
+    --accent: #f38020;
+    --error-badge: #d9383a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1217;
+      --text: #c9d1d9;
+      --heading: #f0f6fc;
+      --border: #30363d;
+      --card-bg: #161b22;
+      --card-border: #30363d;
+      --ray-bg: #21262d;
+      --ray-text: #58a6ff;
+      --btn-bg: #1f6feb;
+      --btn-hover: #388bfd;
+      --accent: #f0883e;
+      --error-badge: #f85149;
+    }
+  }
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background-color: var(--bg);
+    font-size: 15px;
+    line-height: 1.6;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+  .cf-container {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 40px 24px 60px;
+  }
+  .cf-header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 36px;
+  }
+  .cf-error-title {
+    font-size: 32px;
+    font-weight: 400;
+    color: var(--heading);
+    margin: 0 0 6px 0;
+    line-height: 1.2;
+  }
+  .cf-error-code {
+    font-size: 14px;
+    font-weight: 600;
+    color: #8b949e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .cf-badge-forbidden {
+    display: inline-block;
+    background-color: var(--error-badge);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .cf-columns {
+    display: flex;
+    gap: 48px;
+    margin-bottom: 40px;
+  }
+  .cf-column {
+    flex: 1;
+  }
+  .cf-column h2 {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--heading);
+    margin: 0 0 14px 0;
+  }
+  .cf-column p {
+    margin: 0 0 16px 0;
+    color: var(--text);
+    font-size: 14.5px;
+  }
+  .cf-highlight-box {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-left: 4px solid var(--accent);
+    border-radius: 4px;
+    padding: 16px 18px;
+    margin-top: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .cf-highlight-box p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--text);
+  }
+  .cf-footer {
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+    margin-top: 40px;
+    font-size: 13px;
+    color: #8b949e;
+  }
+  .cf-footer-item {
+    margin-bottom: 6px;
+  }
+  .cf-footer-item strong {
+    color: var(--heading);
+  }
+  .cf-ray-id {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    color: var(--ray-text);
+    font-size: 13px;
+    background: var(--ray-bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .cf-btn {
+    display: inline-block;
+    padding: 9px 18px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #ffffff;
+    background-color: var(--btn-bg);
+    border: 1px solid var(--btn-bg);
+    border-radius: 4px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background-color .15s ease;
+  }
+  .cf-btn:hover {
+    background-color: var(--btn-hover);
+  }
+  @media (max-width: 768px) {
+    .cf-columns {
+      flex-direction: column;
+      gap: 28px;
+    }
+    .cf-error-title {
+      font-size: 26px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="cf-container">
+  <div class="cf-header">
+    <div class="cf-error-code">Error 403 <span class="cf-badge-forbidden">Forbidden</span></div>
+    <h1 class="cf-error-title">Access denied</h1>
+    <div style="font-size: 14px; color: #666; margin-top: 4px;">
+      This website is utilizing security services to protect against unauthorized access.
+    </div>
+  </div>
+
+  <div class="cf-columns">
+    <div class="cf-column">
+      <h2>What happened?</h2>
+      <p>
+        The security engine has blocked this request. The action you performed triggered strict security policies or your IP address is not permitted to access this resource.
+      </p>
+      <p>
+        Common triggers include requesting administrative endpoints from untrusted networks, triggering automated rate limits, or failing security verification.
+      </p>
+    </div>
+
+    <div class="cf-column">
+      <h2>What can I do?</h2>
+      <p>
+        <strong>If you are a visitor:</strong><br>
+        Please try again later or contact the website administrator to request access. Be sure to provide the Ray ID and details shown at the bottom of this page.
+      </p>
+      <p>
+        <strong>If you are the website owner:</strong><br>
+        Review your Firewall & Access Control Rules to confirm whether this request matches an active block filter.
+      </p>
+      <div style="margin-top: 20px;">
+        <button class="cf-btn" onclick="location.reload()">Reload Page</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cf-highlight-box">
+    <p>
+      <strong>Security Notice:</strong> All activities are logged and monitored for unauthorized access attempts. Continued violations may result in a permanent IP block.
+    </p>
+  </div>
+
+  <div class="cf-footer">
+    <div class="cf-footer-item">
+      Cloud Performance &amp; Security Layer &bull; Incident ID: <span class="cf-ray-id" id="ray-id">8f219c4b78a10e42</span>
+    </div>
+    <div class="cf-footer-item">
+      Timestamp: <span id="cf-time">2026-09-27 09:57:00 UTC</span> &bull; Your IP: <em>Restricted / Hidden</em>
+    </div>
+  </div>
+</div>
+
+<script>
+  try {
+    var now = new Date();
+    document.getElementById('cf-time').textContent = now.toISOString().replace('T', ' ').substr(0, 19) + ' UTC';
+    var hash = Array.prototype.map.call(new Uint8Array(8), function(x){return ('00'+((Math.random()*256)|0).toString(16)).slice(-2)}).join('');
+    document.getElementById('ray-id').textContent = '8f' + hash;
+  } catch(e){}
+</script>
+
+</body>
+</html>

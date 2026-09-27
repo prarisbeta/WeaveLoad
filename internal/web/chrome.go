@@ -18,6 +18,7 @@ type Chrome struct {
 	// Active is the nav key of the current page ("dashboard", "config",
 	// "certs", "acl", "audit", "users"), used to highlight it in chrome_nav.
 	Active string
+	Language string
 }
 
 // NewChrome builds Chrome for the current request. Call once per handler,
@@ -25,5 +26,19 @@ type Chrome struct {
 func NewChrome(r *http.Request, active string) Chrome {
 	u, _ := auth.UserFromContext(r.Context())
 	sess, _ := auth.SessionFromContext(r.Context())
-	return Chrome{User: u, CSRFToken: sess.CSRFToken, Active: active}
+	lang := u.Language
+	if lang == "" {
+		al := r.Header.Get("Accept-Language")
+		if len(al) >= 2 {
+			prefix := al[0:2]
+			if prefix == "id" || prefix == "en" || prefix == "zh" || prefix == "ja" {
+				lang = prefix
+			} else {
+				lang = "id"
+			}
+		} else {
+			lang = "id" // default
+		}
+	}
+	return Chrome{User: u, CSRFToken: sess.CSRFToken, Active: active, Language: lang}
 }

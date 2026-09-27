@@ -212,7 +212,7 @@ func (h *AclAddHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Action: "acl.add", Target: target,
 			Detail: "added at runtime but FAILED to persist to file (will be lost on reload): " + err.Error(),
 		})
-		http.Error(w, "added at runtime but failed to persist to file — this entry will be lost on the next reload: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "added at runtime but failed to persist to file. This entry will be lost on the next reload: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -263,7 +263,7 @@ func (h *AclEditHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !mf.HasValue {
-		http.Error(w, "this list has no value to edit — delete and re-add instead", http.StatusBadRequest)
+		http.Error(w, "this list has no value to edit, delete and re-add instead", http.StatusBadRequest)
 		return
 	}
 	if key == "" {
@@ -293,7 +293,7 @@ func (h *AclEditHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Action: "acl.edit", Target: target,
 			Detail: "updated at runtime but FAILED to persist to file (old value will return on the next reload): " + err.Error(),
 		})
-		http.Error(w, "updated at runtime but failed to update the file — the old value will come back on the next reload: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "updated at runtime but failed to update the file. The old value will come back on the next reload: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -386,7 +386,7 @@ func (h *AclDeleteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Action: "acl.delete", Target: target,
 			Detail: "removed at runtime but FAILED to persist to file (entry will return on the next reload): " + err.Error(),
 		})
-		http.Error(w, "removed at runtime but failed to update the file — this entry will come back on the next reload: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "removed at runtime but failed to update the file. This entry will come back on the next reload: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

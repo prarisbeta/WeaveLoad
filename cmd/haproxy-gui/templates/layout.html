@@ -3,7 +3,7 @@
   template (e.g. "dashboard_content", "users_content"). They are NOT called
   "layout.html" + a shared {{block "content" .}} on purpose: html/template
   parses every *.html file into one shared namespace, so two files defining
-  a block with the same name ("content") silently overwrite each other —
+  a block with the same name ("content") silently overwrite each other;
   whichever file is parsed last wins for every page. Each page must define
   its own distinctly-named content template instead.
 
@@ -12,7 +12,7 @@
   this template as promoted fields.
 */}}
 {{/*
-  role_label maps a store.Role value to its Indonesian display name — the
+  role_label maps a store.Role value to its Indonesian display name: the
   one place this mapping lives, so the sidebar user card and the Pengguna
   page's role list/dropdown can never show different labels for the same
   role.
@@ -22,7 +22,7 @@
 {{/*
   role_options renders every assignable role as an <option>, marking . (the
   currently selected role, or "" for the new-user form's no-selection case)
-  as selected — the one place the 8 roles' <select> markup lives, used by
+  as selected: the one place the 8 roles' <select> markup lives, used by
   both the new-user form and the per-row role changer in users.html.
 */}}
 {{define "role_options"}}
@@ -41,7 +41,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Konsol Gateway</title>
+<meta name="csrf-token" content="{{.CSRFToken}}">
+<title>{{t .Language "brand_name"}}</title>
+<script>
+  (function(){
+    var t = localStorage.getItem("gateway_theme");
+    if (t) { document.documentElement.setAttribute("data-theme", t); }
+    else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  })();
+</script>
 <style>
 :root {
   --bg: #f6f8fb;
@@ -63,6 +73,46 @@
   --radius-control: 8px;
   --shadow-card: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
   --sidebar-w: 236px;
+}
+
+[data-theme="dark"] {
+  --bg: #0b1120;
+  --surface: #131d31;
+  --surface-2: #1e293b;
+  --border: #2c3a52;
+  --ink: #f1f5f9;
+  --ink-muted: #94a3b8;
+  --accent: #22d3ee;
+  --accent-ink: #0b1120;
+  --accent-soft: rgba(34, 211, 238, 0.15);
+  --ok: #22c55e;
+  --ok-soft: rgba(34, 197, 94, 0.15);
+  --warn: #f59e0b;
+  --warn-soft: rgba(245, 158, 11, 0.15);
+  --bad: #ef4444;
+  --bad-soft: rgba(239, 68, 68, 0.15);
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1120;
+    --surface: #131d31;
+    --surface-2: #1e293b;
+    --border: #2c3a52;
+    --ink: #f1f5f9;
+    --ink-muted: #94a3b8;
+    --accent: #22d3ee;
+    --accent-ink: #0b1120;
+    --accent-soft: rgba(34, 211, 238, 0.15);
+    --ok: #22c55e;
+    --ok-soft: rgba(34, 197, 94, 0.15);
+    --warn: #f59e0b;
+    --warn-soft: rgba(245, 158, 11, 0.15);
+    --bad: #ef4444;
+    --bad-soft: rgba(239, 68, 68, 0.15);
+    --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  }
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -158,16 +208,29 @@ tr:last-child td { border-bottom: 0; }
 .badge-maint { background: var(--warn-soft); color: var(--warn); }
 .badge-nocheck { background: var(--surface-2); color: var(--ink-muted); }
 
-button, .btn {
-  background: var(--surface); border: 1px solid var(--border); color: var(--ink);
-  padding: 7px 13px; border-radius: var(--radius-control); cursor: pointer; font-size: 13px; font-weight: 500;
-  display: inline-block; text-decoration: none; line-height: 1.4;
+button, .btn, .button, a.btn, a.button {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
+  padding: 7px 14px; border-radius: var(--radius-control); cursor: pointer; font-size: 13px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  text-decoration: none; line-height: 1.4; transition: all 0.15s ease;
+  white-space: nowrap; box-sizing: border-box;
 }
-button:hover, .btn:hover { border-color: var(--accent); color: var(--accent); }
-.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.primary:hover { filter: brightness(1.06); color: var(--accent-ink); }
-button.danger:hover { border-color: var(--bad); color: var(--bad); }
-button:disabled { opacity: .5; cursor: not-allowed; }
+button:hover, .btn:hover, .button:hover, a.btn:hover, a.button:hover {
+  border-color: var(--accent); color: var(--ink); background: var(--surface);
+}
+.primary, button.primary, .btn.primary, .button.primary, a.primary {
+  background: var(--accent) !important; border-color: var(--accent) !important; color: var(--accent-ink) !important; font-weight: 600;
+}
+.primary:hover, button.primary:hover, .btn.primary:hover, .button.primary:hover, a.primary:hover {
+  filter: brightness(1.08); color: var(--accent-ink) !important;
+}
+.danger, button.danger, .btn.danger, .button.danger {
+  color: var(--bad); border-color: rgba(239, 68, 68, 0.3);
+}
+button.danger:hover, .btn.danger:hover, .button.danger:hover {
+  border-color: var(--bad); background: var(--bad-soft); color: var(--bad);
+}
+button:disabled, .btn:disabled, .button:disabled { opacity: .5; cursor: not-allowed; }
 
 input[type=text], input[type=file], select, textarea {
   font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
@@ -300,64 +363,68 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
     <div class="nav-group">
       <a class="nav-link{{if eq .Active "dashboard"}} active{{end}}" href="/">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2-8 4 16 2-8h6"/></svg>
-        Ringkasan Trafik
+        {{t .Language "nav_dashboard"}}
       </a>
       <a class="nav-link{{if eq .Active "pools"}} active{{end}}" href="/pools">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="5" rx="1.5"/><rect x="3" y="15" width="18" height="5" rx="1.5"/><path d="M7 6.5h.01M7 17.5h.01"/></svg>
-        Pools
+        {{t .Language "nav_pools"}}
       </a>
       <a class="nav-link{{if eq .Active "nodes"}} active{{end}}" href="/nodes">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M12 7.5v4M12 11.5L6.5 17M12 11.5l5.5 5.5"/></svg>
-        Node
+        {{t .Language "nav_nodes"}}
       </a>
       {{if .User.Role.Can "manage_config"}}
       <a class="nav-link{{if eq .Active "config"}} active{{end}}" href="/config">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v6H4zM4 14h10v6H4z"/></svg>
-        Konfigurasi
+        {{t .Language "nav_config"}}
       </a>
       {{end}}
       <a class="nav-link{{if eq .Active "certs"}} active{{end}}" href="/certs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
-        Sertifikat SSL
+        {{t .Language "nav_certs"}}
       </a>
       <a class="nav-link{{if eq .Active "acl"}} active{{end}}" href="/acl">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
-        Aturan &amp; Rute
+        {{t .Language "nav_acl"}}
       </a>
       {{if .User.Role.Can "view_audit"}}
       <a class="nav-link{{if eq .Active "audit"}} active{{end}}" href="/audit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6"/></svg>
-        Riwayat Aktivitas
+        {{t .Language "nav_audit"}}
       </a>
       {{end}}
       {{if .User.Role.Can "view_logs"}}
       <a class="nav-link{{if eq .Active "logs"}} active{{end}}" href="/logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h4"/></svg>
-        Log Trafik
+        {{t .Language "nav_logs"}}
       </a>
       {{end}}
       {{if .User.Role.Can "view_queue"}}
       <a class="nav-link{{if eq .Active "queue"}} active{{end}}" href="/queue">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="12" height="4" rx="1"/><path d="M7 6h10"/></svg>
-        Antrean
+        {{t .Language "nav_queue"}}
       </a>
       {{end}}
       {{if .User.Role.Can "view_security"}}
       <a class="nav-link{{if eq .Active "security"}} active{{end}}" href="/security">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z"/></svg>
-        Keamanan
+        {{t .Language "nav_security"}}
+      </a>
+      <a class="nav-link{{if eq .Active "incidents"}} active{{end}}" href="/incidents">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>
+        {{t .Language "nav_incidents"}}
       </a>
       {{end}}
       {{if .User.Role.Can "manage_users"}}
       <a class="nav-link{{if eq .Active "users"}} active{{end}}" href="/users">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 8.2c1.4.3 2.5 1.6 2.5 3.1M16.5 14c2 .4 3.5 2 3.5 4"/></svg>
-        Pengguna
+        {{t .Language "nav_users"}}
       </a>
       {{end}}
       {{if .User.Role.Can "manage_settings"}}
       <a class="nav-link{{if eq .Active "settings"}} active{{end}}" href="/settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V19a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H4a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H10a1.65 1.65 0 001-1.51V4a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V10a1.65 1.65 0 001.51 1H20a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-        Pengaturan
+        {{t .Language "nav_settings"}}
       </a>
       {{end}}
     </div>
@@ -370,21 +437,35 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
           <div class="user-role">{{template "role_label" .User.Role}}</div>
         </span>
       </div>
+      <div style="padding: 0 8px 6px;">
+        <button type="button" id="theme-toggle-btn" onclick="toggleGatewayTheme()" style="width:100%; padding: 5px 8px; font-size: 11px; font-weight: 500; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-control); color:var(--ink); cursor:pointer;">
+          <span id="theme-icon">🌓</span> <span id="theme-text">Mode Tema / Theme</span>
+        </button>
+      </div>
+      <form class="language-form" method="post" action="/api/profile/language" style="padding: 0 8px 6px;">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <select name="language" onchange="this.form.submit()" style="padding: 4px; font-size: 11px; width: 100%; cursor: pointer; background:var(--surface); color:var(--ink); border:1px solid var(--border); border-radius:var(--radius-control);">
+          <option value="id" {{if eq .Language "id"}}selected{{end}}>ID (Bahasa Indonesia)</option>
+          <option value="en" {{if eq .Language "en"}}selected{{end}}>EN (English)</option>
+          <option value="zh" {{if eq .Language "zh"}}selected{{end}}>ZH (中文 / Chinese)</option>
+          <option value="ja" {{if eq .Language "ja"}}selected{{end}}>JA (日本語 / Japanese)</option>
+        </select>
+      </form>
       <form class="logout-form" method="post" action="/auth/logout">
-        <button type="submit" class="logout-btn">Keluar dari akun</button>
+        <button type="submit" class="logout-btn">{{t .Language "logout"}}</button>
       </form>
     </div>
   </nav>
 
   <div class="main-col">
     <div class="topbar">
-      <label for="nav-toggle" class="hamburger" role="button" tabindex="0" aria-label="Buka menu navigasi">
+      <label for="nav-toggle" class="hamburger" role="button" tabindex="0" aria-label="{{t .Language "open_nav"}}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
       </label>
       <span class="brand-mark" style="width:26px;height:26px;font-size:12px;">G</span>
-      <strong>Konsol Gateway</strong>
+      <strong>{{t .Language "brand_name"}}</strong>
     </div>
-    <a class="skip-link" href="#main-content">Langsung ke konten</a>
+    <a class="skip-link" href="#main-content">{{t .Language "skip_to_content"}}</a>
     <main id="main-content">
 {{end}}
 
@@ -392,6 +473,14 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
     </main>
   </div>
 </div>
+<script>
+  function toggleGatewayTheme() {
+    var curr = document.documentElement.getAttribute("data-theme") || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    var next = curr === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("gateway_theme", next);
+  }
+</script>
 <script src="/static/htmx.min.js"></script>
 <script src="/static/app.js"></script>
 </body>

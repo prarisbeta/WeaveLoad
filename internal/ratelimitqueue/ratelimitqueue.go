@@ -20,10 +20,11 @@ const QueueKey = "haproxy:ratelimit:events"
 
 // Event is one rate-limit rejection worth recording.
 type Event struct {
-	Time   time.Time `json:"time"`
-	Pool   string    `json:"pool"`
-	Status int       `json:"status"`
-	Raw    string    `json:"raw"`
+	Time     time.Time `json:"time"`
+	Pool     string    `json:"pool"`
+	ClientIP string    `json:"client_ip,omitempty"`
+	Status   int       `json:"status"`
+	Raw      string    `json:"raw"`
 }
 
 // Extract reads path's log for today and returns, oldest first, every line
@@ -53,7 +54,7 @@ func Extract(path string, since time.Time, limitedPools map[string]bool, blockSt
 		if pool == "" {
 			continue
 		}
-		events = append(events, Event{Time: l.Time, Pool: pool, Status: l.StatusCode, Raw: l.Raw})
+		events = append(events, Event{Time: l.Time, Pool: pool, ClientIP: l.ClientIP, Status: l.StatusCode, Raw: l.Raw})
 		if l.Time.After(newest) {
 			newest = l.Time
 		}

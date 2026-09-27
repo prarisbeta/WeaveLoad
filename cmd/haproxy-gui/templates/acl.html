@@ -1,8 +1,13 @@
 {{define "acl.html"}}{{template "chrome_header" .}}{{template "acl_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "acl_content"}}
-<h1>Aturan &amp; Rute</h1>
-<p class="hint">Aturan rute menentukan: "kalau orang membuka domain ini, kirim ke kelompok server itu". Daftar lain di bawah mengatur IP mana yang boleh mengakses halaman status. Perubahan berlaku langsung, tanpa perlu menunggu.</p>
+<div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:12px;">
+  <div>
+    <h1>Aturan &amp; Rute Domain</h1>
+    <p class="hint">Hubungkan nama domain publik (misal: <code>app.cni.net.id</code>) ke Pool server tujuan. Perubahan rute pada tabel di bawah ini langsung aktif seketika tanpa perlu restart layanan.</p>
+  </div>
+</div>
+
 <div id="acl-root">
 {{template "acl_list.html" .}}
 </div>
@@ -10,47 +15,80 @@
 
 {{define "acl_list.html"}}
 {{if not .Files}}
-<div class="panel"><div class="empty-state"><h3>Belum ada daftar yang dikelola di sini</h3></div></div>
+<div class="panel"><div class="empty-state"><h3>Belum ada daftar aturan yang dikelola</h3></div></div>
 {{end}}
+
 {{range .Files}}
-<div class="panel">
-  <h3>{{.Label}}</h3>
-  {{if .ValueIsPool}}<p class="hint">Domain di kolom kiri diarahkan ke kelompok server yang dipilih di kolom kanan.</p>{{end}}
+<div class="panel" style="margin-bottom:20px;">
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+    <div>
+      <h3 style="margin:0 0 4px 0;">
+        {{if .ValueIsPool}}🌐 {{.Label}}{{else}}🛡️ {{.Label}}{{end}}
+      </h3>
+      <p class="hint" style="margin:0;">
+        {{if .ValueIsPool}}
+        Setiap permintaan pengunjung yang membuka domain di kolom kiri akan diteruskan ke Pool backend di kolom kanan.
+        {{else}}
+        Daftar alamat IP atau parameter filter keamanan untuk layanan ini.
+        {{end}}
+      </p>
+    </div>
+  </div>
+
   {{if not .Entries}}
-  <div class="empty-state"><p>Daftar ini masih kosong. Tambahkan entri pertama di bawah.</p></div>
+  <div class="empty-state" style="padding:16px; border:1px dashed var(--border); border-radius:6px; margin:12px 0;">
+    <p style="margin:0;">Belum ada entri rute. Tambahkan domain baru pada formulir di bawah.</p>
+  </div>
   {{else}}
-  <div class="table-scroll">
+  <div class="table-scroll" style="margin-top:12px;">
   <table>
-    {{if .HasValue}}<tr><th>Domain</th><th>Diarahkan ke</th><th></th></tr>{{else}}<tr><th>Entri</th><th></th></tr>{{end}}
+    {{if .HasValue}}
+    <tr>
+      <th style="width:40%;">Nama Domain / Host</th>
+      <th style="width:45%;">Pool Target (Kelompok Server)</th>
+      <th style="width:15%; text-align:right;">Tindakan</th>
+    </tr>
+    {{else}}
+    <tr>
+      <th style="width:85%;">Alamat IP / Nilai</th>
+      <th style="width:15%; text-align:right;">Tindakan</th>
+    </tr>
+    {{end}}
+
     {{$path := .Path}}
     {{$hasValue := .HasValue}}
     {{$poolOptions := .PoolOptions}}
     {{$canOperate := $.User.Role.Can "runtime_control"}}
     {{range .Entries}}
     <tr>
-      <td>{{.Key}}</td>
+      <td>
+        <strong style="color:var(--text-bright); font-size:13px;">{{.Key}}</strong>
+      </td>
       {{if $hasValue}}
       <td>
         {{if $canOperate}}
-        <form class="field-inline" hx-post="/api/acl/edit" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+        <form class="field-inline" hx-post="/api/acl/edit" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' style="display:flex; align-items:center; gap:8px;">
           <input type="hidden" name="path" value="{{$path}}">
           <input type="hidden" name="key" value="{{.Key}}">
+          <span style="color:var(--text-muted); font-size:14px;">&rarr;</span>
           {{if $poolOptions}}
-          <select name="value" aria-label="Kelompok server tujuan baru untuk {{.Key}}">
+          <select name="value" aria-label="Kelompok server tujuan baru untuk {{.Key}}" style="padding:4px 8px; font-size:12px;">
             {{$current := .Value}}
             {{range $poolOptions}}<option value="{{.}}"{{if eq . $current}} selected{{end}}>{{.}}</option>{{end}}
           </select>
           {{else}}
-          <input type="text" name="value" value="{{.Value}}" aria-label="Tujuan baru untuk {{.Key}}" required>
+          <input type="text" name="value" value="{{.Value}}" aria-label="Tujuan baru untuk {{.Key}}" required style="padding:4px 8px; font-size:12px;">
           {{end}}
-          <button type="submit" title="Simpan tujuan baru untuk {{.Key}}">Simpan</button>
+          <button type="submit" title="Simpan perubahan tujuan untuk {{.Key}}" style="padding:4px 10px; font-size:11px;">Simpan</button>
         </form>
-        {{else}}{{.Value}}{{end}}
+        {{else}}
+        <span class="badge" style="background:rgba(255,255,255,0.05); color:var(--text-bright);">&rarr; {{.Value}}</span>
+        {{end}}
       </td>
       {{end}}
-      <td>
+      <td style="text-align:right;">
         {{if $canOperate}}
-        <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus &quot;{{.Key}}&quot; dari daftar ini?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}'>Hapus</button>
+        <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus &quot;{{.Key}}&quot; dari daftar ini?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}' style="padding:4px 10px; font-size:11px;">Hapus</button>
         {{end}}
       </td>
     </tr>
@@ -58,22 +96,32 @@
   </table>
   </div>
   {{end}}
+
   {{if $.User.Role.Can "runtime_control"}}
-  <form style="margin-top:12px" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
-    <input type="hidden" name="path" value="{{.Path}}">
-    <input type="text" name="key" placeholder="{{if .HasValue}}domain, misalnya app.contoh.id{{else}}nilai, misalnya alamat IP{{end}}" required>
-    {{if .HasValue}}
-      {{if .PoolOptions}}
-      <select name="value" aria-label="Kelompok server tujuan" required>
-        <option value="" disabled selected>Pilih kelompok server&hellip;</option>
-        {{range .PoolOptions}}<option value="{{.}}">{{.}}</option>{{end}}
-      </select>
-      {{else}}
-      <input type="text" name="value" placeholder="nama tujuan" required>
+  <div style="margin-top:14px; padding:12px; background:rgba(255,255,255,0.02); border-radius:6px; border:1px solid var(--border);">
+    <strong style="font-size:12px; display:block; margin-bottom:8px; color:var(--text-bright);">+ Tambah {{if .HasValue}}Rute Domain Baru{{else}}Entri Baru{{end}}</strong>
+    <form class="member-form" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+      <input type="hidden" name="path" value="{{.Path}}">
+      <div style="flex:1; min-width:200px;">
+        <input type="text" name="key" placeholder="{{if .HasValue}}Domain (misal: app.cni.net.id){{else}}Alamat IP / Subnet (misal: 192.168.1.50){{end}}" required style="width:100%;">
+      </div>
+      {{if .HasValue}}
+        <div style="flex:1; min-width:200px;">
+        {{if .PoolOptions}}
+        <select name="value" aria-label="Kelompok server tujuan" required style="width:100%;">
+          <option value="" disabled selected>Pilih Pool Tujuan&hellip;</option>
+          {{range .PoolOptions}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+        {{else}}
+        <input type="text" name="value" placeholder="Nama pool tujuan" required style="width:100%;">
+        {{end}}
+        </div>
       {{end}}
-    {{end}}
-    <button type="submit" class="primary">Tambah entri</button>
-  </form>
+      <div>
+        <button type="submit" class="primary" style="padding:7px 16px; font-size:12px; white-space:nowrap;">Tambahkan Rute</button>
+      </div>
+    </form>
+  </div>
   {{end}}
 </div>
 {{end}}

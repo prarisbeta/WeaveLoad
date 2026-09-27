@@ -66,8 +66,15 @@ if ! "$HAPROXY_BIN" -c -q -f "$real_staged"; then
   exit 1
 fi
 
-backup="${ACTIVE_CFG}.bak-$(date +%s%N)"
+BACKUP_DIR="/etc/haproxy/backups"
+mkdir -p -- "$BACKUP_DIR"
+chown root:haproxy "$BACKUP_DIR" 2>/dev/null || true
+chmod 775 "$BACKUP_DIR" 2>/dev/null || true
+
+backup="${BACKUP_DIR}/haproxy.cfg.bak-$(date +%s%N)"
 cp -p -- "$ACTIVE_CFG" "$backup"
+chown root:haproxy "$backup" 2>/dev/null || true
+chmod 664 "$backup" 2>/dev/null || true
 echo "backed up active config to $backup"
 
 # Dump runtime state BEFORE installing the new config: if this step ever

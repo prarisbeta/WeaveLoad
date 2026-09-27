@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/store"
 )
@@ -318,5 +319,76 @@ func TestUserUpdateHandler_InvalidUserID_400(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+type fakeLangStore struct {
+	lastID   int64
+	lastLang string
+	err      error
+}
+
+func (f *fakeLangStore) SetLanguage(userID int64, lang string) error {
+	f.lastID = userID
+	f.lastLang = lang
+	return f.err
+}
+
+func TestProfileLanguageHandler(t *testing.T) {
+	ls := &fakeLangStore{}
+	h := &ProfileLanguageHandler{Store: ls}
+
+	// GET redirects to /
+	req := httptest.NewRequest(http.MethodGet, "/api/profile/language", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/" {
+		t.Errorf("GET status = %d, loc = %q, want 303 /", rec.Code, rec.Header().Get("Location"))
+	}
+
+	// Invalid lang
+	req = httptest.NewRequest(http.MethodPost, "/api/profile/language", strings.NewReader("language=fr"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+
+	// Valid lang with user context
+	u := store.User{ID: 42, Email: "user@example.com"}
+	ctx := auth.WithUser(req.Context(), u, store.Session{})
+	req = httptest.NewRequest(http.MethodPost, "/api/profile/language", strings.NewReader("language=en")).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Referer", "https://example.com/pools")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303", rec.Code)
+	}
+	if rec.Header().Get("Location") != "https://example.com/pools" {
+		t.Errorf("location = %q, want https://example.com/pools", rec.Header().Get("Location"))
+	}
+	if ls.lastID != 42 || ls.lastLang != "en" {
+		t.Errorf("store got id=%d lang=%s, want 42 en", ls.lastID, ls.lastLang)
+	}
+
+	// Valid lang zh
+	req = httptest.NewRequest(http.MethodPost, "/api/profile/language", strings.NewReader("language=zh")).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if ls.lastLang != "zh" {
+		t.Errorf("store got lang=%s, want zh", ls.lastLang)
+	}
+
+	// Valid lang ja
+	req = httptest.NewRequest(http.MethodPost, "/api/profile/language", strings.NewReader("language=ja")).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if ls.lastLang != "ja" {
+		t.Errorf("store got lang=%s, want ja", ls.lastLang)
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"golang.org/x/oauth2"
 
 	"haproxy-gui/internal/store"
+	"log"
+	"sync"
 )
 
 // Config holds the OIDC client registration against OMS CNI SSO
@@ -59,27 +61,74 @@ func (o *oidcVerifier) Verify(ctx context.Context, rawIDToken string) (Claims, e
 // Provider wires together the OIDC discovery document, an oauth2.Config for
 // the authorization-code flow, and the token verifier.
 type Provider struct {
+	cfg          Config
+	mu           sync.RWMutex
 	oauth2Config *oauth2.Config
 	verifier     Verifier
 }
 
-// NewProvider performs OIDC discovery against cfg.IssuerURL. Call once at
-// startup; a discovery failure (SSO unreachable) should stop the server
-// from starting rather than silently disabling login.
+// NewProvider performs OIDC discovery against cfg.IssuerURL. If the IdP is
+// temporarily down (e.g. backend returning 503), it logs a warning and will
+// retry discovery in the background so haproxy-gui can start without fatal exits.
 func NewProvider(ctx context.Context, cfg Config) (*Provider, error) {
-	p, err := oidc.NewProvider(ctx, cfg.IssuerURL)
+	p := &Provider{cfg: cfg}
+	if err := p.initDiscovery(ctx); err != nil {
+		log.Printf("warning: initial oidc discovery against %s failed (%v); will retry in background and upon login", cfg.IssuerURL, err)
+		go p.retryDiscoveryLoop()
+	}
+	return p, nil
+}
+
+func (p *Provider) initDiscovery(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.oauth2Config != nil && p.verifier != nil {
+		return nil
+	}
+	prov, err := oidc.NewProvider(ctx, p.cfg.IssuerURL)
 	if err != nil {
-		return nil, fmt.Errorf("oidc discovery against %s: %w", cfg.IssuerURL, err)
+		return fmt.Errorf("oidc discovery against %s: %w", p.cfg.IssuerURL, err)
 	}
 	oc := &oauth2.Config{
-		ClientID:     cfg.ClientID,
-		ClientSecret: cfg.ClientSecret,
-		RedirectURL:  cfg.RedirectURL,
-		Endpoint:     p.Endpoint(),
+		ClientID:     p.cfg.ClientID,
+		ClientSecret: p.cfg.ClientSecret,
+		RedirectURL:  p.cfg.RedirectURL,
+		Endpoint:     prov.Endpoint(),
 		Scopes:       []string{oidc.ScopeOpenID, "email", "profile"},
 	}
-	verifier := p.Verifier(&oidc.Config{ClientID: cfg.ClientID})
-	return &Provider{oauth2Config: oc, verifier: &oidcVerifier{verifier}}, nil
+	verifier := prov.Verifier(&oidc.Config{ClientID: p.cfg.ClientID})
+	p.oauth2Config = oc
+	p.verifier = &oidcVerifier{verifier}
+	log.Printf("oidc provider initialized successfully for %s", p.cfg.IssuerURL)
+	return nil
+}
+
+func (p *Provider) retryDiscoveryLoop() {
+	for i := 0; i < 120; i++ {
+		time.Sleep(10 * time.Second)
+		p.mu.RLock()
+		ready := (p.oauth2Config != nil && p.verifier != nil)
+		p.mu.RUnlock()
+		if ready {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := p.initDiscovery(ctx)
+		cancel()
+		if err == nil {
+			return
+		}
+	}
+}
+
+func (p *Provider) ensureReady(ctx context.Context) error {
+	p.mu.RLock()
+	ready := (p.oauth2Config != nil && p.verifier != nil)
+	p.mu.RUnlock()
+	if ready {
+		return nil
+	}
+	return p.initDiscovery(ctx)
 }
 
 // state is what we round-trip through the IdP and back, bound to a short-
@@ -103,6 +152,12 @@ func randomURLSafe(n int) (string, error) {
 // BeginLogin redirects the browser to the IdP, after stashing state+PKCE in
 // a short-lived cookie for the callback to verify against.
 func (p *Provider) BeginLogin(w http.ResponseWriter, r *http.Request, secureCookie bool) error {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := p.ensureReady(ctx); err != nil {
+		return fmt.Errorf("layanan SSO belum siap: %w", err)
+	}
+
 	state, err := randomURLSafe(24)
 	if err != nil {
 		return err
@@ -119,7 +174,11 @@ func (p *Provider) BeginLogin(w http.ResponseWriter, r *http.Request, secureCook
 		MaxAge:   600,
 	})
 
-	url := p.oauth2Config.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+	p.mu.RLock()
+	oc := p.oauth2Config
+	p.mu.RUnlock()
+
+	url := oc.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
 	http.Redirect(w, r, url, http.StatusFound)
 	return nil
 }
@@ -131,6 +190,12 @@ func (p *Provider) BeginLogin(w http.ResponseWriter, r *http.Request, secureCook
 // with a fake Verifier and this codebase's own fake oauth2 token source is
 // unnecessary: exchangeFunc lets tests substitute the network call.
 func (p *Provider) HandleCallback(r *http.Request) (Claims, error) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	if err := p.ensureReady(ctx); err != nil {
+		return Claims{}, fmt.Errorf("layanan SSO belum siap: %w", err)
+	}
+
 	flow, err := r.Cookie(flowCookieName)
 	if err != nil {
 		return Claims{}, fmt.Errorf("missing oidc flow cookie (state expired or cookies blocked)")
@@ -150,10 +215,12 @@ func (p *Provider) HandleCallback(r *http.Request) (Claims, error) {
 		return Claims{}, fmt.Errorf("missing authorization code")
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
+	p.mu.RLock()
+	oc := p.oauth2Config
+	ver := p.verifier
+	p.mu.RUnlock()
 
-	tok, err := p.oauth2Config.Exchange(ctx, code, oauth2.VerifierOption(verifier))
+	tok, err := oc.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
 		return Claims{}, fmt.Errorf("exchange authorization code: %w", err)
 	}
@@ -161,7 +228,7 @@ func (p *Provider) HandleCallback(r *http.Request) (Claims, error) {
 	if !ok || rawIDToken == "" {
 		return Claims{}, fmt.Errorf("token response did not include id_token")
 	}
-	return p.verifier.Verify(ctx, rawIDToken)
+	return ver.Verify(ctx, rawIDToken)
 }
 
 func splitFlowCookie(v string) (state, verifier string, ok bool) {

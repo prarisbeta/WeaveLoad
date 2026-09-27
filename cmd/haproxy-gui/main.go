@@ -24,6 +24,7 @@ import (
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/haproxylog"
+	"haproxy-gui/internal/i18n"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/ratelimitqueue"
 	"haproxy-gui/internal/redisping"
@@ -38,7 +39,7 @@ var templatesFS embed.FS
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("fatal error starting haproxy-gui: %v", err)
 	}
 }
 
@@ -51,6 +52,7 @@ func run() error {
 	tpl, err := template.New("").Funcs(template.FuncMap{
 		"upper": strings.ToUpper,
 		"bytes": sysinfo.FormatBytes,
+		"t":     i18n.T,
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return err
@@ -70,6 +72,7 @@ func run() error {
 	cf.ApplyScript = cfg.ApplyScript
 	cf.RestartScript = cfg.RestartScript
 	cf.SudoBin = cfg.SudoBin
+	cfgfile.EnsureDefaultMapFiles()
 
 	certStore := certs.New(cfg.SSLDir)
 	dirClient := omsdir.New(cfg.OMSDirBaseURL, cfg.OMSDirClientID, cfg.OMSDirClientSecret)
@@ -141,6 +144,11 @@ func pruneSessionsPeriodically(s *store.Store) {
 			log.Printf("prune sessions: %v", err)
 		} else if n > 0 {
 			log.Printf("pruned %d expired sessions", n)
+		}
+		if n, err := s.PruneAudit(30 * 24 * time.Hour); err != nil {
+			log.Printf("prune audit log: %v", err)
+		} else if n > 0 {
+			log.Printf("pruned %d old audit entries (>30 days)", n)
 		}
 	}
 }

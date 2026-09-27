@@ -15,14 +15,47 @@
   {{else}}
   <div class="table-scroll">
   <table>
-    <tr><th>Kelompok</th><th>Status</th><th>Anggota aktif</th><th>Metode pembagian</th><th>Koneksi</th></tr>
+    <tr>
+      <th>Kelompok</th>
+      <th>Status Live</th>
+      <th>Status Konfigurasi</th>
+      <th>Anggota aktif</th>
+      <th>Metode pembagian</th>
+      <th>Koneksi</th>
+      {{if .CanAdmin}}<th style="text-align:right;">Aksi</th>{{end}}
+    </tr>
     {{range .Pools}}
     <tr>
-      <td><a href="/pools/{{.Name}}">{{.Name}}</a></td>
+      <td><a href="/pools/{{.Name}}" style="font-weight:600;">{{.Name}}</a></td>
       <td>{{template "pool_status_badge" .LiveStatus}}</td>
+      <td>
+        {{if .Disabled}}
+          <span class="badge badge-down" style="background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.3);">Nonaktif (Disabled)</span>
+        {{else}}
+          <span class="badge badge-up" style="background:rgba(34, 197, 94, 0.15); color:#15803d; border:1px solid rgba(34, 197, 94, 0.3);">Aktif</span>
+        {{end}}
+      </td>
       <td>{{.Up}}/{{len .Members}}{{if .Down}} <span class="badge badge-down">{{.Down}} bermasalah</span>{{end}}</td>
       <td class="muted">{{.Balance}}</td>
       <td>{{.Sessions}}</td>
+      {{if $.CanAdmin}}
+      <td style="text-align:right; white-space:nowrap;">
+        <div style="display:inline-flex; gap:6px;">
+          {{if .Disabled}}
+          <button type="button" class="btn btn-pool-toggle" data-pool="{{.Name}}" data-disabled="false" style="font-size:11px; padding:4px 8px; color:var(--ok);" title="Aktifkan kembali pool ini">
+            Aktifkan
+          </button>
+          {{else}}
+          <button type="button" class="btn btn-pool-toggle" data-pool="{{.Name}}" data-disabled="true" style="font-size:11px; padding:4px 8px; color:var(--warn);" title="Nonaktifkan pool ini sementara">
+            Nonaktifkan
+          </button>
+          {{end}}
+          <button type="button" class="btn danger btn-pool-delete" data-pool="{{.Name}}" style="font-size:11px; padding:4px 8px;" title="Hapus pool ini dari konfigurasi">
+            Hapus
+          </button>
+        </div>
+      </td>
+      {{end}}
     </tr>
     {{end}}
   </table>
@@ -36,11 +69,46 @@
 {{define "pool_detail.html"}}{{template "chrome_header" .}}{{template "pool_detail_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "pool_detail_content"}}
-<p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; Semua kelompok</a></p>
-<h1>{{.Pool.Name}} {{template "pool_status_badge" .Pool.LiveStatus}}</h1>
-<p class="hint">Metode <strong>{{.Pool.Balance}}</strong>
-  · Pemeriksaan kesehatan: {{if .Pool.HealthCheck}}<code>{{.Pool.HealthCheck}}</code>{{else}}bawaan{{end}}
-  · Sesi lengket (cookie): {{if .Pool.Cookie}}ya{{else}}tidak{{end}}</p>
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:12px;">
+  <div>
+    <p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; Semua kelompok</a></p>
+    <h1>
+      {{.Pool.Name}}
+      {{template "pool_status_badge" .Pool.LiveStatus}}
+      {{if .Pool.Disabled}}
+        <span class="badge badge-down" style="font-size:12px; margin-left:8px; vertical-align:middle;">Nonaktif (Disabled)</span>
+      {{end}}
+    </h1>
+    <p class="hint">Metode <strong>{{.Pool.Balance}}</strong>
+      · Pemeriksaan kesehatan: {{if .Pool.HealthCheck}}<code>{{.Pool.HealthCheck}}</code>{{else}}bawaan{{end}}
+      · Sesi lengket (cookie): {{if .Pool.Cookie}}ya{{else}}tidak{{end}}</p>
+  </div>
+  
+  {{if .CanAdmin}}
+  <div style="display:flex; gap:8px;">
+    {{if .Pool.Disabled}}
+    <button type="button" class="btn btn-pool-toggle" data-pool="{{.Pool.Name}}" data-disabled="false" style="color:var(--ok); font-weight:600;">
+      Aktifkan Kelompok
+    </button>
+    {{else}}
+    <button type="button" class="btn btn-pool-toggle" data-pool="{{.Pool.Name}}" data-disabled="true" style="color:var(--warn); font-weight:600;">
+      Nonaktifkan Kelompok
+    </button>
+    {{end}}
+    <button type="button" class="btn danger btn-pool-delete" data-pool="{{.Pool.Name}}" style="font-weight:600;">
+      Hapus Kelompok
+    </button>
+  </div>
+  {{end}}
+</div>
+
+{{if .Pool.Disabled}}
+<div class="panel notice-warn" style="margin-bottom:16px;">
+  <strong>Kelompok ini sedang dinonaktifkan (Disabled)</strong>
+  <p class="hint" style="margin:4px 0 0 0">Trafik ke kelompok {{.Pool.Name}} tidak diteruskan ke server backend. Klik "Aktifkan Kelompok" di atas untuk mengaktifkannya kembali.</p>
+</div>
+{{end}}
+
 {{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
 
 <div id="pool-result"></div>
@@ -56,32 +124,61 @@
 
 {{if .CanAdmin}}
 <div class="panel">
-  <h3>Batas Laju (Rate Limit)</h3>
-  <p class="hint">Membatasi berapa banyak permintaan yang boleh datang dari satu alamat IP ke pool ini dalam 10 detik. Pelanggar bisa langsung ditolak, atau ditunda dulu (tarpit) sebelum ditolak — keduanya membalas kode 429.</p>
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+    <div>
+      <h3 style="margin:0;">Batas Laju &amp; Ruang Tunggu Pengunjung</h3>
+      <p class="hint" style="margin:4px 0 0 0;">Membatasi frekuensi permintaan per alamat IP. Pengunjung yang melebihi batas laju akan otomatis dialihkan ke <strong>Halaman Ruang Tunggu (Virtual Waiting Room: HTTP 429)</strong> dengan hitung mundur auto-reload.</p>
+    </div>
+    <div style="display:flex; gap:6px;">
+      <a href="/queue/waiting-room" target="_blank" class="btn" style="font-size:12px; padding:4px 10px; text-decoration:none;">
+        Pratinjau Ruang Tunggu
+      </a>
+      <a href="/config/error-pages?code=429" class="btn" style="font-size:12px; padding:4px 10px; text-decoration:none;">
+        Kelola Halaman 429
+      </a>
+    </div>
+  </div>
+
   {{if .Pool.RateLimit}}
-  <p><strong>Aktif:</strong> maksimum {{.Pool.RateLimit.RPS}} permintaan/detik per IP, pelanggar di-{{.Pool.RateLimit.Action}}.</p>
-  <div class="row-actions">
+  <div class="panel" style="background:rgba(15, 23, 42, 0.5); border-left:4px solid var(--accent); margin-bottom:16px;">
+    <p style="margin:0; font-size:13px;">
+      <strong>Status Batas Laju:</strong> Maksimum <strong>{{.Pool.RateLimit.RPS}} permintaan/detik per IP</strong>.
+      Pelanggar dialihkan ke ruang tunggu ({{if eq .Pool.RateLimit.Action "deny"}}Tolak langsung / Deny{{else}}Tunda koneksi / Tarpit{{end}}).
+      <span class="badge badge-up" style="margin-left:6px;">Ruang Tunggu Aktif</span>
+      {{if .Pool.RateLimit.IgnoreCloudflare}}
+      <span class="badge badge-up" style="margin-left:6px;">Cloudflare Bypass Aktif</span>
+      {{end}}
+    </p>
+  </div>
+  <div class="row-actions" style="margin-bottom:16px;">
     <button class="danger" hx-post="/api/pools/{{.Pool.Name}}/rate-limit/remove" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Nonaktifkan batas laju di {{.Pool.Name}}? Semua alamat IP akan bisa mengirim permintaan tanpa batas lagi.">Nonaktifkan batas laju</button>
   </div>
   {{else}}
-  <p class="hint">Belum ada batas laju aktif di pool ini.</p>
+  <p class="hint" style="margin-bottom:16px;">Belum ada batas laju aktif di kelompok ini. Aktifkan formulir di bawah untuk melindungi server dari lonjakan trafik dan bot spam.</p>
   {{end}}
+
   <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/rate-limit/preview" hx-target="#rate-limit-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
-    <label>Batas <span class="muted">(permintaan/detik per IP)</span><input type="text" name="rps" value="{{if .Pool.RateLimit}}{{.Pool.RateLimit.RPS}}{{else}}20{{end}}" required size="6" inputmode="numeric"></label>
-    <label>Aksi saat dilanggar
+    <label>Batas Maksimum <span class="muted">(permintaan/detik per IP)</span><input type="text" name="rps" value="{{if .Pool.RateLimit}}{{.Pool.RateLimit.RPS}}{{else}}20{{end}}" required size="6" inputmode="numeric"></label>
+    <label>Aksi &amp; Respon Pengunjung
       <select name="action">
-        <option value="deny" {{if or (not .Pool.RateLimit) (eq .Pool.RateLimit.Action "deny")}}selected{{end}}>Tolak langsung (deny)</option>
-        <option value="tarpit" {{if and .Pool.RateLimit (eq .Pool.RateLimit.Action "tarpit")}}selected{{end}}>Tunda dulu, lalu tolak (tarpit)</option>
+        <option value="deny" {{if or (not .Pool.RateLimit) (eq .Pool.RateLimit.Action "deny")}}selected{{end}}>Alihkan langsung ke Ruang Tunggu (HTTP 429 Deny: Rekomendasi)</option>
+        <option value="tarpit" {{if and .Pool.RateLimit (eq .Pool.RateLimit.Action "tarpit")}}selected{{end}}>Tunda koneksi lalu alihkan ke Ruang Tunggu (HTTP 429 Tarpit)</option>
       </select>
     </label>
-    <div><button type="submit">{{if .Pool.RateLimit}}Pratinjau perubahan{{else}}Pratinjau{{end}}</button></div>
+    <div style="grid-column: 1 / -1; margin-top: 4px;">
+      <label class="check" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" name="ignore_cf" value="1" {{if or (not .Pool.RateLimit) .Pool.RateLimit.IgnoreCloudflare}}checked{{end}}>
+        <span><strong>Abaikan IP Proxy Cloudflare</strong> (Mengekstrak IP asli dari <code>CF-Connecting-IP</code> agar node CDN Cloudflare tidak terkena batas laju massal)</span>
+      </label>
+    </div>
+    <div><button type="submit">{{if .Pool.RateLimit}}Pratinjau Perubahan Batas Laju{{else}}Pratinjau &amp; Aktifkan Ruang Tunggu{{end}}</button></div>
   </form>
   <div id="rate-limit-preview"></div>
 </div>
 
 <div class="panel">
   <h3>Tambah anggota</h3>
-  <p class="hint">Anggota baru = satu node yang ditambahkan ke kelompok ini. Pengaturan SSL, SNI, dan pemeriksaan kesehatan disalin otomatis dari anggota contoh, jadi biasanya cukup isi nama dan alamat. Setelah diterapkan, HAProxy dimuat ulang tanpa memutus koneksi yang sedang berjalan.</p>
+  <p class="hint">Anggota baru: satu node yang ditambahkan ke kelompok ini. Pengaturan SSL, SNI, dan pemeriksaan kesehatan disalin otomatis dari anggota contoh, jadi biasanya cukup isi nama dan alamat. Setelah diterapkan, HAProxy dimuat ulang tanpa memutus koneksi yang sedang berjalan.</p>
   <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/members/preview" hx-target="#pool-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
     <label>Nama anggota<input type="text" name="name" value="{{.Suggested}}" required maxlength="64"></label>
     <label>Alamat node (IP / host)<input type="text" name="host" value="{{.Prefill}}" list="known-hosts" required placeholder="192.168.200.120"></label>
@@ -189,6 +286,7 @@
   <form hx-post="/api/pools/{{.Pool}}/rate-limit/apply" hx-target="#pool-result" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Terapkan batas laju ini di {{.Pool}} dan muat ulang HAProxy sekarang?">
     <input type="hidden" name="rps" value="{{.Spec.RPS}}">
     <input type="hidden" name="action" value="{{.Spec.Action}}">
+    {{if .Spec.IgnoreCloudflare}}<input type="hidden" name="ignore_cf" value="1">{{end}}
     <button type="submit" class="primary">Terapkan</button>
   </form>
   {{else}}
@@ -201,7 +299,7 @@
 {{define "pool_edit_form.html"}}
 <div class="panel preview-box">
   <h3>Ubah anggota: {{.Member.Name}}</h3>
-  <p class="hint">Pengaturan lain (SSL, SNI, pemeriksaan kesehatan) pada baris ini tidak berubah — hanya kolom di bawah yang akan diperbarui.</p>
+  <p class="hint">Pengaturan lain (SSL, SNI, pemeriksaan kesehatan) pada baris ini tidak berubah, hanya kolom di bawah yang akan diperbarui.</p>
   <form class="member-form" hx-post="/api/pools/{{.Pool}}/members/edit/preview" hx-target="#pool-edit-panel" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
     <input type="hidden" name="current_name" value="{{.Member.Name}}">
     <label>Nama anggota<input type="text" name="name" value="{{.Member.Name}}" required maxlength="64"></label>
@@ -218,7 +316,7 @@
     </details>
     <div class="row-actions">
       <button type="submit" class="primary">Pratinjau perubahan</button>
-      <button type="button" onclick="document.getElementById('pool-edit-panel').innerHTML=''">Batal</button>
+      <button type="button" class="btn-cancel-edit">Batal</button>
     </div>
   </form>
 </div>
@@ -228,64 +326,179 @@
 
 {{define "pool_new_content"}}
 <p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; Semua pool</a></p>
-<h1>Buat Pool Baru</h1>
-<p class="hint">Ikuti 3 langkah ini untuk membuat kelompok server baru. Pengaturan lanjutan (SSL, sesi lengket, ACL) tidak ada di sini — tambahkan lewat menu Konfigurasi setelah pool ini jadi, kalau memang perlu.</p>
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+  <div>
+    <h1>Buat Pool Baru</h1>
+    <p class="hint">Pilih profil layanan di bawah untuk mengisi pengaturan rekomendasi secara otomatis, atau sesuaikan formulir sesuai kebutuhan arsitektur Anda.</p>
+  </div>
+</div>
+
+<!-- Preset Cards Selector -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:20px;">
+  <div data-profile="web" id="card-web" class="preset-card active-card" style="border:2px solid var(--accent); border-radius:8px; padding:14px; cursor:pointer; background:rgba(255,255,255,0.03); transition:all 0.2s;">
+    <div style="font-size:15px; font-weight:700; color:var(--text-bright); margin-bottom:2px;">Web Application</div>
+    <div style="font-size:12px; font-weight:600; color:var(--accent);">HTTP / HTTPS</div>
+    <div style="font-size:11.5px; color:var(--ink-muted); margin-top:4px;">Roundrobin, X-Forwarded-For, Cookie Sticky, HTTP Check</div>
+  </div>
+  <div data-profile="mysql" id="card-mysql" class="preset-card" style="border:1px solid var(--border); border-radius:8px; padding:14px; cursor:pointer; background:rgba(255,255,255,0.01); transition:all 0.2s;">
+    <div style="font-size:15px; font-weight:700; color:var(--text-bright); margin-bottom:2px;">MySQL / MariaDB</div>
+    <div style="font-size:12px; font-weight:600; color:var(--ink);">Database Cluster</div>
+    <div style="font-size:11.5px; color:var(--ink-muted); margin-top:4px;">Port 3306, Leastconn, Option mysql-check, Timeout 8h</div>
+  </div>
+  <div data-profile="postgres" id="card-postgres" class="preset-card" style="border:1px solid var(--border); border-radius:8px; padding:14px; cursor:pointer; background:rgba(255,255,255,0.01); transition:all 0.2s;">
+    <div style="font-size:15px; font-weight:700; color:var(--text-bright); margin-bottom:2px;">PostgreSQL</div>
+    <div style="font-size:12px; font-weight:600; color:var(--ink);">Database Cluster</div>
+    <div style="font-size:11.5px; color:var(--ink-muted); margin-top:4px;">Port 5432, Leastconn, Option pgsql-check, Timeout 8h</div>
+  </div>
+  <div data-profile="redis" id="card-redis" class="preset-card" style="border:1px solid var(--border); border-radius:8px; padding:14px; cursor:pointer; background:rgba(255,255,255,0.01); transition:all 0.2s;">
+    <div style="font-size:15px; font-weight:700; color:var(--text-bright); margin-bottom:2px;">Redis</div>
+    <div style="font-size:12px; font-weight:600; color:var(--ink);">Cache &amp; Key-Value</div>
+    <div style="font-size:11.5px; color:var(--ink-muted); margin-top:4px;">Port 6379, First / Leastconn, TCP Check (PING/PONG)</div>
+  </div>
+  <div data-profile="tcp" id="card-tcp" class="preset-card" style="border:1px solid var(--border); border-radius:8px; padding:14px; cursor:pointer; background:rgba(255,255,255,0.01); transition:all 0.2s;">
+    <div style="font-size:15px; font-weight:700; color:var(--text-bright); margin-bottom:2px;">TCP Stream</div>
+    <div style="font-size:12px; font-weight:600; color:var(--ink);">Generic TCP / Service</div>
+    <div style="font-size:11.5px; color:var(--ink-muted); margin-top:4px;">Layer 4 raw proxy, TCP Port Check</div>
+  </div>
+</div>
 
 <form hx-post="/api/pools/new/preview" hx-target="#pool-new-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
+<input type="hidden" name="profile" id="input_profile" value="web">
+
 <div class="panel" style="padding:0;">
   <div class="wizard-step">
     <div class="wizard-num">1</div>
     <div class="wizard-body">
-      <h3>Nama &amp; cara membagi trafik</h3>
-      <p class="hint" style="margin-bottom:10px;">Nama ini yang akan muncul di daftar Pools dan dipakai saat mengatur rute domain.</p>
+      <h3>Identitas Pool &amp; Protokol</h3>
+      <p class="hint" style="margin-bottom:10px;">Tentukan nama pool dan metode pembagian koneksi.</p>
       <div class="member-form">
-        <label>Nama pool<input type="text" name="pool_name" required maxlength="64" placeholder="misalnya http_aplikasi_baru"></label>
-        <label>Cara membagi trafik
-          <select name="balance">
-            <option value="roundrobin">Bergiliran rata (roundrobin) — cocok untuk kebanyakan situs</option>
-            <option value="leastconn">Ke yang paling sepi (leastconn) — cocok untuk koneksi berdurasi lama</option>
+        <label>Nama pool<input type="text" name="pool_name" id="pool_name" required maxlength="64" placeholder="misalnya http_app_backend"></label>
+        <label id="label_domain">Domain Web Publik <span class="muted">(opsional, misal: app.cni.net.id)</span><input type="text" name="domain" id="pool_domain" placeholder="app.cni.net.id" title="Jika diisi, domain ini otomatis langsung diarahkan ke pool ini"></label>
+        <label>Mode Operasi
+          <select name="mode" id="mode_select">
+            <option value="http">HTTP (Layer 7): routing domain, cookie, header inspection</option>
+            <option value="tcp">TCP (Layer 4): untuk Database, Cache, atau Non-HTTP</option>
+          </select>
+        </label>
+        <label>Port Frontend / Listen <span class="muted">(opsional)</span><input type="text" name="listen_port" id="listen_port" size="5" inputmode="numeric" placeholder="8080" title="Jika diisi, HAProxy langsung membuka port listen tersendiri"></label>
+        <label>Metode Pembagian Beban (Balance)
+          <select name="balance" id="balance_select">
+            <option value="roundrobin">Bergiliran rata (roundrobin): cocok untuk Web</option>
+            <option value="leastconn">Koneksi paling sedikit (leastconn): cocok untuk Database &amp; Long-lived</option>
+            <option value="source">Berdasarkan Hash IP Sumber (source): sesi persisten tanpa cookie</option>
+            <option value="first">Penuhi server pertama dulu (first): hemat sumber daya</option>
           </select>
         </label>
       </div>
+
+      <!-- Feature Toggles for Web -->
+      <div id="web-features" style="margin-top:14px; padding:12px; background:rgba(255,255,255,0.02); border-radius:6px; border:1px solid var(--border);">
+        <strong style="font-size:13px; display:block; margin-bottom:8px;">Opsi ACL &amp; Fitur Header (Layer 7):</strong>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label class="check" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="trust_cloudflare" value="1" checked>
+            <span><strong>Dukungan Cloudflare:</strong> Teruskan dan percaya header <code>CF-Connecting-IP</code> ke <code>X-Forwarded-For</code> backend</span>
+          </label>
+          <label class="check" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="forwardfor" value="1" checked>
+            <span><strong>Teruskan IP Asli Klien:</strong> Tambahkan <code>option forwardfor except 127.0.0.0/8</code></span>
+          </label>
+          <label class="check" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="cookie_sticky" value="1">
+            <span><strong>Sesi Lengket (Cookie Sticky):</strong> Sisipkan cookie <code>SERVERID</code> otomatis ke browser</span>
+          </label>
+        </div>
+      </div>
+
+      <details class="advanced-toggle" style="margin-top:12px;">
+        <summary>Pengaturan Batas Waktu (Timeouts)</summary>
+        <div class="member-form" style="margin-top:8px;">
+          <label>Timeout Client<input type="text" name="timeout_client" id="timeout_client" placeholder="misal: 8h, 30s" size="8"></label>
+          <label>Timeout Server<input type="text" name="timeout_server" id="timeout_server" placeholder="misal: 8h, 30s" size="8"></label>
+        </div>
+      </details>
     </div>
   </div>
+
   <div class="wizard-step">
     <div class="wizard-num">2</div>
     <div class="wizard-body">
-      <h3>Pemeriksaan kesehatan</h3>
-      <p class="hint" style="margin-bottom:10px;">Kosongkan kalau tidak yakin — HAProxy akan memeriksa server hanya lewat koneksi TCP biasa, yang sudah cukup untuk kebanyakan kasus.</p>
+      <h3>Pemeriksaan Kesehatan (Health Check)</h3>
+      <p class="hint" style="margin-bottom:10px;">HAProxy akan memeriksa apakah backend aktif sebelum meneruskan traffic.</p>
       <div class="member-form">
-        <label>Path pemeriksaan HTTP <span class="muted">(opsional, misalnya /health.txt)</span><input type="text" name="health_check_path" placeholder="/health.txt"></label>
+        <label>Tipe Pemeriksaan
+          <select name="health_check_type" id="health_check_type">
+            <option value="httpchk">HTTP Check (GET uri / status 2xx/3xx)</option>
+            <option value="mysql-check">MySQL Check (Handshake &amp; Auth User)</option>
+            <option value="pgsql-check">PostgreSQL Check (Handshake &amp; Auth User)</option>
+            <option value="redis-check">Redis Check (TCP PING &rarr; +PONG)</option>
+            <option value="tcp-check">TCP Port Ping biasa</option>
+            <option value="none">Tanpa Pemeriksaan Khusus</option>
+          </select>
+        </label>
+        <div id="hc-http-fields" style="display:contents;">
+          <label>URI Path HTTP<input type="text" name="health_check_path" id="health_check_path" placeholder="/" value="/"></label>
+          <label>Host Header <span class="muted">(opsional)</span><input type="text" name="health_check_host" id="health_check_host" placeholder="domain.com"></label>
+        </div>
+        <div id="hc-user-fields" style="display:none;">
+          <label>User Check DB <span class="muted">(opsional)</span><input type="text" name="health_check_user" id="health_check_user" placeholder="haproxy_check"></label>
+        </div>
       </div>
     </div>
   </div>
+
   <div class="wizard-step">
     <div class="wizard-num">3</div>
     <div class="wizard-body">
-      <h3>Server pertama</h3>
-      <p class="hint" style="margin-bottom:10px;">Pool tidak boleh kosong — isi setidaknya satu server. Anggota lain bisa ditambahkan setelah pool ini dibuat.</p>
-      <div class="member-form">
-        <label>Nama anggota<input type="text" name="name" required maxlength="64" placeholder="node1"></label>
-        <label>Alamat node (IP / host)<input type="text" name="host" required placeholder="192.168.200.120"></label>
-        <label>Port<input type="text" name="port" required size="5" inputmode="numeric" placeholder="80"></label>
-        <details class="advanced-toggle">
-          <summary>Pengaturan lanjutan (opsional)</summary>
-          <div class="member-form">
-            <label>Bobot <span class="muted">(0-256)</span><input type="text" name="weight" size="4" inputmode="numeric"></label>
-            <label>Batas koneksi<input type="text" name="maxconn" size="6" inputmode="numeric"></label>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+        <div>
+          <h3 style="margin:0;">Tambah Anggota / Node Server (Members)</h3>
+          <p class="hint" style="margin:2px 0 0 0;">Tentukan satu atau beberapa server node backend yang akan melayani trafik pool ini. Klik tombol di bawah untuk menambah lebih dari 1 server sekaligus.</p>
+        </div>
+        <button type="button" class="btn primary btn-add-member-row" id="btn-add-member-row" style="font-size:12px; padding:6px 14px; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+          + Tambah Node / Anggota
+        </button>
+      </div>
+
+      <div id="members-container" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="member-row panel" style="margin-bottom:0; background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:14px; border-radius:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <strong style="font-size:13px;" class="member-row-title">Node #1</strong>
+            <button type="button" class="btn danger btn-remove-member-row" style="font-size:11px; padding:2px 6px; display:none;">✕ Hapus</button>
           </div>
-        </details>
+          <div class="member-form">
+            <label>Nama Server<input type="text" name="member_name" required maxlength="64" placeholder="node1" value="node1"></label>
+            <label>Alamat Host (IP / Domain)<input type="text" name="member_host" required placeholder="192.168.200.120"></label>
+            <label>Port Layanan<input type="text" name="member_port" id="member_port" required size="5" inputmode="numeric" placeholder="80" value="80"></label>
+            <details class="advanced-toggle" style="grid-column: 1 / -1;">
+              <summary>Pengaturan Lanjutan Server</summary>
+              <div class="member-form" style="margin-top:8px;">
+                <label>Bobot (Weight) <span class="muted">(0-256)</span><input type="text" name="member_weight" size="4" inputmode="numeric" placeholder="100"></label>
+                <label>Batas Maks Koneksi<input type="text" name="member_maxconn" size="6" inputmode="numeric" placeholder="1000"></label>
+                <label class="check"><input type="checkbox" name="member_backup" value="1"> Jadikan Server Cadangan (Backup)</label>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <button type="button" class="btn btn-add-member-row" style="font-size:12px; padding:6px 14px; font-weight:600; width:100%; border:1px dashed var(--accent); background:rgba(59, 130, 246, 0.05); color:var(--ink);">
+          + Tambah Node / Anggota Baru
+        </button>
       </div>
     </div>
   </div>
+
   <div class="wizard-step">
     <div class="wizard-num">&check;</div>
     <div class="wizard-body">
-      <button type="submit" class="primary">Pratinjau Pool Baru</button>
+      <button type="submit" class="primary" style="padding:10px 24px; font-size:14px; font-weight:600;">Pratinjau &amp; Validasi Pool</button>
     </div>
   </div>
 </div>
 </form>
+
 <div id="pool-new-preview"></div>
 {{end}}
 
@@ -294,23 +507,39 @@
   <p><strong>Yang akan ditambahkan ke konfigurasi:</strong></p>
   <pre>{{.Block}}</pre>
   {{if .Validation.OK}}
-  <p style="color:var(--ok)"><strong>Konfigurasi valid.</strong></p>
+  <p style="color:var(--ok)"><strong>Konfigurasi valid dan siap diterapkan.</strong></p>
   <form hx-post="/api/pools/new/apply" hx-target="#pool-result-new" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Buat pool {{.Spec.Name}} dan muat ulang HAProxy sekarang?">
     <input type="hidden" name="pool_name" value="{{.Spec.Name}}">
+    <input type="hidden" name="profile" value="{{.Spec.Profile}}">
+    <input type="hidden" name="mode" value="{{.Spec.Mode}}">
+    <input type="hidden" name="listen_port" value="{{.Spec.ListenPort}}">
     <input type="hidden" name="balance" value="{{.Spec.Balance}}">
+    <input type="hidden" name="health_check_type" value="{{.Spec.HealthCheckType}}">
     <input type="hidden" name="health_check_path" value="{{.Spec.HealthCheckPath}}">
-    <input type="hidden" name="name" value="{{.Spec.Member.Name}}">
-    <input type="hidden" name="host" value="{{.Spec.Member.Host}}">
-    <input type="hidden" name="port" value="{{.Spec.Member.Port}}">
-    <input type="hidden" name="weight" value="{{.Spec.Member.Weight}}">
-    <input type="hidden" name="maxconn" value="{{.Spec.Member.Maxconn}}">
-    <button type="submit" class="primary">Buat Pool</button>
+    <input type="hidden" name="health_check_user" value="{{.Spec.HealthCheckUser}}">
+    <input type="hidden" name="health_check_host" value="{{.Spec.HealthCheckHost}}">
+    <input type="hidden" name="timeout_client" value="{{.Spec.TimeoutClient}}">
+    <input type="hidden" name="timeout_server" value="{{.Spec.TimeoutServer}}">
+    {{if .Spec.Domain}}<input type="hidden" name="domain" value="{{.Spec.Domain}}">{{end}}
+    {{if .Spec.ForwardFor}}<input type="hidden" name="forwardfor" value="1">{{end}}
+    {{if .Spec.TrustCloudflare}}<input type="hidden" name="trust_cloudflare" value="1">{{end}}
+    {{if .Spec.CookieSticky}}<input type="hidden" name="cookie_sticky" value="1">{{end}}
+    {{range .Spec.Members}}
+    <input type="hidden" name="member_name" value="{{.Name}}">
+    <input type="hidden" name="member_host" value="{{.Host}}">
+    <input type="hidden" name="member_port" value="{{.Port}}">
+    <input type="hidden" name="member_weight" value="{{.Weight}}">
+    <input type="hidden" name="member_maxconn" value="{{.Maxconn}}">
+    {{if .Backup}}<input type="hidden" name="member_backup" value="1">{{end}}
+    {{end}}
+    <button type="submit" class="primary">Buat Pool &amp; Terapkan</button>
   </form>
   {{else}}
   <p style="color:var(--bad)"><strong>Konfigurasi hasil perubahan tidak valid, tidak bisa diterapkan.</strong></p>
   <pre>{{.Validation.Output}}</pre>
   {{end}}
 </div>
+<div id="pool-result-new"></div>
 <div id="pool-result-new"></div>
 {{end}}
 
@@ -320,3 +549,4 @@
   {{if .Output}}<pre>{{.Output}}</pre>{{end}}
 </div>
 {{end}}
+

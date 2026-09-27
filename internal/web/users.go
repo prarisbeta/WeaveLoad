@@ -73,7 +73,7 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "set_role":
 		role := store.Role(r.FormValue("role"))
 		if actor.ID == id && !role.Can(store.CapManageUsers) {
-			http.Error(w, "Anda tidak bisa mengubah peran akun sendiri menjadi peran tanpa akses manajemen pengguna — itu akan mengunci Anda sendiri.", http.StatusForbidden)
+			http.Error(w, "Anda tidak bisa mengubah peran akun sendiri menjadi peran tanpa akses manajemen pengguna. Hal itu akan mengunci Anda sendiri.", http.StatusForbidden)
 			return
 		}
 		actionErr = h.Store.SetRole(id, role)
@@ -225,4 +225,45 @@ func (h *UserCreateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Chrome
 		Users []store.User
 	}{Chrome: NewChrome(r, "users"), Users: users})
+}
+
+// ProfileLanguageStore is the subset of store needed to set user language
+type ProfileLanguageStore interface {
+	SetLanguage(userID int64, lang string) error
+}
+
+// ProfileLanguageHandler allows users to change their own language preference
+type ProfileLanguageHandler struct {
+	Store ProfileLanguageStore
+}
+
+func (h *ProfileLanguageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	lang := strings.TrimSpace(r.FormValue("language"))
+	if lang != "id" && lang != "en" && lang != "zh" && lang != "ja" {
+		http.Error(w, "invalid language", http.StatusBadRequest)
+		return
+	}
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok || u.ID == 0 {
+		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+		return
+	}
+	if err := h.Store.SetLanguage(u.ID, lang); err != nil {
+		http.Error(w, "failed to set language: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ref := strings.TrimSpace(r.Header.Get("Referer"))
+	if ref == "" || strings.Contains(ref, "/api/profile/language") {
+		ref = "/"
+	}
+	http.Redirect(w, r, ref, http.StatusSeeOther)
 }

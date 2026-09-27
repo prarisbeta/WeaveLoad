@@ -94,7 +94,7 @@ type redisTestResult struct {
 
 func redisTestMessage(err error) string {
 	if err == nil {
-		return "Berhasil terhubung — Redis membalas PING."
+		return "Berhasil terhubung: Redis membalas PING."
 	}
 	return "Gagal terhubung: " + err.Error()
 }

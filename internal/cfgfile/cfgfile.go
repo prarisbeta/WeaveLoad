@@ -37,9 +37,10 @@ type Store struct {
 }
 
 func New(activePath string) *Store {
+	baseDir := filepath.Dir(activePath)
 	return &Store{
 		ActivePath:    activePath,
-		BackupDir:     filepath.Dir(activePath),
+		BackupDir:     filepath.Join(baseDir, "backups"),
 		StagingDir:    filepath.Dir(activePath),
 		HAProxyBin:    "haproxy",
 		ApplyScript:   "/usr/local/sbin/haproxy-gui-apply",
@@ -66,6 +67,30 @@ func (s *Store) Active() (string, error) {
 	return string(b), nil
 }
 
+// StandardMapFiles lists the standard HAProxy map and ACL files managed by haproxy-gui.
+var StandardMapFiles = []string{
+	"/etc/haproxy/maps/blocklist_ip.lst",
+	"/etc/haproxy/maps/allowlist_ip.lst",
+	"/etc/haproxy/maps/ratelimit_host.map",
+	"/etc/haproxy/maps/hosts_http.map",
+	"/etc/haproxy/maps/hosts_https.map",
+	"/etc/haproxy/maps/https_redirect.lst",
+	"/etc/haproxy/maps/admin_allow.lst",
+}
+
+// EnsureDefaultMapFiles creates any missing map/ACL files in /etc/haproxy/maps so
+// HAProxy -c validation and rules referencing them do not fail with missing file errors.
+func EnsureDefaultMapFiles() {
+	for _, p := range StandardMapFiles {
+		dir := filepath.Dir(p)
+		_ = os.MkdirAll(dir, 0755)
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			header := fmt.Sprintf("# %s - managed by haproxy-gui\n", filepath.Base(p))
+			_ = os.WriteFile(p, []byte(header), 0644)
+		}
+	}
+}
+
 // ValidateResult is the outcome of running "haproxy -c" against a draft.
 type ValidateResult struct {
 	OK     bool
@@ -75,6 +100,8 @@ type ValidateResult struct {
 // Validate writes content to a throwaway file and runs "haproxy -c -f" on
 // it, so a bad draft never touches the active config or the staging area.
 func (s *Store) Validate(content string) (ValidateResult, error) {
+	EnsureDefaultMapFiles()
+
 	tmp, err := os.CreateTemp("", "haproxy-gui-validate-*.cfg")
 	if err != nil {
 		return ValidateResult{}, fmt.Errorf("create temp file: %w", err)
@@ -87,7 +114,7 @@ func (s *Store) Validate(content string) (ValidateResult, error) {
 	}
 	tmp.Close()
 
-	cmd := exec.Command(s.HAProxyBin, "-c", "-q", "-f", tmp.Name())
+	cmd := exec.Command(s.HAProxyBin, "-c", "-f", tmp.Name())
 	out, err := cmd.CombinedOutput()
 	if err == nil {
 		return ValidateResult{OK: true, Output: string(out)}, nil
@@ -175,36 +202,89 @@ type ApplyResult struct {
 	Output string
 }
 
-// Backup is one timestamped copy of haproxy.cfg found in BackupDir.
+// Backup is one timestamped copy of haproxy.cfg.
 type Backup struct {
+	Name    string
 	Path    string
+	Size    int64
 	ModTime time.Time
 }
 
-// backupRE matches the pattern this codebase and its predecessor use:
+// backupSuffix matches the pattern this codebase and its predecessor use:
 // haproxy.cfg.bak-<unix-seconds>.
 var backupSuffix = ".cfg.bak-"
 
 // ListBackups returns known backups, newest first.
+// It checks BackupDir first, and also checks the parent directory of ActivePath
+// for any legacy backup files so nothing is lost.
 func (s *Store) ListBackups() ([]Backup, error) {
-	entries, err := os.ReadDir(s.BackupDir)
-	if err != nil {
-		return nil, fmt.Errorf("read backup dir: %w", err)
-	}
+	seen := make(map[string]bool)
 	var backups []Backup
-	for _, e := range entries {
-		if e.IsDir() || !strings.Contains(e.Name(), backupSuffix) {
-			continue
-		}
-		info, err := e.Info()
+
+	dirs := []string{s.BackupDir}
+	legacyDir := filepath.Dir(s.ActivePath)
+	if legacyDir != s.BackupDir {
+		dirs = append(dirs, legacyDir)
+	}
+
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("read backup dir %s: %w", dir, err)
 		}
-		backups = append(backups, Backup{
-			Path:    filepath.Join(s.BackupDir, e.Name()),
-			ModTime: info.ModTime(),
-		})
+		for _, e := range entries {
+			if e.IsDir() || !strings.Contains(e.Name(), backupSuffix) {
+				continue
+			}
+			if seen[e.Name()] {
+				continue
+			}
+			seen[e.Name()] = true
+
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			backups = append(backups, Backup{
+				Name:    e.Name(),
+				Path:    filepath.Join(dir, e.Name()),
+				Size:    info.Size(),
+				ModTime: info.ModTime(),
+			})
+		}
 	}
 	sort.Slice(backups, func(i, j int) bool { return backups[i].ModTime.After(backups[j].ModTime) })
 	return backups, nil
+}
+
+// GetBackupPath finds a backup file by its filename and ensures it is safely
+// confined within BackupDir or the active config directory.
+func (s *Store) GetBackupPath(name string) (string, error) {
+	cleanName := filepath.Base(name)
+	if cleanName != name || !strings.Contains(cleanName, backupSuffix) {
+		return "", fmt.Errorf("invalid backup name: %q", name)
+	}
+	// Check BackupDir first
+	p1 := filepath.Join(s.BackupDir, cleanName)
+	if _, err := os.Stat(p1); err == nil {
+		return p1, nil
+	}
+	// Check legacy parent dir
+	p2 := filepath.Join(filepath.Dir(s.ActivePath), cleanName)
+	if _, err := os.Stat(p2); err == nil {
+		return p2, nil
+	}
+	return "", os.ErrNotExist
+}
+
+// DeleteBackup removes a backup file from disk by name.
+func (s *Store) DeleteBackup(name string) error {
+	p, err := s.GetBackupPath(name)
+	if err != nil {
+		return err
+	}
+	return os.Remove(p)
 }

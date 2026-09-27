@@ -1,8 +1,17 @@
 {{define "config.html"}}{{template "chrome_header" .}}{{template "config_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "config_content"}}
-<h1>Konfigurasi</h1>
-<p class="hint">Ini adalah pengaturan inti sistem gateway. Selalu tekan "Periksa" sebelum "Simpan &amp; Terapkan" — jika ada kesalahan, sistem akan memberi tahu tanpa mengubah apa pun. Jika penerapan gagal, sistem otomatis kembali ke versi yang berjalan sebelumnya.</p>
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+  <div>
+    <h1>Konfigurasi Gateway</h1>
+    <p class="hint" style="margin:0;">Pengaturan file konfigurasi utama HAProxy, layanan daemon, dan template respon halaman error pengunjung.</p>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <a href="/config/error-pages" class="btn primary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
+      Halaman Error Kustom &amp; Ruang Tunggu
+    </a>
+  </div>
+</div>
 <div class="panel">
   <h3>Editor</h3>
   <form id="cfg-form">
@@ -19,41 +28,67 @@
 
 <div class="panel">
   <h3>Layanan HAProxy</h3>
-  <p class="hint">"Simpan &amp; terapkan" di atas sudah memuat ulang HAProxy secara otomatis tanpa memutus koneksi. Gunakan tombol ini hanya jika layanan tampak macet/tidak merespons dan memuat ulang saja tidak membantu — proses HAProxy akan berhenti sesaat lalu menyala kembali, sehingga koneksi yang sedang berjalan akan terputus.</p>
-  <button class="danger" hx-post="/api/haproxy/restart" hx-target="#restart-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Restart layanan HAProxy sekarang? Semua koneksi yang sedang berjalan akan terputus sesaat.">Restart layanan HAProxy</button>
+  <p class="hint">"Simpan &amp; terapkan" di atas sudah memuat ulang HAProxy secara otomatis tanpa memutus koneksi. Gunakan tombol ini hanya jika layanan tampak macet/tidak merespons dan memuat ulang saja tidak membantu. Proses HAProxy akan berhenti sesaat lalu menyala kembali, sehingga koneksi yang sedang berjalan akan terputus.</p>
+  <button class="danger" id="btn-restart-haproxy" data-restart-action="true" hx-post="/api/haproxy/restart" hx-target="#restart-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Restart layanan HAProxy sekarang? Semua koneksi yang sedang berjalan akan terputus sesaat.">Restart layanan HAProxy</button>
   <div id="restart-out"></div>
 </div>
 
 <div class="panel">
   <h3>Cadangan sebelumnya</h3>
   <p class="hint">Kembalikan ke salah satu versi berikut jika perubahan terbaru bermasalah.</p>
-  {{if not .Backups}}
-  <div class="empty-state"><p>Belum ada cadangan tersimpan.</p></div>
-  {{else}}
-  <div class="table-scroll">
-  <table>
-    <tr><th>Berkas</th><th>Waktu</th><th></th></tr>
-    {{range .Backups}}
+  <div id="backups-container">
+    {{template "config_backups.html" .}}
+  </div>
+</div>
+{{end}}
+
+{{define "config_backups.html"}}
+{{if not .Backups}}
+<div class="empty-state"><p>Belum ada cadangan tersimpan.</p></div>
+{{else}}
+<div class="table-scroll">
+<table>
+  <thead>
     <tr>
-      <td>{{.Path}}</td>
-      <td>{{.ModTime}}</td>
+      <th>Berkas</th>
+      <th>Waktu</th>
+      <th style="text-align:right;">Aksi</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Backups}}
+    <tr id="backup-row-{{.Name}}">
       <td>
-        <form style="display:inline" hx-post="/api/config/rollback" hx-confirm="Kembalikan ke cadangan ini? Konfigurasi yang berjalan sekarang akan digantikan." hx-target="#apply-out" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
-          <input type="hidden" name="backup_path" value="{{.Path}}">
-          <button type="submit">Kembalikan</button>
-        </form>
+        <span style="font-family:monospace; font-weight:600; font-size:13px; color:var(--text-main);">{{.Name}}</span>
+      </td>
+      <td style="white-space:nowrap; font-size:13px;">{{.ModTime.Format "2006-01-02 15:04:05 MST"}}</td>
+      <td style="text-align:right; white-space:nowrap;">
+        <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
+          <a href="/api/config/backup/download?name={{.Name}}" class="btn" download="{{.Name}}" title="Unduh berkas cadangan" style="display:inline-flex; align-items:center; gap:4px; text-decoration:none; padding:4px 10px; font-size:12px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Unduh
+          </a>
+          <form style="display:inline" hx-post="/api/config/rollback" hx-confirm="Kembalikan konfigurasi ke cadangan {{.Name}}? Konfigurasi aktif saat ini akan digantikan." hx-target="#apply-out" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+            <input type="hidden" name="name" value="{{.Name}}">
+            <button type="submit" class="btn" style="padding:4px 10px; font-size:12px;">Kembalikan</button>
+          </form>
+          <form style="display:inline" hx-post="/api/config/backup/delete" hx-confirm="Hapus berkas cadangan {{.Name}}? Tindakan ini tidak dapat dibatalkan." hx-target="#backups-container" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
+            <input type="hidden" name="name" value="{{.Name}}">
+            <button type="submit" class="btn danger" style="padding:4px 10px; font-size:12px;">Hapus</button>
+          </form>
+        </div>
       </td>
     </tr>
     {{end}}
-  </table>
-  </div>
-  {{end}}
+  </tbody>
+</table>
 </div>
+{{end}}
 {{end}}
 
 {{define "validate_result.html"}}
 <div class="panel">
-  {{if .OK}}<strong style="color:var(--ok)">Konfigurasi valid, aman diterapkan.</strong>{{else}}<strong style="color:var(--bad)">Konfigurasi tidak valid — belum diterapkan.</strong>{{end}}
+  {{if .OK}}<strong style="color:var(--ok)">Konfigurasi valid, aman diterapkan.</strong>{{else}}<strong style="color:var(--bad)">Konfigurasi tidak valid, belum diterapkan.</strong>{{end}}
   <pre>{{.Output}}</pre>
 </div>
 {{end}}

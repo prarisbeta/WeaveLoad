@@ -187,8 +187,8 @@ task mengikuti TDD dengan coverage ≥ 80% per paket.
 
 | ID | Task | Detail | Kriteria selesai | Est. |
 |---|---|---|---|---|
-| C4-1 | Wizard "Aktifkan proteksi" | Membuat potongan config (stick-table per IP `http_req_rate(10s)`, `track-sc0 src`, deny 403 untuk `blocklist_ip.lst`, deny 429 untuk host di `ratelimit_host.map`) untuk frontend yang dipilih. Ditampilkan sebagai diff, lalu diterapkan lewat alur validasi + rollback yang sudah ada. | Di lab: map kosong = tanpa efek. IP diblok → 403. Host melewati ambang → 429. | 2 |
-| C4-2 | UI aturan statis | Limit per IP dan per host, blocklist manual, allowlist yang tidak bisa diblok (IP internal/VPN). Runtime + file. | Entry allowlist ditolak saat akan diblok (test). | 2 |
+| C4-1 | Wizard "Aktifkan proteksi" | Membuat potongan config (stick-table per IP `http_req_rate(10s)`, `track-sc0 src`, deny 403 untuk `blocklist_ip.lst`, deny 429 untuk host di `ratelimit_host.map`) untuk frontend yang dipilih. Ditampilkan sebagai diff, lalu diterapkan lewat alur validasi + rollback yang sudah ada. | **Selesai**. Di lab: map kosong = tanpa efek. IP diblok → 403. Host melewati ambang → 429. | 2 |
+| C4-2 | UI aturan statis | Limit per IP dan per host, blocklist manual, allowlist yang tidak bisa diblok (IP internal/VPN). Runtime + file. | **Selesai**. Entry allowlist ditolak saat akan diblok (test). | 2 |
 
 ### C5 — Monitoring dasar (4,5 h)
 
@@ -219,9 +219,9 @@ rollback otomatis), dan audit.
 | C8-1 | Parser struktur config | Paket `internal/haproxycfg`: pool (backend/listen), anggota, balance, health check, cookie. Tambah/hapus satu baris `server` tanpa mengubah baris lain (komentar, CRLF, indentasi tetap). Anggota baru menyalin pengaturan SSL/SNI/check dari anggota contoh. | **Selesai** (26 Sep 2026). Coverage 94%. | 2 |
 | C8-2 | Halaman Kelompok Server + Node | `/pools`, `/pools/{name}` (anggota + status live + tombol aktifkan/kosongkan/nonaktifkan), form tambah anggota dengan pratinjau baris + `haproxy -c`, hapus anggota hanya jika MAINT atau DRAIN tanpa koneksi. `/nodes`: host → pool yang memakainya + pintasan "tambahkan ke kelompok". Tambah/hapus = admin, state/bobot = operator. | **Selesai** (26 Sep 2026), menunggu deploy. | 2 |
 | C8-3 | Status runtime bertahan saat reload | Helper apply menyimpan `show servers state` sebelum reload. Config memakai `server-state-file` + `load-server-state-from-file global`. | **Kode selesai**. Perlu 2 baris config di haproxy-cni. Server yang di-MAINT tetap MAINT setelah anggota lain ditambah (uji di lab C1-2). | 0,5 |
-| C8-4 | Edit anggota | Ubah bobot, maxconn, backup, dan alamat/port anggota secara permanen di config (bukan hanya runtime). Tombol "Simpan bobot runtime ke config". | Diff hanya menyentuh baris anggota itu. | 1,5 |
+| C8-4 | Edit anggota | Ubah bobot, maxconn, backup, dan alamat/port anggota secara permanen di config (bukan hanya runtime). Tombol "Simpan bobot runtime ke config". | **Selesai**. Diff hanya menyentuh baris anggota itu. | 1,5 |
 | C8-5 | Inventori node | Tabel `nodes` (host, nama, catatan, tag). Aksi tingkat node: nonaktifkan/kosongkan di **semua** pool sekaligus (seperti menonaktifkan Node di F5) untuk maintenance mesin. | Satu klik men-drain CESIUM02 di ±25 pool, tercatat sebagai satu aksi di audit. | 2 |
-| C8-6 | Wizard pool + virtual server | Buat pool baru (nama, metode balance, health check host/path/status, HTTP/HTTPS + SNI, cookie sticky) dan rutekan host ke pool itu lewat map `hosts_http.map`/`hosts_https.map`. | Situs baru bisa dipublikasikan tanpa membuka editor config. | 3 |
+| C8-6 | Wizard pool + virtual server | Buat pool baru (nama, metode balance, health check host/path/status, HTTP/HTTPS + SNI, cookie sticky) dan rutekan host ke pool itu lewat map `hosts_http.map`/`hosts_https.map`. | **Selesai**. Situs baru bisa dipublikasikan tanpa membuka editor config. | 3 |
 
 ### C7 — Packaging dan rilis (10 h)
 
@@ -299,16 +299,16 @@ rollback otomatis), dan audit.
 
 | ID | Task | Detail | Kriteria selesai | Est. |
 |---|---|---|---|---|
-| P7-1 | Insiden + timeline | Status open/investigating/mitigated/resolved, owner, event yang dikorelasikan otomatis (subjek/backend sama), aksi, verifikasi, catatan. | **Belum dikerjakan.** Fondasi sudah disiapkan di sisi Security Engine: `security_events.incident_id` nullable, `internal/security.Detection.Seed()` sudah didefinisikan sebagai kontrak IncidentSeed, dan status event (`open`/`acknowledged`/`dismissed`/`escalated`) sudah bisa diubah manual dari `/security/events/{id}`. Kapabilitas RBAC `manage_incidents` juga sudah ada dan digunakan untuk menggerbang aksi status ini. Task berikutnya: tabel `incidents` + halaman timeline + korelasi otomatis dari `security_events`. | 2,5 |
-| P7-2 | Evidence bundle | Ekspor JSON + CSV: event, log mentah (maks. 1.000 baris), metrik jendela waktu, aksi. | Belum dikerjakan. | 1 |
+| P7-1 | Insiden + timeline | Status open/investigating/mitigated/resolved, owner, event yang dikorelasikan otomatis (subjek/backend sama), aksi, verifikasi, catatan. | **Selesai (26 Sep 2026)**. Tabel `incidents` + `incident_notes` + relasi ke `security_events`. UI `/incidents`, `/incidents/new`, `/incidents/{id}` dengan timeline investigasi, status workflow, korelasi event otomatis, audit logging, dan kapabilitas RBAC `manage_incidents`. | 2,5 |
+| P7-2 | Evidence bundle | Ekspor JSON + CSV: metadata insiden, timeline catatan, daftar kejadian terkait beserta bukti evidence JSON lengkap. | **Selesai (26 Sep 2026)**. Endpoint `/incidents/{id}/export?format=json` dan `?format=csv` dengan penamaan file berbasis timestamp. | 1 |
 
 ### P8 — MCP (5 h)
 
 | ID | Task | Detail | Kriteria selesai | Est. |
 |---|---|---|---|---|
-| P8-1 | API baca + investigasi | `/api/v1`: traffic, events, incidents, sources, audit, `policy/check` (dry-run). | RBAC sama dengan UI. | 2 |
-| P8-2 | Biner `konsolgw-mcp` | MCP server stdio, konfigurasi base URL + token dari env. Tools di §8.3. | Dipakai dari Claude Code/Desktop di laptop operator. | 2 |
-| P8-3 | Tool `propose_action` | Membuat aksi `proposed` dengan `source=ai` + reason + evidence. Tidak pernah dieksekusi tanpa klik manusia. | Test: tidak ada jalur MCP yang mengeksekusi aksi. | 1 |
+| P8-1 | API baca + investigasi | `/api/v1`: traffic, events, incidents, sources, audit, `policy/check` (dry-run). | **Selesai**. RBAC sama dengan UI. | 2 |
+| P8-2 | Biner `konsolgw-mcp` | MCP server stdio, konfigurasi base URL + token dari env. Tools di §8.3. | **Selesai**. Dipakai dari Claude Code/Desktop di laptop operator. | 2 |
+| P8-3 | Tool `propose_action` | Membuat aksi `proposed` dengan `source=ai` + reason + evidence. Tidak pernah dieksekusi tanpa klik manusia. | **Selesai**. Test: tidak ada jalur MCP yang mengeksekusi aksi. | 1 |
 
 ### P9 — AI analysis BYO key (4 h)
 

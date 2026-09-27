@@ -217,24 +217,48 @@ func inheritedParams(params []string) []string {
 }
 
 // PoolSpec is what the "create new pool" wizard submits: a brand-new
-// backend section with exactly one starting member. Anything beyond
-// balance/health-check-path/the first member (SSL, sticky sessions, ACLs,
-// ...) isn't exposed here — add it afterwards through the config editor.
+// backend or listen section with protocol templates (Web, MySQL, Postgres, Redis, TCP).
 type PoolSpec struct {
 	Name string
-	// Balance is "roundrobin" (HAProxy's own default, so empty and
-	// "roundrobin" both omit the directive) or "leastconn".
+	// Profile: web | mysql | postgres | redis | tcp
+	Profile string
+	// Balance is "roundrobin", "leastconn", "first", "source", etc.
 	Balance string
-	// HealthCheckPath, if set, adds an HTTP health check (GET this path).
-	// Empty means a plain TCP connect check, HAProxy's simplest option.
+	// HealthCheckType: httpchk | mysql-check | pgsql-check | redis-check | tcp-check | none
+	HealthCheckType string
+	// HealthCheckPath, if set with httpchk (e.g. /health.txt or /).
 	HealthCheckPath string
-	Member          MemberSpec
+	// HealthCheckUser (for mysql-check or pgsql-check, e.g. haproxy_check or postgres).
+	HealthCheckUser string
+	// HealthCheckHost (for HTTP Host header check).
+	HealthCheckHost string
+	// Mode is "http" or "tcp".
+	Mode string
+	// ListenPort, if set, creates a `listen` block with `bind *:<port>`.
+	// If empty, creates a `backend` block.
+	ListenPort string
+	// Timeouts
+	TimeoutClient string
+	TimeoutServer string
+	// ForwardFor adds `option forwardfor except 127.0.0.0/8`
+	ForwardFor bool
+	// TrustCloudflare extracts real visitor IP from CF-Connecting-IP and sets X-Forwarded-For
+	TrustCloudflare bool
+	// CookieSticky adds `cookie SERVERID insert indirect nocache`
+	CookieSticky bool
+	// Domain optionally binds a public web domain (e.g. app.cni.net.id) to this pool
+	Domain string
+	// Member represents the primary/first member.
+	Member MemberSpec
+	// Members allows specifying multiple initial members.
+	Members []MemberSpec
 }
 
-// AddPool returns content with one new backend section appended at the end,
-// containing spec.Member as its only server, plus the block itself (as
-// plain "\n"-joined lines, regardless of the file's own line endings) for
-// previews and audit logs.
+// CloudflareCIDRs contains all official Cloudflare IPv4 & IPv6 CIDR blocks.
+const CloudflareCIDRs = "173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32"
+
+// AddPool returns content with one new backend or listen section appended at the end,
+// containing the configured members and protocol health checks.
 func AddPool(content string, spec PoolSpec) (string, string, error) {
 	cfg := Parse(content)
 	if !nameRE.MatchString(spec.Name) {
@@ -246,37 +270,107 @@ func AddPool(content string, spec PoolSpec) (string, string, error) {
 	if _, ok := cfg.Pool(spec.Name); ok {
 		return "", "", fmt.Errorf("pool %q sudah ada", spec.Name)
 	}
-	spec.Member.CloneFrom = ""
-	if err := validateMemberSpec(Pool{Name: spec.Name}, spec.Member, ""); err != nil {
-		return "", "", err
+
+	members := spec.Members
+	if len(members) == 0 {
+		if spec.Member.Host == "" && spec.Member.Name == "" {
+			return "", "", fmt.Errorf("setidaknya satu anggota server wajib diisi")
+		}
+		members = []MemberSpec{spec.Member}
+	}
+
+	for i := range members {
+		members[i].CloneFrom = ""
+		if err := validateMemberSpec(Pool{Name: spec.Name}, members[i], ""); err != nil {
+			return "", "", err
+		}
 	}
 
 	balance := strings.TrimSpace(spec.Balance)
 
 	var lines []string
-	lines = append(lines, "backend "+spec.Name)
+	if spec.ListenPort != "" {
+		lines = append(lines, "listen "+spec.Name)
+		lines = append(lines, "        bind *:"+spec.ListenPort)
+	} else {
+		lines = append(lines, "backend "+spec.Name)
+	}
+	if spec.Mode != "" {
+		lines = append(lines, "        mode "+spec.Mode)
+	}
 	if balance != "" && balance != "roundrobin" {
 		lines = append(lines, "        balance "+balance)
 	}
-	if spec.HealthCheckPath != "" {
-		lines = append(lines, "        option httpchk")
-		lines = append(lines, "        http-check send meth GET uri "+spec.HealthCheckPath)
+	if spec.TimeoutClient != "" {
+		lines = append(lines, "        timeout client "+spec.TimeoutClient)
 	}
-	memberLine := "server " + spec.Member.Name + " " + spec.Member.Host + ":" + spec.Member.Port
-	if spec.Member.Weight != "" {
-		memberLine += " weight " + spec.Member.Weight
+	if spec.TimeoutServer != "" {
+		lines = append(lines, "        timeout server "+spec.TimeoutServer)
 	}
-	if spec.Member.Maxconn != "" {
-		memberLine += " maxconn " + spec.Member.Maxconn
+	if spec.TrustCloudflare && (spec.Mode == "http" || spec.Mode == "") {
+		lines = append(lines, "        http-request set-header X-Forwarded-For %[req.hdr(CF-Connecting-IP)] if { req.hdr(CF-Connecting-IP) -m found }")
 	}
-	memberLine += " check"
-	if spec.Member.Backup {
-		memberLine += " backup"
+	if spec.ForwardFor && (spec.Mode == "http" || spec.Mode == "") {
+		lines = append(lines, "        option forwardfor except 127.0.0.0/8")
 	}
-	if spec.Member.Disabled {
-		memberLine += " disabled"
+	if spec.CookieSticky && (spec.Mode == "http" || spec.Mode == "") {
+		lines = append(lines, "        cookie SERVERID insert indirect nocache")
 	}
-	lines = append(lines, "        "+memberLine)
+
+	// Health Checks
+	switch spec.HealthCheckType {
+	case "mysql-check":
+		if spec.HealthCheckUser != "" {
+			lines = append(lines, "        option mysql-check user "+spec.HealthCheckUser)
+		} else {
+			lines = append(lines, "        option mysql-check")
+		}
+	case "pgsql-check":
+		if spec.HealthCheckUser != "" {
+			lines = append(lines, "        option pgsql-check user "+spec.HealthCheckUser)
+		} else {
+			lines = append(lines, "        option pgsql-check")
+		}
+	case "redis-check":
+		lines = append(lines, "        option tcp-check")
+		lines = append(lines, "        tcp-check send PING\\r\\n")
+		lines = append(lines, "        tcp-check expect string +PONG")
+	case "tcp-check":
+		lines = append(lines, "        option tcp-check")
+	default:
+		// Default or httpchk
+		if spec.HealthCheckPath != "" {
+			lines = append(lines, "        option httpchk")
+			if spec.HealthCheckHost != "" {
+				lines = append(lines, "        http-check send meth GET uri "+spec.HealthCheckPath+" ver HTTP/1.1 hdr Host "+spec.HealthCheckHost)
+				lines = append(lines, "        http-check expect rstatus ^[234]")
+			} else {
+				lines = append(lines, "        http-check send meth GET uri "+spec.HealthCheckPath)
+			}
+		}
+	}
+
+	for _, m := range members {
+		memberLine := "server " + m.Name + " " + m.Host + ":" + m.Port
+		if spec.CookieSticky && (spec.Mode == "http" || spec.Mode == "") {
+			memberLine += " cookie " + m.Name
+		}
+		if m.Weight != "" {
+			memberLine += " weight " + m.Weight
+		}
+		if m.Maxconn != "" {
+			memberLine += " maxconn " + m.Maxconn
+		}
+		memberLine += " check"
+		if m.Backup {
+			memberLine += " backup"
+		}
+		if m.Disabled {
+			memberLine += " disabled"
+		}
+		lines = append(lines, "        "+memberLine)
+	}
+
 	block := strings.Join(lines, "\n")
 
 	nl := "\n"
@@ -309,18 +403,33 @@ func RemoveMember(content, pool, member string) (string, string, error) {
 
 // RateLimitSpec is what the "rate limit" form submits.
 type RateLimitSpec struct {
-	RPS    int
-	Action string // "deny" (reject with 429) or "tarpit" (hold the connection open, then 429)
+	RPS              int
+	Action           string // "deny" (reject with 429) or "tarpit" (hold the connection open, then 429)
+	IgnoreCloudflare bool   // bypass Cloudflare proxy IPs and track client real IP from CF-Connecting-IP
 }
 
-// rateLimitLines renders spec as the 4-line block SetRateLimit/RemoveRateLimit
+// rateLimitLines renders spec as the 6 or 8 line block SetRateLimit/RemoveRateLimit
 // recognize by its leading marker comment — see RateLimit in parse.go.
 func rateLimitLines(indent string, spec RateLimitSpec) []string {
+	if spec.IgnoreCloudflare {
+		return []string{
+			indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s ignore_cf=true", spec.RPS, spec.Action),
+			indent + "acl is_cloudflare src " + CloudflareCIDRs,
+			indent + "http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst } !is_cloudflare",
+			indent + "http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }",
+			indent + "stick-table type ip size 100k expire 30s store http_req_rate(10s)",
+			indent + "http-request track-sc0 req.hdr(CF-Connecting-IP) if is_cloudflare { req.hdr(CF-Connecting-IP) -m found }",
+			indent + "http-request track-sc0 src if !is_cloudflare",
+			indent + fmt.Sprintf("http-request %s deny_status 429 if { sc_http_req_rate(0) gt %d } !{ src -f /etc/haproxy/maps/allowlist_ip.lst }", spec.Action, spec.RPS),
+		}
+	}
 	return []string{
 		indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s", spec.RPS, spec.Action),
+		indent + "http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst }",
+		indent + "http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }",
 		indent + "stick-table type ip size 100k expire 30s store http_req_rate(10s)",
 		indent + "http-request track-sc0 src",
-		indent + fmt.Sprintf("http-request %s deny_status 429 if { sc_http_req_rate(0) gt %d }", spec.Action, spec.RPS),
+		indent + fmt.Sprintf("http-request %s deny_status 429 if { sc_http_req_rate(0) gt %d } !{ src -f /etc/haproxy/maps/allowlist_ip.lst }", spec.Action, spec.RPS),
 	}
 }
 
@@ -347,7 +456,7 @@ func SetRateLimit(content, pool string, spec RateLimitSpec) (string, string, err
 	block := strings.Join(lines, "\n")
 
 	if p.RateLimit != nil {
-		return replaceLines(content, p.RateLimit.markerLine, 4, lines), block, nil
+		return replaceLines(content, p.RateLimit.markerLine, p.RateLimit.LineCount(), lines), block, nil
 	}
 	return insertLines(content, p.headerLine, lines), block, nil
 }
@@ -361,7 +470,7 @@ func RemoveRateLimit(content, pool string) (string, error) {
 	if p.RateLimit == nil {
 		return "", fmt.Errorf("kelompok %s tidak memiliki batas laju yang aktif", pool)
 	}
-	return deleteLines(content, p.RateLimit.markerLine, 4), nil
+	return deleteLines(content, p.RateLimit.markerLine, p.RateLimit.LineCount()), nil
 }
 
 func insertLine(content string, after int, text string) string {
@@ -438,3 +547,42 @@ func deleteLines(content string, start, count int) string {
 	out = append(out, lines[start+count:]...)
 	return strings.Join(out, "\n")
 }
+
+// SetPoolDisabled adds or removes the "disabled" directive in the pool's section.
+func SetPoolDisabled(content, pool string, disabled bool) (string, error) {
+	p, ok := Parse(content).Pool(pool)
+	if !ok {
+		return "", fmt.Errorf("kelompok %q tidak ditemukan di konfigurasi", pool)
+	}
+	if disabled {
+		if p.Disabled {
+			return content, nil
+		}
+		return insertLine(content, p.headerLine, "        disabled"), nil
+	}
+	if !p.Disabled {
+		return content, nil
+	}
+	return deleteLine(content, p.disabledLine), nil
+}
+
+// DeletePool removes the entire backend or listen block corresponding to pool.
+func DeletePool(content, pool string) (string, error) {
+	p, ok := Parse(content).Pool(pool)
+	if !ok {
+		return "", fmt.Errorf("kelompok %q tidak ditemukan di konfigurasi", pool)
+	}
+	lines := strings.Split(content, "\n")
+	start := p.headerLine
+	end := p.lastBodyLine
+
+	for end+1 < len(lines) && strings.TrimSpace(lines[end+1]) == "" {
+		end++
+	}
+
+	count := end - start + 1
+	updated := deleteLines(content, start, count)
+	return updated, nil
+}
+
+

@@ -1,0 +1,50 @@
+{{define "incident_new.html"}}{{template "chrome_header" .}}{{template "incident_new_page" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "incident_new_page"}}
+<h1>Buat Insiden Baru</h1>
+<p class="hint"><a href="/incidents">&larr; Kembali ke daftar insiden</a></p>
+
+<div class="panel" style="max-width:720px">
+  <form method="post" action="/incidents/new">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    {{if .PrefillEvent}}
+    <input type="hidden" name="event_id" value="{{.PrefillEvent.ID}}">
+    <div style="margin-bottom:16px; padding:12px 16px; background:var(--surface-2); border-left:4px solid var(--accent); border-radius:var(--radius-control); font-size:13px;">
+      <div style="font-weight:600; color:var(--ink);">Menghubungkan ke Kejadian Keamanan #{{.PrefillEvent.ID}}</div>
+      <div style="color:var(--ink-muted); margin-top:2px;">Rule: <strong>{{.PrefillEvent.Rule}}</strong> | Subjek: <strong>{{.PrefillEvent.Subject}}</strong> | Tingkat: <strong>{{.PrefillEvent.Severity}}</strong></div>
+    </div>
+    {{end}}
+
+    <label style="display:block; margin-bottom:14px">Judul Insiden <span style="color:var(--bad)">*</span>
+      <input type="text" name="title" required placeholder="Contoh: Lonjakan Brute Force Login pada Backend Auth" {{if .PrefillEvent}}value="Insiden: {{.PrefillEvent.Rule}} dari {{.PrefillEvent.Subject}}"{{end}} style="width:100%; box-sizing:border-box;">
+    </label>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px">
+      <label>Tingkat Keparahan (Severity)
+        <select name="severity" style="width:100%">
+          <option value="low">Rendah (Low)</option>
+          <option value="medium" {{if not .PrefillEvent}}selected{{else if eq .PrefillEvent.Severity "medium"}}selected{{end}}>Sedang (Medium)</option>
+          <option value="high" {{if .PrefillEvent}}{{if eq .PrefillEvent.Severity "high"}}selected{{end}}{{end}}>Tinggi (High)</option>
+          <option value="critical" {{if .PrefillEvent}}{{if eq .PrefillEvent.Severity "critical"}}selected{{end}}{{end}}>Kritis (Critical)</option>
+        </select>
+      </label>
+      <label>Penanggung Jawab (Owner)
+        <input type="text" name="owner" value="{{.DefaultOwner}}" placeholder="email@domain.com" style="width:100%; box-sizing:border-box;">
+      </label>
+    </div>
+
+    <label style="display:block; margin-bottom:14px">Ringkasan / Konteks Awal
+      <textarea name="summary" rows="3" placeholder="Jelaskan indikasi awal atau temuan yang mendasari insiden ini..." style="width:100%; box-sizing:border-box; font-family:inherit;">{{if .PrefillEvent}}Terdeteksi kejadian {{.PrefillEvent.Rule}} dengan {{.PrefillEvent.Count}} hit pada subjek {{.PrefillEvent.Subject}}.{{end}}</textarea>
+    </label>
+
+    <label style="display:block; margin-bottom:20px">Catatan Investigasi Awal (Opsional)
+      <textarea name="initial_note" rows="2" placeholder="Catatan langkah awal yang sudah diambil..." style="width:100%; box-sizing:border-box; font-family:inherit;"></textarea>
+    </label>
+
+    <div style="display:flex; gap:10px;">
+      <button type="submit" class="primary">Buat Insiden & Mulai Investigasi</button>
+      <a href="/incidents" class="button" style="text-decoration:none">Batal</a>
+    </div>
+  </form>
+</div>
+{{end}}

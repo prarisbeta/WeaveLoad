@@ -1,0 +1,203 @@
+{{define "incident_detail.html"}}{{template "chrome_header" .}}{{template "incident_detail_page" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "incident_detail_page"}}
+<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+  <div>
+    <p class="hint" style="margin:0 0 6px 0"><a href="/incidents">&larr; Kembali ke daftar insiden</a></p>
+    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <h1 style="margin:0">Insiden #{{.Incident.ID}}: {{.Incident.Title}}</h1>
+      <span class="badge{{if eq .Incident.Severity "critical"}} badge-down{{else if eq .Incident.Severity "high"}} badge-down{{else if eq .Incident.Severity "medium"}} badge-maint{{else}} badge-nocheck{{end}}">
+        {{.Incident.Severity}}
+      </span>
+      {{if eq .Incident.Status "open"}}<span class="badge badge-maint">Open</span>
+      {{else if eq .Incident.Status "investigating"}}<span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;">Investigating</span>
+      {{else if eq .Incident.Status "mitigated"}}<span class="badge" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe;">Mitigated</span>
+      {{else if eq .Incident.Status "resolved"}}<span class="badge badge-up">Resolved</span>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- Evidence Bundle Export Buttons -->
+  <div style="display:flex; gap:8px;">
+    <a href="/incidents/{{.Incident.ID}}/export?format=json" class="button" style="text-decoration:none; font-size:12.5px; display:inline-flex; align-items:center; gap:5px;">
+      <span>📦</span> Evidence JSON
+    </a>
+    <a href="/incidents/{{.Incident.ID}}/export?format=csv" class="button" style="text-decoration:none; font-size:12.5px; display:inline-flex; align-items:center; gap:5px;">
+      <span>📊</span> Evidence CSV
+    </a>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px; align-items:start">
+  <!-- Left Column: Summary, Notes & Timeline, Linked Events -->
+  <div>
+    <!-- Summary Panel -->
+    <div class="panel" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Ringkasan Insiden</h3>
+      <p style="margin:0; line-height:1.5; color:var(--ink);">{{if .Incident.Summary}}{{.Incident.Summary}}{{else}}<span class="muted">Tidak ada ringkasan tertulis.</span>{{end}}</p>
+    </div>
+
+    <!-- Linked Security Events -->
+    <div class="panel" style="margin-bottom:16px">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0">Kejadian Terkait (Linked Events) ({{len .Events}})</h3>
+      </div>
+      {{if not .Events}}
+      <p class="muted">Belum ada kejadian keamanan yang dikaitkan ke insiden ini.</p>
+      {{else}}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Rule</th>
+            <th>Tingkat</th>
+            <th>Subjek</th>
+            <th>Hit</th>
+            <th>Terakhir</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Events}}
+          <tr>
+            <td><a href="/security/events/{{.ID}}">#{{.ID}}</a></td>
+            <td><strong>{{.Rule}}</strong></td>
+            <td><span class="badge{{if or (eq .Severity "high") (eq .Severity "critical")}} badge-down{{end}}">{{.Severity}}</span></td>
+            <td>{{if eq .SubjectType "ip"}}<a href="/security/ip/{{.Subject}}">{{.Subject}}</a>{{else}}{{.Subject}}{{end}}</td>
+            <td>{{.Count}}</td>
+            <td><span style="font-size:12px; color:var(--ink-muted);">{{.LastSeen.Format "02 Jan 15:04"}}</span></td>
+            <td>
+              {{if $.CanManage}}
+              <form method="post" action="/api/incidents/{{$.Incident.ID}}/link" style="display:inline;" data-confirm="Lepaskan kejadian ini dari insiden?">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="action" value="unlink">
+                <input type="hidden" name="event_id" value="{{.ID}}">
+                <button type="submit" class="button danger" style="padding:2px 6px; font-size:11px;">Lepas</button>
+              </form>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+      {{end}}
+    </div>
+
+    <!-- Candidate Events to Correlate -->
+    {{if .Candidates}}
+    <div class="panel" style="margin-bottom:16px; border:1px dashed var(--accent);">
+      <h3 style="margin-top:0; color:var(--accent);">Kandidat Korelasi Otomatis ({{len .Candidates}})</h3>
+      <p class="hint">Kejadian deteksi lain yang memiliki subjek IP / pool yang sama dan belum dikaitkan ke insiden apa pun:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Rule</th>
+            <th>Subjek</th>
+            <th>Hit</th>
+            <th>Waktu</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Candidates}}
+          <tr>
+            <td><a href="/security/events/{{.ID}}">#{{.ID}}</a></td>
+            <td>{{.Rule}}</td>
+            <td>{{.Subject}}</td>
+            <td>{{.Count}}</td>
+            <td><span style="font-size:12px; color:var(--ink-muted);">{{.LastSeen.Format "15:04:05"}}</span></td>
+            <td>
+              {{if $.CanManage}}
+              <form method="post" action="/api/incidents/{{$.Incident.ID}}/link" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="action" value="link">
+                <input type="hidden" name="event_id" value="{{.ID}}">
+                <button type="submit" class="button primary" style="padding:2px 8px; font-size:11px;">+ Hubungkan</button>
+              </form>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+
+    <!-- Investigation Notes & Timeline -->
+    <div class="panel">
+      <h3 style="margin-top:0">Timeline & Catatan Investigasi</h3>
+      {{if not .Notes}}
+      <p class="muted">Belum ada catatan investigasi.</p>
+      {{else}}
+      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:18px;">
+        {{range .Notes}}
+        <div style="padding:10px 14px; background:var(--surface-2); border-left:3px solid var(--accent); border-radius:var(--radius-control);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:12px;">
+            <strong style="color:var(--ink);">{{.Author}}</strong>
+            <span style="color:var(--ink-muted);">{{.CreatedAt.Format "02 Jan 2006 15:04:05"}}</span>
+          </div>
+          <div style="font-size:13px; line-height:1.45; color:var(--ink); white-space:pre-wrap;">{{.Content}}</div>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
+
+      {{if .CanManage}}
+      <form method="post" action="/api/incidents/{{.Incident.ID}}/notes" style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <label style="display:block; font-weight:600; margin-bottom:6px;">Tambah Catatan / Analisis:
+          <textarea name="content" required rows="3" placeholder="Tuliskan temuan atau instruksi investigasi..." style="width:100%; box-sizing:border-box; font-family:inherit; margin-top:4px;"></textarea>
+        </label>
+        <button type="submit" class="primary" style="margin-top:6px;">Kirim Catatan</button>
+      </form>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- Right Column: Status Transition & Metadata -->
+  <div>
+    <div class="panel" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Metadata</h3>
+      <table style="font-size:13px">
+        <tr><th>ID Insiden</th><td>#{{.Incident.ID}}</td></tr>
+        <tr><th>Dibuat Pada</th><td>{{.Incident.CreatedAt.Format "02 Jan 15:04:05"}}</td></tr>
+        <tr><th>Diperbarui</th><td>{{.Incident.UpdatedAt.Format "02 Jan 15:04:05"}}</td></tr>
+        <tr><th>Owner</th><td>{{if .Incident.Owner}}{{.Incident.Owner}}{{else}}<span class="muted">Belum ada</span>{{end}}</td></tr>
+        {{if .Incident.ResolvedAt}}
+        <tr><th>Diselesaikan</th><td>{{.Incident.ResolvedAt.Format "02 Jan 15:04:05"}}</td></tr>
+        <tr><th>Diselesaikan oleh</th><td>{{.Incident.ResolvedBy}}</td></tr>
+        {{end}}
+      </table>
+    </div>
+
+    {{if .CanManage}}
+    <div class="panel">
+      <h3 style="margin-top:0">Perbarui Status & Alur</h3>
+      <form method="post" action="/api/incidents/{{.Incident.ID}}/status">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        
+        <label style="display:block; margin-bottom:10px">Ubah Status
+          <select name="status" style="width:100%; margin-top:4px">
+            <option value="open" {{if eq .Incident.Status "open"}}selected{{end}}>Open (Terbuka)</option>
+            <option value="investigating" {{if eq .Incident.Status "investigating"}}selected{{end}}>Investigating (Sedang Diinvestigasi)</option>
+            <option value="mitigated" {{if eq .Incident.Status "mitigated"}}selected{{end}}>Mitigated (Telah Dimitigasi)</option>
+            <option value="resolved" {{if eq .Incident.Status "resolved"}}selected{{end}}>Resolved (Selesai & Ditutup)</option>
+          </select>
+        </label>
+
+        <label style="display:block; margin-bottom:10px">Owner / Penanggung Jawab
+          <input type="text" name="owner" value="{{.Incident.Owner}}" placeholder="email@domain.com" style="width:100%; box-sizing:border-box; margin-top:4px">
+        </label>
+
+        <label style="display:block; margin-bottom:12px">Catatan Perubahan Status (Opsional)
+          <textarea name="note" rows="2" placeholder="Alasan atau konteks perubahan status..." style="width:100%; box-sizing:border-box; font-family:inherit; margin-top:4px"></textarea>
+        </label>
+
+        <button type="submit" class="primary" style="width:100%">Simpan Perubahan</button>
+      </form>
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

@@ -19,18 +19,100 @@ func (h *PoolNewFormHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func poolSpecFromForm(r *http.Request) haproxycfg.PoolSpec {
-	return haproxycfg.PoolSpec{
+	spec := haproxycfg.PoolSpec{
 		Name:            strings.TrimSpace(r.FormValue("pool_name")),
+		Profile:         strings.TrimSpace(r.FormValue("profile")),
 		Balance:         strings.TrimSpace(r.FormValue("balance")),
+		HealthCheckType: strings.TrimSpace(r.FormValue("health_check_type")),
 		HealthCheckPath: strings.TrimSpace(r.FormValue("health_check_path")),
-		Member: haproxycfg.MemberSpec{
-			Name:    strings.TrimSpace(r.FormValue("name")),
-			Host:    strings.TrimSpace(r.FormValue("host")),
-			Port:    strings.TrimSpace(r.FormValue("port")),
-			Weight:  strings.TrimSpace(r.FormValue("weight")),
-			Maxconn: strings.TrimSpace(r.FormValue("maxconn")),
-		},
+		HealthCheckUser: strings.TrimSpace(r.FormValue("health_check_user")),
+		HealthCheckHost: strings.TrimSpace(r.FormValue("health_check_host")),
+		Mode:            strings.TrimSpace(r.FormValue("mode")),
+		ListenPort:      strings.TrimSpace(r.FormValue("listen_port")),
+		TimeoutClient:   strings.TrimSpace(r.FormValue("timeout_client")),
+		TimeoutServer:   strings.TrimSpace(r.FormValue("timeout_server")),
+		ForwardFor:      r.FormValue("forwardfor") == "1" || r.FormValue("forwardfor") == "true",
+		TrustCloudflare: r.FormValue("trust_cloudflare") == "1" || r.FormValue("trust_cloudflare") == "true",
+		CookieSticky:    r.FormValue("cookie_sticky") == "1" || r.FormValue("cookie_sticky") == "true",
+		Domain:          strings.TrimSpace(r.FormValue("domain")),
 	}
+
+	names := r.Form["member_name"]
+	if len(names) == 0 {
+		names = r.Form["member_name[]"]
+	}
+	hosts := r.Form["member_host"]
+	if len(hosts) == 0 {
+		hosts = r.Form["member_host[]"]
+	}
+	ports := r.Form["member_port"]
+	if len(ports) == 0 {
+		ports = r.Form["member_port[]"]
+	}
+	weights := r.Form["member_weight"]
+	if len(weights) == 0 {
+		weights = r.Form["member_weight[]"]
+	}
+	maxconns := r.Form["member_maxconn"]
+	if len(maxconns) == 0 {
+		maxconns = r.Form["member_maxconn[]"]
+	}
+	backups := r.Form["member_backup"]
+	if len(backups) == 0 {
+		backups = r.Form["member_backup[]"]
+	}
+
+	if len(names) > 0 {
+		for i := range names {
+			n := strings.TrimSpace(names[i])
+			h := ""
+			if i < len(hosts) {
+				h = strings.TrimSpace(hosts[i])
+			}
+			p := ""
+			if i < len(ports) {
+				p = strings.TrimSpace(ports[i])
+			}
+			w := ""
+			if i < len(weights) {
+				w = strings.TrimSpace(weights[i])
+			}
+			mc := ""
+			if i < len(maxconns) {
+				mc = strings.TrimSpace(maxconns[i])
+			}
+			bk := false
+			if i < len(backups) {
+				bk = backups[i] == "1" || backups[i] == "true"
+			}
+			if n != "" && h != "" {
+				spec.Members = append(spec.Members, haproxycfg.MemberSpec{
+					Name: n, Host: h, Port: p, Weight: w, Maxconn: mc, Backup: bk,
+				})
+			}
+		}
+	}
+
+	// Fallback to legacy single member form fields
+	if len(spec.Members) == 0 {
+		legacyName := strings.TrimSpace(r.FormValue("name"))
+		legacyHost := strings.TrimSpace(r.FormValue("host"))
+		if legacyName != "" && legacyHost != "" {
+			spec.Member = haproxycfg.MemberSpec{
+				Name:    legacyName,
+				Host:    legacyHost,
+				Port:    strings.TrimSpace(r.FormValue("port")),
+				Weight:  strings.TrimSpace(r.FormValue("weight")),
+				Maxconn: strings.TrimSpace(r.FormValue("maxconn")),
+				Backup:  r.FormValue("backup") == "1" || r.FormValue("backup") == "true",
+			}
+			spec.Members = append(spec.Members, spec.Member)
+		}
+	} else {
+		spec.Member = spec.Members[0]
+	}
+
+	return spec
 }
 
 type poolNewPreviewData struct {
@@ -99,6 +181,13 @@ func (h *PoolNewApply) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		renderTemplate(w, h.Templates, "pool_result.html", poolResult{Message: err.Error()})
 		return
 	}
-	h.applyChange(w, r, "pool.create", spec.Name, block,
-		updated, "Pool "+spec.Name+" dibuat dan HAProxy dimuat ulang. Buka /pools/"+spec.Name+" untuk mengelolanya, atau atur rute domain ke pool ini di halaman Aturan & Rute.")
+
+	okMsg := "Pool " + spec.Name + " dibuat dan HAProxy dimuat ulang. Buka /pools/" + spec.Name + " untuk mengelolanya."
+	if spec.Domain != "" {
+		_ = appendLine("/etc/haproxy/maps/hosts_http.map", spec.Domain+" "+spec.Name)
+		_ = appendLine("/etc/haproxy/maps/hosts_https.map", spec.Domain+" "+spec.Name)
+		okMsg = "Pool " + spec.Name + " dibuat dan domain " + spec.Domain + " otomatis diarahkan ke pool ini."
+	}
+
+	h.applyChange(w, r, "pool.create", spec.Name, block, updated, okMsg)
 }

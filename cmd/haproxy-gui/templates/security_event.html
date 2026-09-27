@@ -5,6 +5,40 @@
 <p class="hint"><a href="/security">&larr; Kembali ke daftar</a></p>
 
 <div class="panel">
+  {{if eq .Event.Status "acknowledged"}}
+  <div style="margin-bottom:18px; padding:12px 16px; background:var(--ok-soft); border-left:4px solid var(--ok); border-radius:var(--radius-control); color:var(--ink); font-size:13px; display:flex; align-items:center; gap:10px;">
+    <span style="font-size:18px; color:var(--ok); font-weight:bold">✓</span>
+    <div>
+      <div style="font-weight:600; color:var(--ok)">Kejadian Telah Ditandai Ditinjau</div>
+      <div style="font-size:12px; color:var(--ink-muted); margin-top:2px;">Status saat ini: <strong>acknowledged</strong>{{if .Event.AckedBy}} oleh <strong>{{.Event.AckedBy}}</strong>{{end}}.</div>
+    </div>
+  </div>
+  {{else if eq .Event.Status "dismissed"}}
+  <div style="margin-bottom:18px; padding:12px 16px; background:var(--surface-2); border-left:4px solid var(--ink-muted); border-radius:var(--radius-control); color:var(--ink); font-size:13px; display:flex; align-items:center; gap:10px;">
+    <span style="font-size:18px; color:var(--ink-muted); font-weight:bold">✕</span>
+    <div>
+      <div style="font-weight:600; color:var(--ink)">Kejadian Telah Diabaikan</div>
+      <div style="font-size:12px; color:var(--ink-muted); margin-top:2px;">Status saat ini: <strong>dismissed</strong>{{if .Event.AckedBy}} oleh <strong>{{.Event.AckedBy}}</strong>{{end}}.</div>
+    </div>
+  </div>
+  {{else if eq .Event.Status "escalated"}}
+  <div style="margin-bottom:18px; padding:12px 16px; background:var(--bad-soft); border-left:4px solid var(--bad); border-radius:var(--radius-control); color:var(--ink); font-size:13px; display:flex; align-items:center; gap:10px;">
+    <span style="font-size:18px; color:var(--bad); font-weight:bold">⚠</span>
+    <div>
+      <div style="font-weight:600; color:var(--bad)">Kejadian Telah Dieskalasi</div>
+      <div style="font-size:12px; color:var(--ink-muted); margin-top:2px;">Status saat ini: <strong>escalated</strong> (memerlukan investigasi lanjut){{if .Event.AckedBy}} oleh <strong>{{.Event.AckedBy}}</strong>{{end}}.</div>
+    </div>
+  </div>
+  {{else}}
+  <div style="margin-bottom:18px; padding:12px 16px; background:var(--warn-soft); border-left:4px solid var(--warn); border-radius:var(--radius-control); color:var(--ink); font-size:13px; display:flex; align-items:center; gap:10px;">
+    <span style="font-size:18px; color:var(--warn); font-weight:bold">ℹ</span>
+    <div>
+      <div style="font-weight:600; color:var(--warn)">Menunggu Tindakan</div>
+      <div style="font-size:12px; color:var(--ink-muted); margin-top:2px;">Kejadian ini belum diproses. Silakan pilih salah satu tindakan di bawah.</div>
+    </div>
+  </div>
+  {{end}}
+
   <table>
     <tr><th>Rule</th><td>{{.Event.Rule}}</td></tr>
     <tr><th>Tingkat</th><td><span class="badge{{if or (eq .Event.Severity "high") (eq .Event.Severity "critical")}} badge-down{{end}}">{{.Event.Severity}}</span></td></tr>
@@ -13,7 +47,22 @@
     <tr><th>Pertama Terlihat</th><td>{{.Event.FirstSeen.Format "2006-01-02 15:04:05"}}</td></tr>
     <tr><th>Terakhir Terlihat</th><td>{{.Event.LastSeen.Format "2006-01-02 15:04:05"}}</td></tr>
     <tr><th>Jumlah</th><td>{{.Event.Count}}</td></tr>
-    <tr><th>Status</th><td>{{.Event.Status}}</td></tr>
+    <tr>
+      <th>Status</th>
+      <td>
+        {{if eq .Event.Status "acknowledged"}}<span class="badge badge-up">✓ Ditinjau (acknowledged)</span>
+        {{else if eq .Event.Status "dismissed"}}<span class="badge badge-nocheck">✕ Diabaikan (dismissed)</span>
+        {{else if eq .Event.Status "escalated"}}<span class="badge badge-down">⚠ Dieskalasi (escalated)</span>
+        {{else if eq .Event.Status "open"}}<span class="badge badge-maint">Terbuka (open)</span>
+        {{else}}<span class="badge badge-nocheck">{{.Event.Status}}</span>{{end}}
+      </td>
+    </tr>
+    {{if .Event.IncidentID}}
+    <tr>
+      <th>Terkait Insiden</th>
+      <td><a href="/incidents/{{.Event.IncidentID}}" style="font-weight:600; text-decoration:none;">🚨 Insiden #{{.Event.IncidentID}} &rarr;</a></td>
+    </tr>
+    {{end}}
     {{if .Event.AckedBy}}<tr><th>Ditinjau oleh</th><td>{{.Event.AckedBy}}</td></tr>{{end}}
   </table>
 
@@ -30,10 +79,23 @@
   {{end}}
   {{end}}
 
-  <div style="margin-top:16px; display:flex; gap:8px">
-    <button type="button" hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"acknowledged"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Tandai kejadian ini sebagai ditinjau?">Tandai Ditinjau</button>
-    <button type="button" hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"dismissed"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Abaikan kejadian ini?">Abaikan</button>
-    <button type="button" hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"escalated"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Eskalasi kejadian ini?">Eskalasi</button>
+  <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border)">
+    <div style="font-size:12.5px; font-weight:600; color:var(--ink-muted); margin-bottom:10px">Tindakan / Action:</div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <button type="button" {{if eq .Event.Status "acknowledged"}}class="primary" disabled style="opacity:0.8; cursor:default;"{{end}} hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"acknowledged"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Tandai kejadian ini sebagai ditinjau?">
+        {{if eq .Event.Status "acknowledged"}}✓ Sedang Ditinjau{{else}}Tandai Ditinjau{{end}}
+      </button>
+      <button type="button" {{if eq .Event.Status "dismissed"}}class="primary" disabled style="opacity:0.8; cursor:default;"{{end}} hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"dismissed"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Abaikan kejadian ini?">
+        {{if eq .Event.Status "dismissed"}}✓ Sedang Diabaikan{{else}}Abaikan{{end}}
+      </button>
+      <button type="button" class="danger{{if eq .Event.Status "escalated"}} primary{{end}}" {{if eq .Event.Status "escalated"}}disabled style="opacity:0.8; cursor:default; background:var(--bad); border-color:var(--bad); color:#fff;"{{end}} hx-post="/api/security/events/{{.Event.ID}}/status" hx-vals='{"status":"escalated"}' hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Eskalasi kejadian ini?">
+        {{if eq .Event.Status "escalated"}}✓ Sedang Dieskalasi{{else}}Eskalasi{{end}}
+      </button>
+      <a href="/incidents/new?event_id={{.Event.ID}}" class="btn primary" style="font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        Buat Insiden Baru
+      </a>
+    </div>
   </div>
 </div>
 {{end}}

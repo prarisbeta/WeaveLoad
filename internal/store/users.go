@@ -93,6 +93,7 @@ type User struct {
 	Role       Role
 	SSOSubject string
 	Enabled    bool
+	Language   string
 }
 
 var ErrNotFound = errors.New("not found")
@@ -123,14 +124,14 @@ func (s *Store) UpsertSSOUser(email, name, subject string) (User, error) {
 	}
 
 	res, err := s.db.Exec(
-		`INSERT INTO users (email, name, role, sso_subject, enabled) VALUES (?, ?, ?, ?, 1)`,
+		`INSERT INTO users (email, name, role, sso_subject, enabled, language) VALUES (?, ?, ?, ?, 1, 'id')`,
 		email, name, RoleViewer, subject,
 	)
 	if err != nil {
 		return User{}, fmt.Errorf("insert user: %w", err)
 	}
 	id, _ := res.LastInsertId()
-	return User{ID: id, Email: email, Name: name, Role: RoleViewer, SSOSubject: subject, Enabled: true}, nil
+	return User{ID: id, Email: email, Name: name, Role: RoleViewer, SSOSubject: subject, Enabled: true, Language: "id"}, nil
 }
 
 // ErrEmailTaken is returned by CreateUser when the email is already
@@ -159,20 +160,20 @@ func (s *Store) CreateUser(email, name string, role Role) (User, error) {
 	}
 
 	res, err := s.db.Exec(
-		`INSERT INTO users (email, name, role, enabled) VALUES (?, ?, ?, 1)`,
+		`INSERT INTO users (email, name, role, enabled, language) VALUES (?, ?, ?, 1, 'id')`,
 		email, name, role,
 	)
 	if err != nil {
 		return User{}, fmt.Errorf("insert user: %w", err)
 	}
 	id, _ := res.LastInsertId()
-	return User{ID: id, Email: email, Name: name, Role: role, Enabled: true}, nil
+	return User{ID: id, Email: email, Name: name, Role: role, Enabled: true, Language: "id"}, nil
 }
 
 // UserByEmail looks up a user, returning ErrNotFound if none exists.
 func (s *Store) UserByEmail(email string) (User, error) {
 	row := s.db.QueryRow(
-		`SELECT id, email, name, role, COALESCE(sso_subject,''), enabled FROM users WHERE email = ?`,
+		`SELECT id, email, name, role, COALESCE(sso_subject,''), enabled, language FROM users WHERE email = ?`,
 		normalizeEmail(email),
 	)
 	return scanUser(row)
@@ -181,7 +182,7 @@ func (s *Store) UserByEmail(email string) (User, error) {
 // UserByID looks up a user by primary key.
 func (s *Store) UserByID(id int64) (User, error) {
 	row := s.db.QueryRow(
-		`SELECT id, email, name, role, COALESCE(sso_subject,''), enabled FROM users WHERE id = ?`, id,
+		`SELECT id, email, name, role, COALESCE(sso_subject,''), enabled, language FROM users WHERE id = ?`, id,
 	)
 	return scanUser(row)
 }
@@ -190,7 +191,7 @@ func scanUser(row *sql.Row) (User, error) {
 	var u User
 	var role string
 	var enabled int
-	if err := row.Scan(&u.ID, &u.Email, &u.Name, &role, &u.SSOSubject, &enabled); err != nil {
+	if err := row.Scan(&u.ID, &u.Email, &u.Name, &role, &u.SSOSubject, &enabled, &u.Language); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -223,9 +224,15 @@ func (s *Store) SetEnabled(userID int64, enabled bool) error {
 	return err
 }
 
+// SetLanguage updates a user's preferred language.
+func (s *Store) SetLanguage(userID int64, lang string) error {
+	_, err := s.db.Exec(`UPDATE users SET language = ? WHERE id = ?`, lang, userID)
+	return err
+}
+
 // ListUsers returns all users ordered by email.
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id, email, name, role, COALESCE(sso_subject,''), enabled FROM users ORDER BY email`)
+	rows, err := s.db.Query(`SELECT id, email, name, role, COALESCE(sso_subject,''), enabled, language FROM users ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +243,7 @@ func (s *Store) ListUsers() ([]User, error) {
 		var u User
 		var role string
 		var enabled int
-		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &role, &u.SSOSubject, &enabled); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &role, &u.SSOSubject, &enabled, &u.Language); err != nil {
 			return nil, err
 		}
 		u.Role = Role(role)

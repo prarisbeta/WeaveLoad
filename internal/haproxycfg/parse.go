@@ -45,26 +45,37 @@ type Pool struct {
 	Cookie      bool   // true when the section has a "cookie" directive
 	Members     []Member
 	RateLimit   *RateLimit // nil when no per-IP rate limit is configured
+	Disabled    bool       // true when the backend/listen section contains a "disabled" directive
 
 	headerLine   int // line index of the "backend <name>" line
+	disabledLine int // line index of the "disabled" directive if present
 	lastBodyLine int // last non-blank, non-comment line of the section
 }
 
 // RateLimit is a per-source-IP request rate limit on one pool, managed as a
-// 4-line block (see edit.go's rateLimitLines) identified by its leading
+// 4-8 line block (see edit.go's rateLimitLines) identified by its leading
 // marker comment — the only way haproxy-gui recognizes a block it wrote as
 // its own, so it can replace or remove it later without disturbing anything
 // else in the backend.
 type RateLimit struct {
-	RPS    int
-	Action string // "deny" or "tarpit"
+	RPS              int
+	Action           string // "deny" or "tarpit"
+	IgnoreCloudflare bool
 
 	markerLine int // line index of the "# haproxy-gui:rate-limit ..." comment
 }
 
+// LineCount returns the number of config lines occupied by this rate limit block.
+func (r *RateLimit) LineCount() int {
+	if r != nil && r.IgnoreCloudflare {
+		return 8
+	}
+	return 6
+}
+
 // rateLimitMarkerRE matches the marker comment rateLimitLines writes, e.g.
-// "# haproxy-gui:rate-limit rps=20 action=deny".
-var rateLimitMarkerRE = regexp.MustCompile(`^#\s*haproxy-gui:rate-limit\s+rps=(\d+)\s+action=(deny|tarpit)\s*$`)
+// "# haproxy-gui:rate-limit rps=20 action=deny" or with "ignore_cf=true".
+var rateLimitMarkerRE = regexp.MustCompile(`^#\s*haproxy-gui:rate-limit\s+rps=(\d+)\s+action=(deny|tarpit)(?:\s+ignore_cf=(true|false))?\s*$`)
 
 // Config is the parsed structure of one haproxy.cfg.
 type Config struct {
@@ -100,7 +111,8 @@ func Parse(content string) Config {
 		if cur != nil {
 			if m := rateLimitMarkerRE.FindStringSubmatch(strings.TrimSpace(text)); m != nil {
 				rps, _ := strconv.Atoi(m[1])
-				cur.RateLimit = &RateLimit{RPS: rps, Action: m[2], markerLine: i}
+				ignoreCF := len(m) > 3 && m[3] == "true"
+				cur.RateLimit = &RateLimit{RPS: rps, Action: m[2], IgnoreCloudflare: ignoreCF, markerLine: i}
 				continue
 			}
 		}
@@ -122,6 +134,11 @@ func Parse(content string) Config {
 		cur.lastBodyLine = i
 
 		switch tokens[0] {
+		case "disabled":
+			cur.Disabled = true
+			cur.disabledLine = i
+		case "enabled":
+			cur.Disabled = false
 		case "server":
 			if m, ok := parseMember(text, tokens, i); ok {
 				cur.Members = append(cur.Members, m)

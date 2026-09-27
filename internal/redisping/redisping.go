@@ -58,6 +58,19 @@ func Push(o Options, key, value string) error {
 	return nil
 }
 
+// Del deletes one key — used to flush or release the queue list.
+func Del(o Options, key string) error {
+	conn, err := connect(o)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.command("DEL", key); err != nil {
+		return fmt.Errorf("del %s: %w", key, err)
+	}
+	return nil
+}
+
 // LLen returns the number of elements in key (0 if it doesn't exist) — used
 // by the queue viewer to show the backlog size.
 func LLen(o Options, key string) (int64, error) {

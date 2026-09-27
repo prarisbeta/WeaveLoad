@@ -166,6 +166,23 @@ func (c *Client) DelMapEntry(mapFile, key string) error {
 	return wrapIfError(out, err)
 }
 
+// ClearTable clears entries from a stick table. If key is provided, only that key
+// is removed; otherwise the entire table is cleared.
+func (c *Client) ClearTable(tableName, key string) error {
+	if !ValidName(tableName) {
+		return &ErrInvalidName{"tableName", tableName}
+	}
+	cmd := fmt.Sprintf("clear table %s", tableName)
+	if key != "" {
+		if strings.ContainsAny(key, "\n\r ") {
+			return fmt.Errorf("key must not contain whitespace or newlines")
+		}
+		cmd = fmt.Sprintf("clear table %s key %s", tableName, key)
+	}
+	out, err := c.run(cmd)
+	return wrapIfError(out, err)
+}
+
 // wrapIfError turns a non-empty Runtime API reply into a Go error. HAProxy
 // replies with an empty body on success and a one-line message on failure.
 func wrapIfError(out string, err error) error {

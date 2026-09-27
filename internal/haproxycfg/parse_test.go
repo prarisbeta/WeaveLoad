@@ -64,8 +64,38 @@ func TestParse_RateLimit_DetectsMarkerBlock(t *testing.T) {
 	if p.RateLimit == nil {
 		t.Fatal("RateLimit = nil, want a parsed block")
 	}
-	if p.RateLimit.RPS != 20 || p.RateLimit.Action != "deny" {
-		t.Errorf("RateLimit = %+v, want RPS=20 Action=deny", p.RateLimit)
+	if p.RateLimit.RPS != 20 || p.RateLimit.Action != "deny" || p.RateLimit.IgnoreCloudflare {
+		t.Errorf("RateLimit = %+v, want RPS=20 Action=deny IgnoreCloudflare=false", p.RateLimit)
+	}
+	if p.RateLimit.LineCount() != 6 {
+		t.Errorf("LineCount = %d, want 6", p.RateLimit.LineCount())
+	}
+}
+
+func TestParse_RateLimit_DetectsCloudflareMarkerBlock(t *testing.T) {
+	cfg := `backend http_cf_limited
+        # haproxy-gui:rate-limit rps=50 action=tarpit ignore_cf=true
+        acl is_cloudflare src 173.245.48.0/20
+        http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst } !is_cloudflare
+        http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }
+        stick-table type ip size 100k expire 30s store http_req_rate(10s)
+        http-request track-sc0 req.hdr(CF-Connecting-IP) if is_cloudflare { req.hdr(CF-Connecting-IP) -m found }
+        http-request track-sc0 src if !is_cloudflare
+        http-request tarpit deny_status 429 if { sc_http_req_rate(0) gt 50 } !{ src -f /etc/haproxy/maps/allowlist_ip.lst }
+        server node1 10.0.0.1:80 check
+`
+	p, ok := Parse(cfg).Pool("http_cf_limited")
+	if !ok {
+		t.Fatal("http_cf_limited not found")
+	}
+	if p.RateLimit == nil {
+		t.Fatal("RateLimit = nil, want a parsed block")
+	}
+	if p.RateLimit.RPS != 50 || p.RateLimit.Action != "tarpit" || !p.RateLimit.IgnoreCloudflare {
+		t.Errorf("RateLimit = %+v, want RPS=50 Action=tarpit IgnoreCloudflare=true", p.RateLimit)
+	}
+	if p.RateLimit.LineCount() != 8 {
+		t.Errorf("LineCount = %d, want 8", p.RateLimit.LineCount())
 	}
 }
 

@@ -1,8 +1,11 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"haproxy-gui/internal/auth"
@@ -17,6 +20,8 @@ type ConfigStore interface {
 	SaveDraft(author, content string) (string, error)
 	Apply(stagedPath string) (cfgfile.ApplyResult, error)
 	ListBackups() ([]cfgfile.Backup, error)
+	GetBackupPath(name string) (string, error)
+	DeleteBackup(name string) error
 }
 
 // ServiceRestarter is the subset of *cfgfile.Store the "restart HAProxy"
@@ -148,8 +153,7 @@ func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // RollbackAction restores one of the timestamped backups cfgfile.Store
-// tracks, going through the exact same validate-then-apply path as any
-// other config change (a backup is just a draft that happens to be old).
+// tracks, staging it cleanly and applying it via the root helper.
 type RollbackAction struct {
 	Config    ConfigStore
 	Audit     AuditRecorder
@@ -161,43 +165,48 @@ func (h *RollbackAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid form body", http.StatusBadRequest)
 		return
 	}
-	path := r.FormValue("backup_path")
-	if path == "" {
-		http.Error(w, "backup_path is required", http.StatusBadRequest)
+	name := r.FormValue("name")
+	if name == "" {
+		name = r.FormValue("backup_path")
+	}
+	name = filepath.Base(name)
+	if name == "" || name == "." {
+		http.Error(w, "backup name is required", http.StatusBadRequest)
 		return
 	}
 
-	backups, err := h.Config.ListBackups()
+	path, err := h.Config.GetBackupPath(name)
 	if err != nil {
-		http.Error(w, "failed to list backups: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	found := false
-	for _, b := range backups {
-		if b.Path == path {
-			found = true
-			break
-		}
-	}
-	if !found {
-		http.Error(w, "unknown backup path", http.StatusBadRequest)
+		http.Error(w, "unknown backup: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	res, err := h.Config.Apply(path)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, "failed to read backup file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	u, _ := auth.UserFromContext(r.Context())
+	draftPath, err := h.Config.SaveDraft("rollback-"+u.Email, string(content))
+	if err != nil {
+		http.Error(w, "failed to stage rollback draft: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res, err := h.Config.Apply(draftPath)
 	if err != nil {
 		http.Error(w, "failed to run apply helper: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	u, _ := auth.UserFromContext(r.Context())
 	detail := "rolled back"
 	if !res.OK {
 		detail = "rollback failed: " + res.Output
 	}
 	if err := h.Audit.Record(store.AuditEntry{
 		UserEmail: u.Email, RemoteIP: clientIP(r),
-		Action: "config.rollback", Target: path, Detail: detail,
+		Action: "config.rollback", Target: name, Detail: detail,
 	}); err != nil {
 		http.Error(w, "rollback outcome could not be audit-logged: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -208,6 +217,87 @@ func (h *RollbackAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderTemplate(w, h.Templates, "apply_result.html", res)
+}
+
+// BackupDownloadAction streams a backup file as an attachment download.
+type BackupDownloadAction struct {
+	Config ConfigStore
+}
+
+func (h *BackupDownloadAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		name = r.URL.Query().Get("file")
+	}
+	name = filepath.Base(name)
+	if name == "" || name == "." {
+		http.Error(w, "backup name is required", http.StatusBadRequest)
+		return
+	}
+
+	path, err := h.Config.GetBackupPath(name)
+	if err != nil {
+		http.Error(w, "backup file not found", http.StatusNotFound)
+		return
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		http.Error(w, "failed to read backup file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, name))
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
+// BackupDeleteAction removes a backup file and returns the refreshed backup list HTML.
+type BackupDeleteAction struct {
+	Config    ConfigStore
+	Audit     AuditRecorder
+	Templates *template.Template
+}
+
+func (h *BackupDeleteAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	name := r.FormValue("name")
+	if name == "" {
+		name = r.FormValue("backup_path")
+	}
+	name = filepath.Base(name)
+	if name == "" || name == "." {
+		http.Error(w, "backup name is required", http.StatusBadRequest)
+		return
+	}
+
+	u, _ := auth.UserFromContext(r.Context())
+	ip := clientIP(r)
+
+	if err := h.Config.DeleteBackup(name); err != nil {
+		_ = h.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email, RemoteIP: ip,
+			Action: "config.backup.delete", Target: name, Detail: "failed: " + err.Error(),
+		})
+		http.Error(w, "failed to delete backup: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_ = h.Audit.Record(store.AuditEntry{
+		UserEmail: u.Email, RemoteIP: ip,
+		Action: "config.backup.delete", Target: name, Detail: "deleted backup file",
+	})
+
+	backups, _ := h.Config.ListBackups()
+	renderTemplate(w, h.Templates, "config_backups.html", struct {
+		Chrome
+		Backups []cfgfile.Backup
+	}{Chrome: NewChrome(r, "config"), Backups: backups})
 }
 
 // RestartServiceAction restarts the haproxy systemd service directly —

@@ -60,11 +60,17 @@ var errNoSessionCookie = errors.New("no session cookie")
 // users included (Enabled is enforced separately so a deactivated account's
 // existing session can be reported clearly rather than silently 404ing).
 func currentSession(r *http.Request, s Sessions) (store.Session, store.User, error) {
-	c, err := r.Cookie(SessionCookieName)
-	if err != nil || c.Value == "" {
+	sessionID := ""
+	if c, err := r.Cookie(SessionCookieName); err == nil && c.Value != "" {
+		sessionID = c.Value
+	} else if authHdr := r.Header.Get("Authorization"); len(authHdr) > 7 && authHdr[:7] == "Bearer " {
+		sessionID = authHdr[7:]
+	}
+
+	if sessionID == "" {
 		return store.Session{}, store.User{}, errNoSessionCookie
 	}
-	sess, err := s.Session(c.Value)
+	sess, err := s.Session(sessionID)
 	if err != nil {
 		return store.Session{}, store.User{}, err
 	}
