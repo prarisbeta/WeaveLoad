@@ -4,9 +4,13 @@
 <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
   <div>
     <h1>Konfigurasi Gateway</h1>
-    <p class="hint" style="margin:0;">Pengaturan file konfigurasi utama HAProxy, layanan daemon, dan template respon halaman error pengunjung.</p>
+    <p class="hint" style="margin:0;">Pengaturan file konfigurasi utama HAProxy, layanan daemon, integrasi AI/MCP, dan template respon halaman error pengunjung.</p>
   </div>
   <div style="display:flex; gap:8px;">
+    <a href="#mcp-setup-panel" class="btn" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"></path><circle cx="9" cy="10" r="1"></circle><circle cx="15" cy="10" r="1"></circle></svg>
+      Setup MCP / AI
+    </a>
     <a href="/config/error-pages" class="btn primary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
       Halaman Error Kustom &amp; Ruang Tunggu
     </a>
@@ -31,6 +35,109 @@
   <p class="hint">"Simpan &amp; terapkan" di atas sudah memuat ulang HAProxy secara otomatis tanpa memutus koneksi. Gunakan tombol ini hanya jika layanan tampak macet/tidak merespons dan memuat ulang saja tidak membantu. Proses HAProxy akan berhenti sesaat lalu menyala kembali, sehingga koneksi yang sedang berjalan akan terputus.</p>
   <button class="danger" id="btn-restart-haproxy" data-restart-action="true" hx-post="/api/haproxy/restart" hx-target="#restart-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Restart layanan HAProxy sekarang? Semua koneksi yang sedang berjalan akan terputus sesaat.">Restart layanan HAProxy</button>
   <div id="restart-out"></div>
+</div>
+
+<div class="panel" id="mcp-setup-panel" style="border:1px solid var(--accent); background:rgba(99, 102, 241, 0.03);">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+    <div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <h3 style="margin:0; color:var(--accent);">🤖 Setup Integrasi MCP (Model Context Protocol) &amp; AI</h3>
+        <span class="badge" style="background:var(--ok); color:#fff; font-size:11px; padding:2px 8px; border-radius:12px;">v1 REST API Ready</span>
+      </div>
+      <p class="hint" style="margin:4px 0 0 0;">Hubungkan asisten AI (Google Antigravity, Claude Desktop, Cursor, Claude Code) ke Konsol Gateway untuk pemantauan live health, investigasi insiden, dan mitigasi dengan prinsip <em>Human-in-the-Loop</em>.</p>
+    </div>
+    <button type="button" class="btn" id="btn-test-mcp-api" style="font-size:12px; display:inline-flex; align-items:center; gap:4px; padding:4px 10px;">
+      ⚡ Uji Endpoint API
+    </button>
+  </div>
+  <div id="mcp-test-status" style="margin-bottom:12px;"></div>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+    <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
+      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Endpoint Base URL API</label>
+      <input type="text" id="mcp-base-url" style="width:100%; font-family:monospace; font-size:12px;" value="http://127.0.0.1:8080/api/v1">
+    </div>
+    <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
+      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Bearer Token (Opsional)</label>
+      <input type="text" id="mcp-api-token" placeholder="Biarkan kosong jika tanpa token API" style="width:100%; font-family:monospace; font-size:12px;">
+    </div>
+  </div>
+
+  <div style="margin-bottom:10px;">
+    <div style="display:flex; gap:6px; border-bottom:1px solid var(--border); padding-bottom:6px; margin-bottom:10px;" id="mcp-tabs">
+      <button type="button" class="btn active-tab-btn" data-mcp-tab="antigravity" style="font-size:12px; padding:4px 10px;">Antigravity / Claude Code / Cursor</button>
+      <button type="button" class="btn" data-mcp-tab="claude" style="font-size:12px; padding:4px 10px;">Claude Desktop</button>
+      <button type="button" class="btn" data-mcp-tab="cli" style="font-size:12px; padding:4px 10px;">Direct Stdio CLI</button>
+    </div>
+
+    <div style="position:relative;">
+      <textarea id="mcp-snippet" readonly style="width:100%; height:130px; font-family:monospace; font-size:12px; background:rgba(0,0,0,0.25); color:var(--text-main); border:1px solid var(--border); border-radius:4px; padding:10px; resize:none;"></textarea>
+      <button type="button" class="btn primary" id="btn-copy-mcp" style="position:absolute; top:8px; right:8px; font-size:11px; padding:4px 10px;">
+        📋 Salin Konfigurasi
+      </button>
+    </div>
+    <p class="hint" id="mcp-tab-hint" style="margin:6px 0 0 0; font-size:11px;">Simpan konfigurasi di atas ke file <code>.agents/mcp_config.json</code> pada root workspace project Anda.</p>
+  </div>
+
+  <details style="margin-top:12px; background:rgba(255,255,255,0.01); border:1px solid var(--border); border-radius:6px; padding:8px 12px;">
+    <summary style="font-size:12px; font-weight:600; cursor:pointer; color:var(--text-main);">Lihat 7 MCP Tools yang Didukung</summary>
+    <div class="table-scroll" style="margin-top:8px;">
+      <table style="font-size:12px;">
+        <thead>
+          <tr>
+            <th>Tool Name</th>
+            <th>Kategori</th>
+            <th>Deskripsi</th>
+            <th>Otoritas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>get_status</code></td>
+            <td><span class="badge" style="background:#0284c7; color:#fff;">READ</span></td>
+            <td>Status kesehatan live, total sesi aktif, dan metrik sistem.</td>
+            <td>Otomatis</td>
+          </tr>
+          <tr>
+            <td><code>list_nodes</code></td>
+            <td><span class="badge" style="background:#0284c7; color:#fff;">READ</span></td>
+            <td>Daftar seluruh node (host) dan pool yang memakainya.</td>
+            <td>Otomatis</td>
+          </tr>
+          <tr>
+            <td><code>list_backends</code></td>
+            <td><span class="badge" style="background:#0284c7; color:#fff;">READ</span></td>
+            <td>Daftar backend, status, server UP/DOWN, dan sesi.</td>
+            <td>Otomatis</td>
+          </tr>
+          <tr>
+            <td><code>list_servers</code></td>
+            <td><span class="badge" style="background:#0284c7; color:#fff;">READ</span></td>
+            <td>Detail server individual (bobot, drain/maint, health check).</td>
+            <td>Otomatis</td>
+          </tr>
+          <tr>
+            <td><code>list_incidents</code></td>
+            <td><span class="badge" style="background:#d97706; color:#fff;">INVESTIGATE</span></td>
+            <td>Daftar insiden keamanan dengan filter status dan severity.</td>
+            <td>Otomatis</td>
+          </tr>
+          <tr>
+            <td><code>get_incident</code></td>
+            <td><span class="badge" style="background:#d97706; color:#fff;">INVESTIGATE</span></td>
+            <td>Rincian insiden, linimasa investigasi, dan log security event terkait.</td>
+            <td>Otomatis</td>
+          </tr>
+          <tr>
+            <td><code>propose_action</code></td>
+            <td><span class="badge" style="background:#dc2626; color:#fff;">PROPOSE</span></td>
+            <td>Mengajukan proposal mitigasi trafik (wajib reason + evidence).</td>
+            <td><strong>Wajib Persetujuan Manusia</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
 </div>
 
 <div class="panel">

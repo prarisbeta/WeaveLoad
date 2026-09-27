@@ -665,6 +665,136 @@
           .catch(function (err) { alert("Gagal menghapus: " + err); });
       }
     });
+
+    // --- MCP Setup Panel Interactivity on /config ---
+    var mcpBaseUrlInput = document.getElementById("mcp-base-url");
+    var mcpApiTokenInput = document.getElementById("mcp-api-token");
+    var mcpSnippetArea = document.getElementById("mcp-snippet");
+    var mcpTabs = document.getElementById("mcp-tabs");
+    var mcpTabHint = document.getElementById("mcp-tab-hint");
+    var btnCopyMcp = document.getElementById("btn-copy-mcp");
+    var btnTestMcpApi = document.getElementById("btn-test-mcp-api");
+    var mcpTestStatus = document.getElementById("mcp-test-status");
+
+    var activeMcpTab = "antigravity";
+
+    if (mcpBaseUrlInput && mcpSnippetArea) {
+      if (mcpBaseUrlInput.value === "http://127.0.0.1:8080/api/v1" && window.location.origin) {
+        mcpBaseUrlInput.value = window.location.origin + "/api/v1";
+      }
+
+      function updateMcpSnippet() {
+        var url = mcpBaseUrlInput ? mcpBaseUrlInput.value.trim() : "http://127.0.0.1:8080/api/v1";
+        var token = mcpApiTokenInput ? mcpApiTokenInput.value.trim() : "";
+
+        if (activeMcpTab === "antigravity") {
+          var configObj = {
+            mcpServers: {
+              "konsolgw": {
+                command: "konsolgw-mcp",
+                args: [],
+                env: {
+                  KONSOLGW_API_URL: url,
+                  KONSOLGW_API_TOKEN: token
+                }
+              }
+            }
+          };
+          mcpSnippetArea.value = JSON.stringify(configObj, null, 2);
+          if (mcpTabHint) mcpTabHint.innerHTML = 'Simpan konfigurasi di atas ke file <code>.agents/mcp_config.json</code> pada root workspace project Anda.';
+        } else if (activeMcpTab === "claude") {
+          var claudeObj = {
+            mcpServers: {
+              "konsol-gateway": {
+                command: "/usr/local/bin/konsolgw-mcp",
+                env: {
+                  KONSOLGW_API_URL: url,
+                  KONSOLGW_API_TOKEN: token
+                }
+              }
+            }
+          };
+          mcpSnippetArea.value = JSON.stringify(claudeObj, null, 2);
+          if (mcpTabHint) mcpTabHint.innerHTML = 'Tambahkan ke file <code>claude_desktop_config.json</code> (di <code>%APPDATA%\\Claude\\</code> atau <code>~/.config/Claude/</code>).';
+        } else if (activeMcpTab === "cli") {
+          var tokenParam = token ? 'export KONSOLGW_API_TOKEN="' + token + '"\n' : '';
+          mcpSnippetArea.value = 'export KONSOLGW_API_URL="' + url + '"\n' + tokenParam + '# Jalankan MCP server secara interaktif via stdio:\nkonsolgw-mcp';
+          if (mcpTabHint) mcpTabHint.innerHTML = 'Gunakan perintah di atas di terminal untuk menguji komunikasi JSON-RPC 2.0 stdio langsung.';
+        }
+      }
+
+      updateMcpSnippet();
+
+      if (mcpBaseUrlInput) mcpBaseUrlInput.addEventListener("input", updateMcpSnippet);
+      if (mcpApiTokenInput) mcpApiTokenInput.addEventListener("input", updateMcpSnippet);
+
+      if (mcpTabs) {
+        mcpTabs.addEventListener("click", function (e) {
+          var btn = e.target.closest("button[data-mcp-tab]");
+          if (!btn) return;
+          activeMcpTab = btn.getAttribute("data-mcp-tab");
+          var allBtns = mcpTabs.querySelectorAll("button[data-mcp-tab]");
+          allBtns.forEach(function (b) {
+            b.style.fontWeight = "normal";
+            b.style.borderColor = "var(--border)";
+            b.style.color = "var(--text-main)";
+          });
+          btn.style.fontWeight = "600";
+          btn.style.borderColor = "var(--accent)";
+          btn.style.color = "var(--accent)";
+          updateMcpSnippet();
+        });
+      }
+
+      if (btnCopyMcp) {
+        btnCopyMcp.addEventListener("click", function () {
+          if (!mcpSnippetArea) return;
+          mcpSnippetArea.select();
+          navigator.clipboard.writeText(mcpSnippetArea.value).then(function () {
+            var orig = btnCopyMcp.textContent;
+            btnCopyMcp.textContent = "✓ Tersalin!";
+            setTimeout(function () { btnCopyMcp.textContent = orig; }, 1500);
+          }).catch(function () {
+            document.execCommand("copy");
+            btnCopyMcp.textContent = "✓ Tersalin!";
+            setTimeout(function () { btnCopyMcp.textContent = "📋 Salin Konfigurasi"; }, 1500);
+          });
+        });
+      }
+
+      if (btnTestMcpApi) {
+        btnTestMcpApi.addEventListener("click", function () {
+          if (mcpTestStatus) {
+            mcpTestStatus.innerHTML = '<div class="panel" style="padding:8px 12px; margin:0;"><span class="spinner"></span> Menguji endpoint <code>/api/v1/status</code>...</div>';
+          }
+          var url = mcpBaseUrlInput ? mcpBaseUrlInput.value.trim() : "/api/v1";
+          var statusEndpoint = url.replace(/\/+$/, "") + "/status";
+
+          var headers = {};
+          var token = mcpApiTokenInput ? mcpApiTokenInput.value.trim() : "";
+          if (token) {
+            headers["Authorization"] = "Bearer " + token;
+          }
+
+          fetch(statusEndpoint, { headers: headers })
+            .then(function (res) {
+              if (!res.ok) throw new Error("HTTP Status " + res.status);
+              return res.json();
+            })
+            .then(function (data) {
+              if (mcpTestStatus) {
+                mcpTestStatus.innerHTML = '<div class="panel notice-ok" style="padding:8px 12px; margin:0;"><strong style="color:var(--ok)">✓ Endpoint API Berhasil Diakses</strong> — Live: ' + (data.data && data.data.live ? 'Online' : 'Offline') + ', Total Backends: ' + (data.data ? data.data.backends_total : '?') + '</div>';
+              }
+            })
+            .catch(function (err) {
+              if (mcpTestStatus) {
+                mcpTestStatus.innerHTML = '<div class="panel notice-bad" style="padding:8px 12px; margin:0;"><strong style="color:var(--bad)">✗ Gagal Mengakses API</strong>: ' + err.message + '</div>';
+              }
+            });
+        });
+      }
+    }
   });
 })();
+
 
