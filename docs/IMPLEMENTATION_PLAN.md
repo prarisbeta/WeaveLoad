@@ -1,20 +1,23 @@
 # Konsol Gateway — Implementation Plan per Edisi
 
-Versi 0.3 · 26 September 2026 · Acuan: *HAIProxy Enterprise AI SRE Platform — Product Knowledge v0.1*
+Versi 0.4 · 27 September 2026 · Acuan: *HAIProxy Enterprise AI SRE Platform — Product Knowledge v0.1*
 
-> **Catatan status (26 Sep 2026):** sebelum rebranding/edition-gating (bagian C0–C2) dikerjakan,
-> tiga potongan fungsional dari roadmap ini sudah dibangun dan **live di haproxy-cni** langsung di
-> `haproxy-gui` (belum di bawah nama Konsol Gateway, belum digating per edisi/lisensi — semua
-> pengguna internal mendapatkan fitur ini). Ringkasan dan pemetaannya ke ID task di bawah:
+> **Catatan status (27 Sep 2026):** implementasi fitur-fitur utama telah dibangun dan siap digunakan
+> langsung di `haproxy-gui` / Konsol Gateway. Ringkasan dan pemetaannya ke ID task roadmap:
 >
-> | Dibangun | Memenuhi/tumpang tindih dengan | Deviasi dari rencana |
+> | Dibangun | Memenuhi / Bagian Roadmap | Keterangan & Status |
 > |---|---|---|
-> | RBAC 8-role berbasis kapabilitas (`super_admin`…`viewer`, `Role.Can(Capability)`) | C6-1 (RBAC dasar) + P4-7 (role tambahan `auditor`/`security`) | Lebih luas dari spesifikasi: bukan 3 role tetap (Community) atau 5 role (Professional), langsung 8 role di semua instalasi. `view_security`/`manage_incidents` sengaja disiapkan untuk P6/P7. |
-> | Antrean rate-limit + API konsumsi bertoken (`/queue`, `/api/queue/ratelimit-events/consume`) | Tidak ada di rencana ini secara eksplisit — mendukung P7 (Incident Management) dan integrasi eksternal | Fitur baru, ditambahkan sebagai jembatan sebelum P7 dikerjakan. |
-> | **Security Engine**: 7 detektor (brute force, anomali laju, pemindaian path, probing sensitif, penyalahgunaan HTTP, gangguan backend, kena rate-limit), skor risiko IP, halaman `/security` | P6 (Security analytics) — lihat status per-baris di §6 P6 | Dikerjakan sebagai deteksi murni observasional (tanpa auto-block), sesuai AP-1/AP-2; belum ada retensi/ambang yang bisa diubah dari UI (P6-1 baris "Ambang di DB" belum), belum tergabung dengan P7 Incident Management. |
+> | **RBAC 8-role** (`super_admin`…`viewer`, `Role.Can(Cap)`) | C6-1 (RBAC dasar) + P4-7 (role tambahan) | **Selesai**. 8 role kapabilitas terintegrasi di seluruh route dan UI, migrasi skema otomatis. |
+> | **Pool & Node ala F5** (`/pools`, `/nodes`, wizard) | C8-1 s/d C8-6 (Manajemen pool & node) | **Selesai**. Parser `internal/haproxycfg`, UI live state, inline member edit, batch node actions. |
+> | **Antrean Rate-Limit & API Konsumsi** | C4 / Bridge P7 | **Selesai**. Antrean Redis di `/queue` dan endpoint bertoken `/api/queue/ratelimit-events/consume`. |
+> | **Security Engine** (7 detektor, skor risiko IP, `/security`) | P6 (Security analytics) | **Selesai (Observational)**. 7 rule deteksi real-time, sliding window, IP risk scoring, event deduplication. |
+> | **Incident Management** (`/incidents`, evidence bundle) | P7-1 & P7-2 (Incident Management) | **Selesai**. Status workflow, linimasa investigasi, korelasi security events, ekspor JSON & CSV. |
+> | **Error Pages Management** (`/error-pages`, template HTTP) | Fitur Enterprise / Reliability | **Selesai**. Template HTTP kustom (400..504) di `deploy/errors/`, handler & editor visual terintegrasi. |
+> | **i18n Localization** (Bahasa Indonesia & English) | C0-5 (i18n ID/EN) | **Selesai**. Paket `internal/i18n`, fungsi template `t`, selector bahasa dinamis. |
+> | **REST API v1** (`/api/v1/*`) | C1-4 (HTTP API) + P8-1 (API baca) | **Selesai**. Endpoint terstandarisasi untuk status, nodes, backends, servers, incidents. |
+> | **Konsol Gateway MCP Server** (`cmd/konsolgw-mcp`) | P8-2 & P8-3 (MCP Server & Tools) | **Selesai**. JSON-RPC 2.0 stdio server, 7 tools terintegrasi, unit test `main_test.go`, panduan `docs/MCP_INTEGRATION.md`. |
 >
-> Detail teknis Security Engine ada di riwayat commit `00e853a`..`d4daf10` pada branch
-> `feature/pool-node-management`, dan panduan pakainya ada di [`WALKTHROUGH.md`](WALKTHROUGH.md).
+> Detail teknis dapat dilihat di riwayat commit branch `feature/pool-node-management`, [`docs/MCP_INTEGRATION.md`](MCP_INTEGRATION.md), dan [`WALKTHROUGH.md`](WALKTHROUGH.md).
 
 Konsol Gateway (nama kerja) adalah control plane untuk HAProxy dengan loop **Observe → Context →
 Decide → Act → Verify → Audit**. Produk ini dijual dalam 3 edisi dari satu codebase tertutup:
