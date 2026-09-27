@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 )
 
 type JSONRPCRequest struct {
@@ -45,7 +47,7 @@ type Schema struct {
 	Required   []string       `json:"required,omitempty"`
 }
 
-var tools = []Tool{
+var defaultTools = []Tool{
 	{
 		Name:        "get_status",
 		Description: "Get overall status of the HAProxy server.",
@@ -67,17 +69,52 @@ var tools = []Tool{
 		InputSchema: Schema{Type: "object", Properties: map[string]any{}},
 	},
 	{
+		Name:        "list_incidents",
+		Description: "List security incidents with optional filters (status, severity, search query).",
+		InputSchema: Schema{
+			Type: "object",
+			Properties: map[string]any{
+				"status": map[string]any{
+					"type":        "string",
+					"description": "Filter by status: open, investigating, mitigated, resolved, false_positive",
+				},
+				"severity": map[string]any{
+					"type":        "string",
+					"description": "Filter by severity: critical, high, medium, low",
+				},
+				"q": map[string]any{
+					"type":        "string",
+					"description": "Search term across title, subject, and summary",
+				},
+			},
+		},
+	},
+	{
+		Name:        "get_incident",
+		Description: "Get complete details, linked events, and investigation notes of a security incident.",
+		InputSchema: Schema{
+			Type: "object",
+			Properties: map[string]any{
+				"id": map[string]any{
+					"type":        "integer",
+					"description": "Incident ID",
+				},
+			},
+			Required: []string{"id"},
+		},
+	},
+	{
 		Name:        "propose_action",
-		Description: "Propose an action for a human to review.",
+		Description: "Propose an action for a human operator or approval workflow to review.",
 		InputSchema: Schema{
 			Type: "object",
 			Properties: map[string]any{
 				"reason": map[string]any{
-					"type": "string",
+					"type":        "string",
 					"description": "Reason for this action",
 				},
 				"evidence": map[string]any{
-					"type": "string",
+					"type":        "string",
 					"description": "Evidence supporting the action",
 				},
 			},
@@ -86,28 +123,50 @@ var tools = []Tool{
 	},
 }
 
-var apiURL string
-var apiToken string
+// MCPServer handles MCP JSON-RPC requests over an io.Reader and io.Writer.
+type MCPServer struct {
+	APIURL     string
+	APIToken   string
+	HTTPClient *http.Client
+	In         io.Reader
+	Out        io.Writer
+}
 
-func main() {
-	apiURL = os.Getenv("KONSOLGW_API_URL")
+func NewMCPServer(apiURL, apiToken string, in io.Reader, out io.Writer) *MCPServer {
 	if apiURL == "" {
 		apiURL = "http://localhost:8080/api/v1"
 	}
-	apiToken = os.Getenv("KONSOLGW_API_TOKEN")
+	if in == nil {
+		in = os.Stdin
+	}
+	if out == nil {
+		out = os.Stdout
+	}
+	return &MCPServer{
+		APIURL:     apiURL,
+		APIToken:   apiToken,
+		HTTPClient: http.DefaultClient,
+		In:         in,
+		Out:        out,
+	}
+}
 
-	scanner := bufio.NewScanner(os.Stdin)
+func (s *MCPServer) Run() error {
+	scanner := bufio.NewScanner(s.In)
 	for scanner.Scan() {
 		line := scanner.Text()
+		if len(line) == 0 {
+			continue
+		}
 		var req JSONRPCRequest
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			sendError(nil, -32700, "Parse error")
+			s.sendError(nil, -32700, "Parse error")
 			continue
 		}
 
 		switch req.Method {
 		case "initialize":
-			sendResult(req.ID, map[string]any{
+			s.sendResult(req.ID, map[string]any{
 				"protocolVersion": "2024-11-05",
 				"serverInfo": map[string]any{
 					"name":    "konsolgw-mcp",
@@ -118,46 +177,88 @@ func main() {
 				},
 			})
 		case "notifications/initialized":
-			// Do nothing
+			// No response needed for notification
 		case "tools/list":
-			sendResult(req.ID, map[string]any{
-				"tools": tools,
+			s.sendResult(req.ID, map[string]any{
+				"tools": defaultTools,
 			})
 		case "tools/call":
 			var params CallToolParams
 			if err := json.Unmarshal(req.Params, &params); err != nil {
-				sendError(req.ID, -32602, "Invalid params")
+				s.sendError(req.ID, -32602, "Invalid params")
 				continue
 			}
-			handleToolCall(req.ID, params)
+			s.handleToolCall(req.ID, params)
 		default:
-			sendError(req.ID, -32601, "Method not found: "+req.Method)
+			s.sendError(req.ID, -32601, "Method not found: "+req.Method)
 		}
 	}
+	return scanner.Err()
 }
 
-func handleToolCall(id any, params CallToolParams) {
+func (s *MCPServer) handleToolCall(id any, params CallToolParams) {
 	var result string
 	var err error
 
 	switch params.Name {
 	case "get_status":
-		result, err = callAPI("/status")
+		result, err = s.callAPI("GET", "/status", nil)
 	case "list_nodes":
-		result, err = callAPI("/nodes")
+		result, err = s.callAPI("GET", "/nodes", nil)
 	case "list_backends":
-		result, err = callAPI("/backends")
+		result, err = s.callAPI("GET", "/backends", nil)
 	case "list_servers":
-		result, err = callAPI("/servers")
+		result, err = s.callAPI("GET", "/servers", nil)
+	case "list_incidents":
+		query := url.Values{}
+		if val, ok := params.Arguments["status"].(string); ok && val != "" {
+			query.Set("status", val)
+		}
+		if val, ok := params.Arguments["severity"].(string); ok && val != "" {
+			query.Set("severity", val)
+		}
+		if val, ok := params.Arguments["q"].(string); ok && val != "" {
+			query.Set("q", val)
+		}
+		path := "/incidents"
+		if len(query) > 0 {
+			path += "?" + query.Encode()
+		}
+		result, err = s.callAPI("GET", path, nil)
+	case "get_incident":
+		var incID int64
+		if rawID, ok := params.Arguments["id"]; ok {
+			switch v := rawID.(type) {
+			case float64:
+				incID = int64(v)
+			case int:
+				incID = int64(v)
+			case int64:
+				incID = v
+			case string:
+				incID, _ = strconv.ParseInt(v, 10, 64)
+			}
+		}
+		if incID <= 0 {
+			s.sendError(id, -32602, "Valid incident ID is required")
+			return
+		}
+		result, err = s.callAPI("GET", fmt.Sprintf("/incidents/%d", incID), nil)
 	case "propose_action":
-		result = fmt.Sprintf("Action proposed successfully based on reason: %s", params.Arguments["reason"])
+		reason, _ := params.Arguments["reason"].(string)
+		evidence, _ := params.Arguments["evidence"].(string)
+		if reason == "" || evidence == "" {
+			s.sendError(id, -32602, "Both reason and evidence are required")
+			return
+		}
+		result = fmt.Sprintf("Action proposed successfully based on reason: %s [Evidence: %s]", reason, evidence)
 	default:
-		sendError(id, -32601, "Tool not found")
+		s.sendError(id, -32601, "Tool not found: "+params.Name)
 		return
 	}
 
 	if err != nil {
-		sendResult(id, map[string]any{
+		s.sendResult(id, map[string]any{
 			"content": []map[string]any{
 				{
 					"type": "text",
@@ -169,7 +270,7 @@ func handleToolCall(id any, params CallToolParams) {
 		return
 	}
 
-	sendResult(id, map[string]any{
+	s.sendResult(id, map[string]any{
 		"content": []map[string]any{
 			{
 				"type": "text",
@@ -179,39 +280,44 @@ func handleToolCall(id any, params CallToolParams) {
 	})
 }
 
-func callAPI(endpoint string) (string, error) {
-	req, err := http.NewRequest("GET", apiURL+endpoint, nil)
+func (s *MCPServer) callAPI(method, endpoint string, body io.Reader) (string, error) {
+	client := s.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	req, err := http.NewRequest(method, s.APIURL+endpoint, body)
 	if err != nil {
 		return "", err
 	}
-	if apiToken != "" {
-		req.Header.Set("Authorization", "Bearer "+apiToken)
+	if s.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.APIToken)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
-	return string(body), nil
+	return string(respBody), nil
 }
 
-func sendResult(id any, result any) {
+func (s *MCPServer) sendResult(id any, result any) {
 	resp := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result:  result,
 	}
 	b, _ := json.Marshal(resp)
-	fmt.Println(string(b))
+	fmt.Fprintln(s.Out, string(b))
 }
 
-func sendError(id any, code int, msg string) {
+func (s *MCPServer) sendError(id any, code int, msg string) {
 	resp := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
@@ -221,5 +327,15 @@ func sendError(id any, code int, msg string) {
 		},
 	}
 	b, _ := json.Marshal(resp)
-	fmt.Println(string(b))
+	fmt.Fprintln(s.Out, string(b))
+}
+
+func main() {
+	apiURL := os.Getenv("KONSOLGW_API_URL")
+	apiToken := os.Getenv("KONSOLGW_API_TOKEN")
+	server := NewMCPServer(apiURL, apiToken, os.Stdin, os.Stdout)
+	if err := server.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
+		os.Exit(1)
+	}
 }
