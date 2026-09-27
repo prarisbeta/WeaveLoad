@@ -34,7 +34,8 @@ func (f fileConfig) Apply(string) (cfgfile.ApplyResult, error) {
 }
 func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) { return nil, nil }
 func (f fileConfig) GetBackupPath(name string) (string, error) { return "", nil }
-func (f fileConfig) DeleteBackup(name string) error { return nil }
+func (f fileConfig) ReadBackup(name string) (string, error)    { return f.content, nil }
+func (f fileConfig) DeleteBackup(name string) error            { return nil }
 
 type fixedSettings struct{ redis store.RedisSettings }
 

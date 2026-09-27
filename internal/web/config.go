@@ -21,6 +21,7 @@ type ConfigStore interface {
 	Apply(stagedPath string) (cfgfile.ApplyResult, error)
 	ListBackups() ([]cfgfile.Backup, error)
 	GetBackupPath(name string) (string, error)
+	ReadBackup(name string) (string, error)
 	DeleteBackup(name string) error
 }
 
@@ -133,6 +134,9 @@ func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Trigger auto-encryption on newly generated backups
+	_, _ = h.Config.ListBackups()
+
 	auditDetail := "applied"
 	if !res.OK {
 		auditDetail = "apply helper failed (auto rollback expected): " + res.Output
@@ -175,20 +179,14 @@ func (h *RollbackAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path, err := h.Config.GetBackupPath(name)
+	content, err := h.Config.ReadBackup(name)
 	if err != nil {
-		http.Error(w, "unknown backup: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		http.Error(w, "failed to read backup file: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "failed to read/decrypt backup file: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	u, _ := auth.UserFromContext(r.Context())
-	draftPath, err := h.Config.SaveDraft("rollback-"+u.Email, string(content))
+	draftPath, err := h.Config.SaveDraft("rollback-"+u.Email, content)
 	if err != nil {
 		http.Error(w, "failed to stage rollback draft: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -219,7 +217,7 @@ func (h *RollbackAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	renderTemplate(w, h.Templates, "apply_result.html", res)
 }
 
-// BackupDownloadAction streams a backup file as an attachment download.
+// BackupDownloadAction streams a decrypted backup file as an attachment download.
 type BackupDownloadAction struct {
 	Config ConfigStore
 }
@@ -235,23 +233,22 @@ func (h *BackupDownloadAction) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	path, err := h.Config.GetBackupPath(name)
+	content, err := h.Config.ReadBackup(name)
 	if err != nil {
-		http.Error(w, "backup file not found", http.StatusNotFound)
+		http.Error(w, "failed to read/decrypt backup file: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
-	content, err := os.ReadFile(path)
-	if err != nil {
-		http.Error(w, "failed to read backup file: "+err.Error(), http.StatusInternalServerError)
-		return
+	dlName := name
+	if !strings.HasSuffix(dlName, ".cfg") {
+		dlName += ".cfg"
 	}
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, name))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, dlName))
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(content)
+	_, _ = w.Write([]byte(content))
 }
 
 // BackupDeleteAction removes a backup file and returns the refreshed backup list HTML.

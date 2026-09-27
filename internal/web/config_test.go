@@ -60,6 +60,17 @@ func (f *fakeConfigStore) GetBackupPath(name string) (string, error) {
 	}
 	return "", os.ErrNotExist
 }
+func (f *fakeConfigStore) ReadBackup(name string) (string, error) {
+	path, err := f.GetBackupPath(name)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
 func (f *fakeConfigStore) DeleteBackup(name string) error {
 	f.deleted = append(f.deleted, name)
 	return nil

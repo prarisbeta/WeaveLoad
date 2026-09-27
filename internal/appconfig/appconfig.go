@@ -23,6 +23,7 @@ type Config struct {
 	RestartScript string // e.g. /usr/local/sbin/haproxy-gui-restart
 	SudoBin       string // e.g. sudo — set to "" only for local dev without sudoers configured
 	SSLDir        string // e.g. /etc/haproxy/ssl
+	BackupDir     string // e.g. /var/lib/haproxy-gui/backups or /etc/haproxy/backups
 	LogPath       string // e.g. /var/log/haproxy.log (where rsyslog writes the "log local2" traffic in haproxy.cfg)
 
 	DBPath string // e.g. /var/lib/haproxy-gui/app.db
@@ -88,6 +89,7 @@ func Load() (Config, error) {
 		RestartScript: getenv("RESTART_SCRIPT", "/usr/local/sbin/haproxy-gui-restart"),
 		SudoBin:       getenv("SUDO_BIN", "sudo"),
 		SSLDir:        getenv("SSL_DIR", "/etc/haproxy/ssl"),
+		BackupDir:     getenv("BACKUP_DIR", "/etc/haproxy/backups"),
 		LogPath:       getenv("HAPROXY_LOG_PATH", "/var/log/haproxy.log"),
 
 		DBPath: getenv("DB_PATH", "/var/lib/haproxy-gui/app.db"),

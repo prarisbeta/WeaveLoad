@@ -204,80 +204,154 @@ type ApplyResult struct {
 
 // Backup is one timestamped copy of haproxy.cfg.
 type Backup struct {
-	Name    string
-	Path    string
-	Size    int64
-	ModTime time.Time
+	Name        string
+	Path        string
+	Size        int64
+	ModTime     time.Time
+	IsEncrypted bool
 }
 
 // backupSuffix matches the pattern this codebase and its predecessor use:
 // haproxy.cfg.bak-<unix-seconds>.
 var backupSuffix = ".cfg.bak-"
 
-// ListBackups returns known backups, newest first.
-// It checks BackupDir first, and also checks the parent directory of ActivePath
-// for any legacy backup files so nothing is lost.
+// ListBackups returns known backups from the dedicated BackupDir, newest first.
+// If any legacy backups are discovered in the active configuration directory,
+// they are automatically moved into BackupDir and encrypted in-place.
 func (s *Store) ListBackups() ([]Backup, error) {
+	_ = os.MkdirAll(s.BackupDir, 0o750)
+
+	// Migrate any legacy backup files sitting in the root / active config directory
+	legacyDir := filepath.Dir(s.ActivePath)
+	if legacyDir != "" && legacyDir != s.BackupDir {
+		if entries, err := os.ReadDir(legacyDir); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() && strings.Contains(e.Name(), backupSuffix) {
+					oldPath := filepath.Join(legacyDir, e.Name())
+					newPath := filepath.Join(s.BackupDir, e.Name())
+					// Move to dedicated backup directory
+					if err := os.Rename(oldPath, newPath); err == nil {
+						_ = s.EncryptBackupFileInPlace(newPath)
+					}
+				}
+			}
+		}
+	}
+
 	seen := make(map[string]bool)
 	var backups []Backup
 
-	dirs := []string{s.BackupDir}
-	legacyDir := filepath.Dir(s.ActivePath)
-	if legacyDir != s.BackupDir {
-		dirs = append(dirs, legacyDir)
+	entries, err := os.ReadDir(s.BackupDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read backup dir %s: %w", s.BackupDir, err)
 	}
 
-	for _, dir := range dirs {
-		entries, err := os.ReadDir(dir)
+	for _, e := range entries {
+		if e.IsDir() || !strings.Contains(e.Name(), backupSuffix) {
+			continue
+		}
+		if seen[e.Name()] {
+			continue
+		}
+		seen[e.Name()] = true
+
+		fullPath := filepath.Join(s.BackupDir, e.Name())
+		// In-place auto encrypt if unencrypted
+		_ = s.EncryptBackupFileInPlace(fullPath)
+
+		info, err := e.Info()
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return nil, fmt.Errorf("read backup dir %s: %w", dir, err)
+			continue
 		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.Contains(e.Name(), backupSuffix) {
-				continue
-			}
-			if seen[e.Name()] {
-				continue
-			}
-			seen[e.Name()] = true
 
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			backups = append(backups, Backup{
-				Name:    e.Name(),
-				Path:    filepath.Join(dir, e.Name()),
-				Size:    info.Size(),
-				ModTime: info.ModTime(),
-			})
+		// Check if file is encrypted
+		isEnc := false
+		if raw, rerr := os.ReadFile(fullPath); rerr == nil {
+			isEnc = IsBackupEncrypted(raw)
 		}
+
+		backups = append(backups, Backup{
+			Name:        e.Name(),
+			Path:        fullPath,
+			Size:        info.Size(),
+			ModTime:     info.ModTime(),
+			IsEncrypted: isEnc,
+		})
 	}
+
 	sort.Slice(backups, func(i, j int) bool { return backups[i].ModTime.After(backups[j].ModTime) })
 	return backups, nil
 }
 
 // GetBackupPath finds a backup file by its filename and ensures it is safely
-// confined within BackupDir or the active config directory.
+// confined within BackupDir.
 func (s *Store) GetBackupPath(name string) (string, error) {
 	cleanName := filepath.Base(name)
 	if cleanName != name || !strings.Contains(cleanName, backupSuffix) {
 		return "", fmt.Errorf("invalid backup name: %q", name)
 	}
-	// Check BackupDir first
+	_ = os.MkdirAll(s.BackupDir, 0o750)
+
+	// Check BackupDir
 	p1 := filepath.Join(s.BackupDir, cleanName)
 	if _, err := os.Stat(p1); err == nil {
 		return p1, nil
 	}
-	// Check legacy parent dir
+
+	// Check legacy parent dir and migrate if found
 	p2 := filepath.Join(filepath.Dir(s.ActivePath), cleanName)
 	if _, err := os.Stat(p2); err == nil {
+		if err := os.Rename(p2, p1); err == nil {
+			_ = s.EncryptBackupFileInPlace(p1)
+			return p1, nil
+		}
 		return p2, nil
 	}
 	return "", os.ErrNotExist
+}
+
+// ReadBackup reads and decrypts a backup file by its filename.
+func (s *Store) ReadBackup(name string) (string, error) {
+	path, err := s.GetBackupPath(name)
+	if err != nil {
+		return "", err
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read backup file: %w", err)
+	}
+
+	decrypted, err := s.DecryptBackupContent(data)
+	if err != nil {
+		return "", fmt.Errorf("decrypt backup: %w", err)
+	}
+
+	return string(decrypted), nil
+}
+
+// CreateBackup creates an encrypted timestamped backup of the given configuration content.
+func (s *Store) CreateBackup(content string) (string, error) {
+	if err := os.MkdirAll(s.BackupDir, 0o750); err != nil {
+		return "", fmt.Errorf("create backup dir: %w", err)
+	}
+
+	encrypted, err := s.EncryptBackupContent([]byte(content))
+	if err != nil {
+		return "", fmt.Errorf("encrypt backup: %w", err)
+	}
+
+	filename := fmt.Sprintf("haproxy.cfg.bak-%d", s.Now().UnixNano())
+	path := filepath.Join(s.BackupDir, filename)
+
+	if err := os.WriteFile(path, encrypted, 0o640); err != nil {
+		return "", fmt.Errorf("write encrypted backup: %w", err)
+	}
+
+	return filename, nil
 }
 
 // DeleteBackup removes a backup file from disk by name.

@@ -67,6 +67,7 @@ func run() error {
 	rt := runtime.New(cfg.HAProxySocket)
 
 	cf := cfgfile.New(cfg.HAProxyCfg)
+	cf.BackupDir = cfg.BackupDir
 	cf.HAProxyBin = cfg.HAProxyBin
 	cf.StagingDir = cfg.StagingDir
 	cf.ApplyScript = cfg.ApplyScript

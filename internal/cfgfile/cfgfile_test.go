@@ -360,3 +360,81 @@ func TestGetBackupPath_And_DeleteBackup(t *testing.T) {
 		t.Errorf("file still exists after DeleteBackup")
 	}
 }
+
+func TestEncryptedBackup_CreateAndRead(t *testing.T) {
+	s := newTestStore(t)
+	plainContent := "global\n    stats socket /var/lib/haproxy/stats\nbackend test_pool\n    server s1 127.0.0.1:8080 check\n"
+
+	filename, err := s.CreateBackup(plainContent)
+	if err != nil {
+		t.Fatalf("CreateBackup failed: %v", err)
+	}
+
+	backupPath := filepath.Join(s.BackupDir, filename)
+	rawBytes, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Fatalf("read raw backup file: %v", err)
+	}
+
+	// Verify that raw file on disk is encrypted and starts with magic header
+	if !IsBackupEncrypted(rawBytes) {
+		t.Fatalf("expected backup on disk to be encrypted, got plain string: %s", string(rawBytes))
+	}
+	if strings.Contains(string(rawBytes), "test_pool") {
+		t.Errorf("raw backup file contains sensitive plaintext string")
+	}
+
+	// Verify ReadBackup transparently decrypts
+	decrypted, err := s.ReadBackup(filename)
+	if err != nil {
+		t.Fatalf("ReadBackup failed: %v", err)
+	}
+	if decrypted != plainContent {
+		t.Errorf("decrypted content = %q, want %q", decrypted, plainContent)
+	}
+}
+
+func TestEncryptedBackup_LegacyMigration(t *testing.T) {
+	s := newTestStore(t)
+	// Place a legacy unencrypted backup in the active/parent dir
+	legacyDir := filepath.Dir(s.ActivePath)
+	legacyPath := filepath.Join(legacyDir, "haproxy.cfg.bak-999999")
+	plain := "global\n    daemon\n"
+	if err := os.WriteFile(legacyPath, []byte(plain), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListBackups should migrate legacy backup into BackupDir and encrypt it
+	backups, err := s.ListBackups()
+	if err != nil {
+		t.Fatalf("ListBackups failed: %v", err)
+	}
+
+	if len(backups) == 0 {
+		t.Fatalf("expected at least 1 backup migrated, got 0")
+	}
+
+	// Verify old file in parent directory was cleaned up
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Errorf("legacy file in root dir still exists, was not cleaned up: %s", legacyPath)
+	}
+
+	// Verify new file in dedicated BackupDir exists and is encrypted
+	newPath := filepath.Join(s.BackupDir, "haproxy.cfg.bak-999999")
+	raw, err := os.ReadFile(newPath)
+	if err != nil {
+		t.Fatalf("migrated file not in BackupDir: %v", err)
+	}
+	if !IsBackupEncrypted(raw) {
+		t.Errorf("migrated backup was not encrypted in-place")
+	}
+
+	// Verify ReadBackup returns the original plain content
+	content, err := s.ReadBackup("haproxy.cfg.bak-999999")
+	if err != nil {
+		t.Fatalf("ReadBackup for migrated file failed: %v", err)
+	}
+	if content != plain {
+		t.Errorf("content = %q, want %q", content, plain)
+	}
+}
