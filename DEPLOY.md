@@ -1,6 +1,6 @@
-# Panduan Deploy Rilis Terbaru ke Server (HAProxy GUI)
+# Panduan Deploy Rilis Terbaru ke Server (HAProxy GUI / Konsol Gateway)
 
-Paket rilis biner statis Linux amd64 telah siap dikompilasi beserta template *error files*, root helpers, dan file konfigurasi.
+Paket rilis biner statis Linux amd64 telah siap dikompilasi beserta template *error files*, MCP server binary, root helpers, dan file konfigurasi.
 
 ---
 
@@ -8,18 +8,19 @@ Paket rilis biner statis Linux amd64 telah siap dikompilasi beserta template *er
 
 | Nama Berkas | Lokasi Lokal | SHA256 Checksum |
 | :--- | :--- | :--- |
-| **Tarball Rilis** | `dist/haproxy-gui-1ad6f47.tar.gz` | `d813c17989b3ba9cd940af6fef7e8278c8ed7153f6ae52a77c978f4ea9d53528` |
-| **Checksum SHA256** | `dist/haproxy-gui-1ad6f47.tar.gz.sha256` | — |
-| **Biner Statis Linux** | `dist/haproxy-gui-1ad6f47/bin/haproxy-gui` | `933a375742e21072e0dcc43071083728af6c9235d697fd6369ad0fb285dbc5e9` |
+| **Tarball Rilis** | `dist/haproxy-gui-62fe96b.tar.gz` | `fca95f26d4c1645afb6a322afe35fefcdc4bd75c24bdd7755f31e4062f9b84b0` |
+| **Checksum SHA256** | `dist/haproxy-gui-62fe96b.tar.gz.sha256` | — |
+| **Biner Utama Linux** | `dist/haproxy-gui-62fe96b/bin/haproxy-gui` | `8ae2735e8c4b6be2191cc7d9546a0eefd80884ad8f9b665dfa2dc24b957e4aae` |
+| **Biner MCP Server** | `dist/haproxy-gui-62fe96b/bin/konsolgw-mcp` | `c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df` |
 
 ---
 
 ### 🚀 Langkah 1: Upload Berkas Rilis ke Server
 
-Jalankan perintah ini dari terminal lokal Anda:
+Jalankan perintah ini dari terminal lokal Anda (PowerShell / Git Bash / Command Prompt):
 
 ```bash
-scp -P 2212 dist/haproxy-gui-1ad6f47.tar.gz dist/haproxy-gui-1ad6f47.tar.gz.sha256 programmer@103.31.159.8:/tmp/
+scp -P 2212 dist/haproxy-gui-62fe96b.tar.gz dist/haproxy-gui-62fe96b.tar.gz.sha256 programmer@103.31.159.8:/tmp/
 ```
 
 ---
@@ -37,35 +38,45 @@ Lalu jalankan rangkaian perintah berikut:
 cd /tmp
 
 # 1. Verifikasi integritas paket rilis
-sha256sum -c haproxy-gui-1ad6f47.tar.gz.sha256
+sha256sum -c haproxy-gui-62fe96b.tar.gz.sha256
 
 # 2. Ekstrak paket rilis
-rm -rf haproxy-gui-1ad6f47
-tar xzf haproxy-gui-1ad6f47.tar.gz
+rm -rf haproxy-gui-62fe96b
+tar xzf haproxy-gui-62fe96b.tar.gz
 
-# 3. Verifikasi checksum biner utama
-sha256sum haproxy-gui-1ad6f47/bin/haproxy-gui
-# Output harus sama dengan: 933a375742e21072e0dcc43071083728af6c9235d697fd6369ad0fb285dbc5e9
+# 3. Verifikasi checksum biner
+sha256sum haproxy-gui-62fe96b/bin/haproxy-gui
+# Output harus sama dengan: 8ae2735e8c4b6be2191cc7d9546a0eefd80884ad8f9b665dfa2dc24b957e4aae
+
+sha256sum haproxy-gui-62fe96b/bin/konsolgw-mcp
+# Output harus sama dengan: c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df
 
 # 4. Pasang biner baru
-sudo install -o root -g root -m 755 haproxy-gui-1ad6f47/bin/haproxy-gui /usr/local/bin/haproxy-gui
+sudo install -o root -g root -m 755 haproxy-gui-62fe96b/bin/haproxy-gui /usr/local/bin/haproxy-gui
+sudo install -o root -g root -m 755 haproxy-gui-62fe96b/bin/konsolgw-mcp /usr/local/bin/konsolgw-mcp
 
 # 5. Pasang template Error Pages (Waiting Room & Custom Error Pages)
 sudo mkdir -p /etc/haproxy/errors
-sudo cp -r haproxy-gui-1ad6f47/deploy/errors/*.http /etc/haproxy/errors/ 2>/dev/null || true
+sudo cp -r haproxy-gui-62fe96b/deploy/errors/*.http /etc/haproxy/errors/ 2>/dev/null || true
 sudo chown -R root:haproxy /etc/haproxy/errors
 sudo chmod 644 /etc/haproxy/errors/*.http
 
-# 6. Restart service HAProxy GUI & cek status
+# 6. Pastikan direktori cadangan terisolasi & terenkripsi
+sudo mkdir -p /etc/haproxy/backups
+sudo chown -R root:haproxy /etc/haproxy/backups
+sudo chmod 775 /etc/haproxy/backups
+
+# 7. Restart service HAProxy GUI & cek status
 sudo systemctl restart haproxy-gui
 sudo journalctl -u haproxy-gui -n 20 --no-pager
 ```
 
 ---
 
-### ✅ Fitur yang Terintegrasi di Rilis Ini:
-1. **🪑 Integrasi Batas Laju (Rate Limit) & Ruang Tunggu (Waiting Room)**: Pengunjung yang melebihi batas request otomatis disajikan halaman ruang tunggu interaktif beranimasi (HTTP 429) dengan hitung mundur auto-reload 5 detik.
-2. **🎨 Pengelola Halaman Error Kustom (`/config/error-pages`)**: Live interactive preview (Desktop & Mobile) ala Cloudflare untuk HTTP 429, 503, 502, 504, 403, dan 400.
-3. **⏸️ Nonaktifkan / Aktifkan Pool (`/pools`)**: Menonaktifkan (disable) atau mengaktifkan kembali (enable) seluruh backend secara instan tanpa menghapus definisinya.
-4. **🗑️ Hapus Kelompok Pool (`/pools`)**: Menghapus seluruh pool dan membersihkan map routing domain terkait secara aman dengan auto-rollback.
-5. **⚡ Operasi Antrean Enterprise (`/queue`)**: Release IP instan dari stick-table HAProxy, Whitelist VIP IP, Forward to Incident, dan Kosongkan Antrean Redis.
+### ✅ Fitur yang Terintegrasi di Rilis `62fe96b`:
+1. **🔒 Sistem Cadangan Terenkripsi (AES-256-GCM)**: Seluruh berkas cadangan disimpan di folder terisolasi `/etc/haproxy/backups/`, terenkripsi di disk, dengan tombol Unduh (dekripsi on-the-fly), Rollback instan, dan Hapus.
+2. **🤖 Setup & Integrasi Model Context Protocol (MCP)**: Biner `konsolgw-mcp`, panel setup interaktif pada `/config` dengan generator config untuk Antigravity/Claude/Cursor dan test live endpoint.
+3. **🚨 Incident Management & Evidence Bundle**: Halaman `/incidents`, linimasa catatan, korelasi kejadian keamanan otomatis, serta ekspor JSON dan CSV.
+4. **🪑 Waiting Room & Error Pages Management (`/config/error-pages`)**: Live interactive previewer HTTP 429, 503, 502, 504, 403, 400.
+5. **🌐 Framework Multi-Bahasa i18n**: Dukungan antarmuka Bahasa Indonesia dan English.
+6. **➕ F5-Style Pool & Node Management**: Wizard pool baru multi-node, inline member edit, batch host maintenance, dan dynamic routing.
