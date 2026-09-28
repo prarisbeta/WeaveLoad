@@ -28,6 +28,11 @@ func NewChrome(r *http.Request, active string) Chrome {
 	sess, _ := auth.SessionFromContext(r.Context())
 	lang := u.Language
 	if lang == "" {
+		if c, err := r.Cookie("gateway_lang"); err == nil && c.Value != "" {
+			lang = c.Value
+		}
+	}
+	if lang == "" {
 		al := r.Header.Get("Accept-Language")
 		if len(al) >= 2 {
 			prefix := al[0:2]

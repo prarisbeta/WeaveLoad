@@ -117,8 +117,8 @@
   </div>
 
   <div class="panel">
-    <h3>Koneksi keseluruhan per kelompok</h3>
-    <p class="hint">Porsi koneksi aktif yang ditangani tiap kelompok server saat ini.</p>
+    <h3>{{t $.Language "dash_pie_title"}}</h3>
+    <p class="hint">{{t $.Language "dash_pie_hint"}}</p>
     {{$pie := .Snapshot.ConnectionsPie}}
     {{if $.Snapshot.Summary.Sessions}}
     <div class="pie-row">
@@ -136,7 +136,7 @@
     {{else}}
     <div class="pie-row">
       <div class="pie pie-empty"></div>
-      <div class="pie-legend"><p class="hint" style="margin:0">Belum ada koneksi aktif untuk ditampilkan.</p></div>
+      <div class="pie-legend"><p class="hint" style="margin:0">{{t $.Language "dash_pie_no_conns"}}</p></div>
     </div>
     {{end}}
   </div>
@@ -147,17 +147,17 @@
 {{$canAdmin := .CanAdmin}}
 {{range .Snapshot.Backends}}
 <div class="panel">
-  <h3>{{.Name}} <span class="badge {{if eq .Status "UP"}}badge-up{{else if eq .Status "DOWN"}}badge-down{{else}}badge-maint{{end}}">{{if eq .Status "UP"}}Sehat{{else if eq .Status "DOWN"}}Bermasalah{{else}}{{.Status}}{{end}}</span></h3>
-  <p class="hint">Server-server berikut menerima trafik yang diteruskan ke kelompok "{{.Name}}".</p>
+  <h3>{{.Name}} <span class="badge {{if eq .Status "UP"}}badge-up{{else if eq .Status "DOWN"}}badge-down{{else}}badge-maint{{end}}">{{if eq .Status "UP"}}{{t $.Language "healthy"}}{{else if eq .Status "DOWN"}}{{t $.Language "unhealthy"}}{{else}}{{.Status}}{{end}}</span></h3>
+  <p class="hint">{{t $.Language "dash_backend_servers_desc"}} "{{.Name}}".</p>
   <div class="table-scroll">
   <table>
-    <tr><th>Server</th><th>Status</th><th>Pemeriksaan</th><th>Bobot</th><th>Koneksi</th>{{if $canOperate}}<th>Tindakan</th>{{end}}</tr>
+    <tr><th>{{t $.Language "col_server"}}</th><th>{{t $.Language "status"}}</th><th>{{t $.Language "col_check"}}</th><th>{{t $.Language "col_weight"}}</th><th>{{t $.Language "dash_col_conns"}}</th>{{if $canOperate}}<th>{{t $.Language "actions"}}</th>{{end}}</tr>
     {{$backend := .Name}}
     {{range .Servers}}
     <tr>
-      <td>{{.Name}}{{if $canAdmin}} <a href="/pools/{{$backend}}#member-{{.Name}}" title="Ubah nama/alamat/port/bobot server ini">Ubah</a>{{end}}</td>
+      <td>{{.Name}}{{if $canAdmin}} <a href="/pools/{{$backend}}#member-{{.Name}}" title="{{t $.Language "edit"}}">{{t $.Language "edit"}}</a>{{end}}</td>
       <td>
-        <span class="badge {{if .Up}}badge-up{{else if .Down}}badge-down{{else}}badge-maint{{end}}">{{if .Up}}Aktif{{else if .Down}}Tidak merespons{{else}}{{.Status}}{{end}}</span>
+        <span class="badge {{if .Up}}badge-up{{else if .Down}}badge-down{{else}}badge-maint{{end}}">{{if .Up}}{{t $.Language "active"}}{{else if .Down}}{{t $.Language "unresponsive"}}{{else}}{{.Status}}{{end}}</span>
       </td>
       <td class="muted">{{.CheckStatus}} {{.LastCheck}}</td>
       <td>{{.Weight}}</td>
@@ -166,20 +166,20 @@
       <td>
         <div class="row-actions">
         {{if not .IsReady}}
-        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"ready"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Kembalikan server ini ke jalur trafik normal">Aktifkan</button>
+        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"ready"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="{{t $.Language "btn_activate_title"}}">{{t $.Language "btn_activate"}}</button>
         {{end}}
         {{if .IsReady}}
-        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"drain"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="Habiskan koneksi yang sedang berjalan dulu, lalu berhenti menerima trafik baru">Kosongkan bertahap</button>
+        <button hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"drain"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' title="{{t $.Language "btn_drain_title"}}">{{t $.Language "btn_drain"}}</button>
         {{end}}
         {{if not .IsMaint}}
-        <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"maint"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan {{.Name}} di {{$backend}} sekarang? Semua trafik ke server ini akan langsung dihentikan." title="Hentikan server ini menerima trafik sama sekali, mulai sekarang">Nonaktifkan</button>
+        <button class="danger" hx-post="/api/servers/action" hx-vals='{"backend":"{{$backend}}","server":"{{.Name}}","action":"maint"}' hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "btn_disable"}} {{.Name}}?" title="{{t $.Language "btn_disable_title"}}">{{t $.Language "btn_disable"}}</button>
         {{end}}
         <form class="field-inline" hx-post="/api/servers/action" hx-target="#dashboard-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
           <input type="hidden" name="backend" value="{{$backend}}">
           <input type="hidden" name="server" value="{{.Name}}">
           <input type="hidden" name="action" value="weight">
-          <input type="text" name="weight" value="{{.Weight}}" size="3" aria-label="Bobot server {{.Name}}" title="Porsi trafik relatif dibanding server lain (0-256)">
-          <button type="submit" title="Terapkan bobot baru">Atur bobot</button>
+          <input type="text" name="weight" value="{{.Weight}}" size="3" aria-label="{{t $.Language "col_weight"}} {{.Name}}" title="{{t $.Language "weight_hint"}}">
+          <button type="submit" title="{{t $.Language "btn_set_weight"}}">{{t $.Language "btn_set_weight"}}</button>
         </form>
         </div>
       </td>
@@ -190,7 +190,7 @@
   </div>
   {{if gt (len .Servers) 1}}
   <div style="margin-top:14px">
-    <p class="hint" style="margin-bottom:8px">Distribusi koneksi antar server di kelompok ini.</p>
+    <p class="hint" style="margin-bottom:8px">{{t $.Language "dash_distribution_hint"}}</p>
     {{range .ConnectionsByServer}}
     <div class="chart-row">
       <div class="chart-label"><span>{{.Name}}</span><span class="muted">{{.Sessions}}</span></div>

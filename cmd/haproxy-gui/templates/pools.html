@@ -3,26 +3,26 @@
 {{define "pools_content"}}
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px;">
   <div>
-    <h1>Pools</h1>
-    <p class="hint">Setiap pool berisi server-server yang bergantian melayani satu situs atau layanan. Klik nama pool untuk melihat anggotanya, menambah, atau melepas server.</p>
+    <h1>{{t .Language "nav_pools"}}</h1>
+    <p class="hint">{{t .Language "pools_desc"}}</p>
   </div>
-  {{if .CanAdmin}}<a class="btn primary" href="/pools/new" style="white-space:nowrap;">+ Buat Pool Baru</a>{{end}}
+  {{if .CanAdmin}}<a class="btn primary" href="/pools/new" style="white-space:nowrap;">{{t .Language "pools_btn_new"}}</a>{{end}}
 </div>
 {{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
 <div class="panel">
   {{if not .Pools}}
-  <div class="empty-state"><h3>Belum ada pool</h3><p>Konfigurasi belum memiliki bagian backend.{{if .CanAdmin}} Klik "+ Buat Pool Baru" di atas untuk membuat yang pertama.{{end}}</p></div>
+  <div class="empty-state"><h3>{{t .Language "pools_empty_title"}}</h3><p>{{t .Language "pools_empty_desc"}}</p></div>
   {{else}}
   <div class="table-scroll">
   <table>
     <tr>
-      <th>Kelompok</th>
-      <th>Status Live</th>
-      <th>Status Konfigurasi</th>
-      <th>Anggota aktif</th>
-      <th>Metode pembagian</th>
-      <th>Koneksi</th>
-      {{if .CanAdmin}}<th style="text-align:right;">Aksi</th>{{end}}
+      <th>{{t .Language "pools_col_pool"}}</th>
+      <th>{{t .Language "pools_col_live_status"}}</th>
+      <th>{{t .Language "pools_col_cfg_status"}}</th>
+      <th>{{t .Language "pools_col_active_members"}}</th>
+      <th>{{t .Language "pools_col_balance"}}</th>
+      <th>{{t .Language "dash_col_conns"}}</th>
+      {{if .CanAdmin}}<th style="text-align:right;">{{t .Language "actions"}}</th>{{end}}
     </tr>
     {{range .Pools}}
     <tr>
@@ -30,28 +30,28 @@
       <td>{{template "pool_status_badge" .LiveStatus}}</td>
       <td>
         {{if .Disabled}}
-          <span class="badge badge-down" style="background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.3);">Nonaktif (Disabled)</span>
+          <span class="badge badge-down" style="background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.3);">{{t $.Language "pools_status_disabled"}}</span>
         {{else}}
-          <span class="badge badge-up" style="background:rgba(34, 197, 94, 0.15); color:#15803d; border:1px solid rgba(34, 197, 94, 0.3);">Aktif</span>
+          <span class="badge badge-up" style="background:rgba(34, 197, 94, 0.15); color:#15803d; border:1px solid rgba(34, 197, 94, 0.3);">{{t $.Language "pools_status_active"}}</span>
         {{end}}
       </td>
-      <td>{{.Up}}/{{len .Members}}{{if .Down}} <span class="badge badge-down">{{.Down}} bermasalah</span>{{end}}</td>
+      <td>{{.Up}}/{{len .Members}}{{if .Down}} <span class="badge badge-down">{{.Down}} {{t $.Language "unhealthy"}}</span>{{end}}</td>
       <td class="muted">{{.Balance}}</td>
       <td>{{.Sessions}}</td>
       {{if $.CanAdmin}}
       <td style="text-align:right; white-space:nowrap;">
         <div style="display:inline-flex; gap:6px;">
           {{if .Disabled}}
-          <button type="button" class="btn btn-pool-toggle" data-pool="{{.Name}}" data-disabled="false" style="font-size:11px; padding:4px 8px; color:var(--ok);" title="Aktifkan kembali pool ini">
-            Aktifkan
+          <button type="button" class="btn btn-pool-toggle" data-pool="{{.Name}}" data-disabled="false" style="font-size:11px; padding:4px 8px; color:var(--ok);" title="{{t $.Language "pools_btn_enable_title"}}">
+            {{t $.Language "pools_btn_enable"}}
           </button>
           {{else}}
-          <button type="button" class="btn btn-pool-toggle" data-pool="{{.Name}}" data-disabled="true" style="font-size:11px; padding:4px 8px; color:var(--warn);" title="Nonaktifkan pool ini sementara">
-            Nonaktifkan
+          <button type="button" class="btn btn-pool-toggle" data-pool="{{.Name}}" data-disabled="true" style="font-size:11px; padding:4px 8px; color:var(--warn);" title="{{t $.Language "pools_btn_disable_title"}}">
+            {{t $.Language "pools_btn_disable"}}
           </button>
           {{end}}
-          <button type="button" class="btn danger btn-pool-delete" data-pool="{{.Name}}" style="font-size:11px; padding:4px 8px;" title="Hapus pool ini dari konfigurasi">
-            Hapus
+          <button type="button" class="btn danger btn-pool-delete" data-pool="{{.Name}}" style="font-size:11px; padding:4px 8px;" title="{{t $.Language "pools_btn_delete_title"}}">
+            {{t $.Language "pools_btn_delete"}}
           </button>
         </div>
       </td>
@@ -71,32 +71,32 @@
 {{define "pool_detail_content"}}
 <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:12px;">
   <div>
-    <p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; Semua kelompok</a></p>
+    <p class="muted" style="margin-bottom:6px"><a href="/pools">&larr; {{t .Language "pools_back_all"}}</a></p>
     <h1>
       {{.Pool.Name}}
       {{template "pool_status_badge" .Pool.LiveStatus}}
       {{if .Pool.Disabled}}
-        <span class="badge badge-down" style="font-size:12px; margin-left:8px; vertical-align:middle;">Nonaktif (Disabled)</span>
+        <span class="badge badge-down" style="font-size:12px; margin-left:8px; vertical-align:middle;">{{t .Language "pools_status_disabled"}}</span>
       {{end}}
     </h1>
-    <p class="hint">Metode <strong>{{.Pool.Balance}}</strong>
-      · Pemeriksaan kesehatan: {{if .Pool.HealthCheck}}<code>{{.Pool.HealthCheck}}</code>{{else}}bawaan{{end}}
-      · Sesi lengket (cookie): {{if .Pool.Cookie}}ya{{else}}tidak{{end}}</p>
+    <p class="hint">{{t .Language "pools_detail_method"}} <strong>{{.Pool.Balance}}</strong>
+      · {{t .Language "pools_detail_health"}}: {{if .Pool.HealthCheck}}<code>{{.Pool.HealthCheck}}</code>{{else}}{{t .Language "pools_detail_default"}}{{end}}
+      · {{t .Language "pools_detail_cookie"}}: {{if .Pool.Cookie}}{{t .Language "yes"}}{{else}}{{t .Language "no"}}{{end}}</p>
   </div>
   
   {{if .CanAdmin}}
   <div style="display:flex; gap:8px;">
     {{if .Pool.Disabled}}
     <button type="button" class="btn btn-pool-toggle" data-pool="{{.Pool.Name}}" data-disabled="false" style="color:var(--ok); font-weight:600;">
-      Aktifkan Kelompok
+      {{t .Language "pools_btn_enable_pool"}}
     </button>
     {{else}}
     <button type="button" class="btn btn-pool-toggle" data-pool="{{.Pool.Name}}" data-disabled="true" style="color:var(--warn); font-weight:600;">
-      Nonaktifkan Kelompok
+      {{t .Language "pools_btn_disable_pool"}}
     </button>
     {{end}}
     <button type="button" class="btn danger btn-pool-delete" data-pool="{{.Pool.Name}}" style="font-weight:600;">
-      Hapus Kelompok
+      {{t .Language "pools_btn_delete_pool"}}
     </button>
   </div>
   {{end}}

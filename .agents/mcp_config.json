@@ -4,8 +4,8 @@
       "command": "konsolgw-mcp",
       "args": [],
       "env": {
-        "KONSOLGW_API_URL": "http://127.0.0.1:8080/api/v1",
-        "KONSOLGW_API_TOKEN": ""
+        "KONSOLGW_API_URL": "https://103.31.159.8:9443/api/v1",
+        "KONSOLGW_API_TOKEN": "y282892928626272"
       }
     }
   }

@@ -1,31 +1,31 @@
 {{define "audit.html"}}{{template "chrome_header" .}}{{template "audit_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "audit_content"}}
-<h1>Riwayat Aktivitas</h1>
-<p class="hint">Catatan setiap tindakan yang mengubah sistem: siapa melakukannya, kapan, dan dari mana. Catatan ini tidak bisa diubah atau dihapus.</p>
+<h1>{{t .Language "nav_audit"}}</h1>
+<p class="hint">{{t .Language "audit_desc"}}</p>
 
 <div class="panel">
   <form method="get" action="/audit" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
     <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="f-user">Email pengguna</label>
-      <input type="text" id="f-user" name="user" value="{{.Filter.UserEmail}}" placeholder="semua pengguna">
+      <label class="hint" style="margin:0 0 4px; display:block;" for="f-user">{{t .Language "audit_filter_user"}}</label>
+      <input type="text" id="f-user" name="user" value="{{.Filter.UserEmail}}" placeholder="{{t .Language "audit_filter_user_ph"}}">
     </div>
     <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="f-action">Jenis aksi</label>
-      <input type="text" id="f-action" name="action" value="{{.Filter.Action}}" placeholder="mis. server.drain">
+      <label class="hint" style="margin:0 0 4px; display:block;" for="f-action">{{t .Language "audit_filter_action"}}</label>
+      <input type="text" id="f-action" name="action" value="{{.Filter.Action}}" placeholder="{{t .Language "audit_filter_action_ph"}}">
     </div>
-    <button type="submit">Terapkan filter</button>
-    <a class="btn" href="/audit/export?user={{.Filter.UserEmail}}&amp;action={{.Filter.Action}}">Unduh CSV</a>
+    <button type="submit">{{t .Language "audit_btn_filter"}}</button>
+    <a class="btn" href="/audit/export?user={{.Filter.UserEmail}}&amp;action={{.Filter.Action}}">{{t .Language "audit_btn_export"}}</a>
   </form>
 </div>
 
 <div class="panel">
   {{if not .Entries}}
-  <div class="empty-state"><h3>Tidak ada catatan</h3><p>Tidak ada aktivitas yang cocok dengan filter ini.</p></div>
+  <div class="empty-state"><h3>{{t .Language "audit_empty_title"}}</h3><p>{{t .Language "audit_empty_desc"}}</p></div>
   {{else}}
   <div class="table-scroll">
   <table>
-    <tr><th>Waktu</th><th>Pengguna</th><th>IP</th><th>Aksi</th><th>Target</th><th>Detail</th></tr>
+    <tr><th>{{t .Language "audit_col_time"}}</th><th>{{t .Language "audit_col_actor"}}</th><th>{{t .Language "audit_col_ip"}}</th><th>{{t .Language "audit_col_action"}}</th><th>{{t .Language "audit_col_target"}}</th><th>{{t .Language "audit_col_detail"}}</th></tr>
     {{range .Entries}}
     <tr>
       <td>{{.Timestamp.Format "2 Jan 2006 15:04"}}</td>

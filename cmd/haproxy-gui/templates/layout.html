@@ -37,7 +37,7 @@
 {{end}}
 
 {{define "chrome_header"}}<!doctype html>
-<html lang="id">
+<html lang="{{if .Language}}{{.Language}}{{else}}id{{end}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -210,7 +210,7 @@ tr:last-child td { border-bottom: 0; }
 
 button, .btn, .button, a.btn, a.button {
   background: var(--surface-2); border: 1px solid var(--border); color: var(--ink);
-  padding: 7px 14px; border-radius: var(--radius-control); cursor: pointer; font-size: 13px; font-weight: 500;
+  padding: 7px 14px; height: 35px; border-radius: var(--radius-control); cursor: pointer; font-size: 13px; font-weight: 500;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   text-decoration: none; line-height: 1.4; transition: all 0.15s ease;
   white-space: nowrap; box-sizing: border-box;
@@ -232,12 +232,28 @@ button.danger:hover, .btn.danger:hover, .button.danger:hover {
 }
 button:disabled, .btn:disabled, .button:disabled { opacity: .5; cursor: not-allowed; }
 
-input[type=text], input[type=file], select, textarea {
-  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-control); padding: 7px 10px;
+input[type=text], input[type=date], input[type=datetime-local], input[type=time], input[type=email], input[type=password], input[type=number], input[type=search], input[type=file], select, textarea {
+  font: inherit; font-size: 13px; line-height: 1.4; color: var(--ink); background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 6px 10px; height: 35px; box-sizing: border-box;
+  vertical-align: middle;
 }
-input[type=text]:focus, select:focus, textarea:focus { border-color: var(--accent); }
-textarea { width: 100%; min-height: 58vh; font: 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, monospace; }
+input[type=date] {
+  min-width: 145px;
+  font-family: inherit;
+  color-scheme: light dark;
+}
+input[type=date]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+input[type=date]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+input[type=text]:focus, input[type=date]:focus, input[type=datetime-local]:focus, input[type=email]:focus, input[type=password]:focus, input[type=number]:focus, input[type=search]:focus, select:focus, textarea:focus {
+  border-color: var(--accent); outline: none;
+}
+textarea { width: 100%; min-height: 58vh; height: auto; font: 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, monospace; }
 
 .panel {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
@@ -352,12 +368,12 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
 <input type="checkbox" id="nav-toggle" class="nav-toggle">
 <div class="shell">
   <label for="nav-toggle" class="nav-scrim" aria-hidden="true"></label>
-  <nav class="sidebar" aria-label="Navigasi utama">
+  <nav class="sidebar" aria-label="{{t .Language "open_nav"}}">
     <div class="brand">
       <span class="brand-mark">G</span>
       <span>
-        <div class="brand-name">Konsol Gateway</div>
-        <div class="brand-sub">Panel kendali jaringan</div>
+        <div class="brand-name">{{t .Language "brand_name"}}</div>
+        <div class="brand-sub">{{t .Language "brand_sub"}}</div>
       </span>
     </div>
     <div class="nav-group">
@@ -434,12 +450,12 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
         <span class="user-avatar">{{if .User.Email}}{{slice .User.Email 0 1 | upper}}{{end}}</span>
         <span class="user-meta">
           <div class="user-email">{{.User.Email}}</div>
-          <div class="user-role">{{template "role_label" .User.Role}}</div>
+          <div class="user-role">{{if eq .User.Role "super_admin"}}{{t .Language "role_super_admin"}}{{else if eq .User.Role "platform_admin"}}{{t .Language "role_platform_admin"}}{{else if eq .User.Role "noc_operator"}}{{t .Language "role_noc_operator"}}{{else if eq .User.Role "soc_analyst"}}{{t .Language "role_soc_analyst"}}{{else if eq .User.Role "sre"}}{{t .Language "role_sre"}}{{else if eq .User.Role "security_admin"}}{{t .Language "role_security_admin"}}{{else if eq .User.Role "auditor"}}{{t .Language "role_auditor"}}{{else}}{{t .Language "role_viewer"}}{{end}}</div>
         </span>
       </div>
       <div style="padding: 0 8px 6px;">
         <button type="button" id="theme-toggle-btn" onclick="toggleGatewayTheme()" style="width:100%; padding: 5px 8px; font-size: 11px; font-weight: 500; display:flex; align-items:center; justify-content:center; gap:6px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-control); color:var(--ink); cursor:pointer;">
-          <span id="theme-icon">🌓</span> <span id="theme-text">Mode Tema / Theme</span>
+          <span id="theme-icon">🌓</span> <span id="theme-text">{{t .Language "theme_toggle"}}</span>
         </button>
       </div>
       <form class="language-form" method="post" action="/api/profile/language" style="padding: 0 8px 6px;">

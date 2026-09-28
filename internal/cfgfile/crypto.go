@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // EncryptedHeaderMagic is the signature placed at the beginning of encrypted backup files.
@@ -50,7 +51,8 @@ func (s *Store) GetEncryptionKey() []byte {
 		if _, err := io.ReadFull(rand.Reader, keyBytes); err == nil {
 			_ = os.MkdirAll(filepath.Dir(kp), 0o750)
 			if err := os.WriteFile(kp, keyBytes, 0o600); err == nil {
-				return keyBytes
+				hash := sha256.Sum256(keyBytes)
+				return hash[:]
 			}
 		}
 	}
@@ -150,9 +152,17 @@ func (s *Store) EncryptBackupFileInPlace(filePath string) error {
 
 	info, _ := os.Stat(filePath)
 	perm := os.FileMode(0o640)
+	var modTime time.Time
 	if info != nil {
 		perm = info.Mode()
+		modTime = info.ModTime()
 	}
 
-	return os.WriteFile(filePath, encrypted, perm)
+	if err := os.WriteFile(filePath, encrypted, perm); err != nil {
+		return err
+	}
+	if !modTime.IsZero() {
+		_ = os.Chtimes(filePath, modTime, modTime)
+	}
+	return nil
 }

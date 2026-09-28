@@ -1,35 +1,35 @@
 {{define "users.html"}}{{template "chrome_header" .}}{{template "users_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "users_content"}}
-<h1>Pengguna</h1>
-<p class="hint">Semua pengguna masuk melalui akun SSO kantor. Saat login pertama kali, akun otomatis dibuat sebagai "Pengamat" (hanya melihat). Naikkan perannya di sini agar dapat mengoperasikan atau mengelola sistem.</p>
+<h1>{{t .Language "users_title"}}</h1>
+<p class="hint">{{t .Language "users_desc"}}</p>
 
 <div class="panel">
-  <h3>Tambah pengguna dari SSO OMS CNI</h3>
-  <p class="hint">Cari nama atau email di direktori SSO kantor, lalu pilih perannya dan tambahkan. Pengguna tersebut tidak perlu login terlebih dahulu; saat login dengan SSO nanti, akun otomatis tersambung dengan peran yang telah ditentukan di sini.</p>
-  <input type="text" name="q" placeholder="Ketik nama atau email untuk mencari..."
+  <h3>{{t .Language "users_sso_title"}}</h3>
+  <p class="hint">{{t .Language "users_sso_desc"}}</p>
+  <input type="text" name="q" placeholder="{{t .Language "users_search_ph"}}"
     hx-get="/api/users/search" hx-target="#user-search-results" hx-trigger="keyup changed delay:400ms, search"
-    aria-label="Cari pengguna di direktori SSO">
+    aria-label="{{t .Language "users_search_aria"}}">
   <div id="user-search-results" style="margin-top:12px"></div>
 
   <details style="margin-top:14px">
-    <summary style="cursor:pointer; color: var(--ink-muted); font-size:13px;">Tidak ditemukan di SSO? Tambahkan manual</summary>
+    <summary style="cursor:pointer; color: var(--ink-muted); font-size:13px;">{{t .Language "users_manual_toggle"}}</summary>
     <form hx-post="/api/users/create" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin-top:10px;">
       <div>
-        <label class="hint" style="margin:0 0 4px; display:block;" for="new-email">Email SSO</label>
+        <label class="hint" style="margin:0 0 4px; display:block;" for="new-email">{{t .Language "users_manual_email"}}</label>
         <input type="text" id="new-email" name="email" placeholder="nama@cni.net.id" required>
       </div>
       <div>
-        <label class="hint" style="margin:0 0 4px; display:block;" for="new-name">Nama (opsional)</label>
-        <input type="text" id="new-name" name="name" placeholder="Nama tampilan">
+        <label class="hint" style="margin:0 0 4px; display:block;" for="new-name">{{t .Language "users_manual_name"}}</label>
+        <input type="text" id="new-name" name="name" placeholder="{{t .Language "users_manual_name_ph"}}">
       </div>
       <div>
-        <label class="hint" style="margin:0 0 4px; display:block;" for="new-role">Peran</label>
+        <label class="hint" style="margin:0 0 4px; display:block;" for="new-role">{{t .Language "role"}}</label>
         <select id="new-role" name="role">
           {{template "role_options" ""}}
         </select>
       </div>
-      <button type="submit" class="primary">Tambah pengguna</button>
+      <button type="submit" class="primary">{{t .Language "users_btn_create"}}</button>
     </form>
   </details>
 </div>
@@ -41,40 +41,40 @@
 
 {{define "users_table.html"}}
 {{if not .Users}}
-<div class="panel"><div class="empty-state"><h3>Belum ada pengguna</h3></div></div>
+<div class="panel"><div class="empty-state"><h3>{{t .Language "users_empty_title"}}</h3></div></div>
 {{else}}
 <div class="panel">
 <div class="table-scroll">
 <table>
-  <tr><th>Email</th><th>Nama</th><th>Peran</th><th>Status</th><th>Tindakan</th></tr>
+  <tr><th>{{t .Language "email"}}</th><th>{{t .Language "name"}}</th><th>{{t .Language "role"}}</th><th>{{t .Language "status"}}</th><th>{{t .Language "actions"}}</th></tr>
   {{range .Users}}
   {{$isSelf := eq .ID $.User.ID}}
   <tr>
-    <td>{{.Email}}{{if $isSelf}} <span class="muted">(Anda)</span>{{end}}</td>
+    <td>{{.Email}}{{if $isSelf}} <span class="muted">{{t $.Language "users_self_tag"}}</span>{{end}}</td>
     <td>{{.Name}}</td>
     <td>
       {{if $isSelf}}
-      {{template "role_label" .Role}}
+      {{if eq .Role "super_admin"}}{{t $.Language "role_super_admin"}}{{else if eq .Role "platform_admin"}}{{t $.Language "role_platform_admin"}}{{else if eq .Role "noc_operator"}}{{t $.Language "role_noc_operator"}}{{else if eq .Role "soc_analyst"}}{{t $.Language "role_soc_analyst"}}{{else if eq .Role "sre"}}{{t $.Language "role_sre"}}{{else if eq .Role "security_admin"}}{{t $.Language "role_security_admin"}}{{else if eq .Role "auditor"}}{{t $.Language "role_auditor"}}{{else}}{{t $.Language "role_viewer"}}{{end}}
       {{else}}
       <form class="field-inline" hx-post="/api/users/update" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
         <input type="hidden" name="user_id" value="{{.ID}}">
         <input type="hidden" name="action" value="set_role">
-        <select name="role" aria-label="Peran untuk {{.Email}}">
+        <select name="role" aria-label="{{t $.Language "role"}} {{.Email}}">
           {{template "role_options" .Role}}
         </select>
       </form>
       {{end}}
     </td>
-    <td>{{if .Enabled}}<span class="badge badge-up">Aktif</span>{{else}}<span class="badge badge-down">Nonaktif</span>{{end}}</td>
+    <td>{{if .Enabled}}<span class="badge badge-up">{{t $.Language "active"}}</span>{{else}}<span class="badge badge-down">{{t $.Language "inactive"}}</span>{{end}}</td>
     <td>
       {{if $isSelf}}
-      <span class="muted">Tidak bisa mengubah akun sendiri</span>
+      <span class="muted">{{t $.Language "users_self_locked"}}</span>
       {{else}}
       <div class="row-actions">
       {{if .Enabled}}
-      <button class="danger" hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"disable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan akun {{.Email}}? Pengguna ini tidak akan bisa masuk lagi sampai diaktifkan kembali.">Nonaktifkan</button>
+      <button class="danger" hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"disable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "btn_disable"}} {{.Email}}?">{{t $.Language "btn_disable"}}</button>
       {{else}}
-      <button hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"enable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>Aktifkan</button>
+      <button hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"enable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "btn_activate"}}</button>
       {{end}}
       </div>
       {{end}}

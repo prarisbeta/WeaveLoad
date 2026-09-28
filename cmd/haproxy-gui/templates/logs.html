@@ -1,28 +1,34 @@
 {{define "logs.html"}}{{template "chrome_header" .}}{{template "logs_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "logs_content"}}
-<h1>Log Trafik</h1>
-<p class="hint">Catatan mentah setiap permintaan yang melewati sistem. Gunakan untuk menelusuri masalah spesifik, misalnya mencari alasan seorang pengguna mendapat pesan galat. Defaultnya menampilkan 500 baris terbaru.</p>
+<h1>{{t .Language "logs_title"}}</h1>
+<p class="hint">{{t .Language "logs_desc"}}</p>
 
 <div class="panel">
-  <form method="get" action="/logs" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+  <form method="get" action="/logs" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
     <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="log-date">Tanggal</label>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="log-date">{{t .Language "logs_filter_date"}}</label>
       <input type="date" id="log-date" name="date" value="{{.Date}}" max="{{.Today}}">
     </div>
     <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="log-q">Cari kata kunci</label>
-      <input type="text" id="log-q" name="q" value="{{.Keyword}}" placeholder="IP, path, kode status...">
+      <label class="hint" style="margin:0 0 4px; display:block;" for="log-q">{{t .Language "logs_filter_keyword"}}</label>
+      <input type="text" id="log-q" name="q" value="{{.Keyword}}" placeholder="{{t .Language "logs_search_ph"}}" style="min-width: 220px;">
     </div>
-    <button type="submit" class="primary">Terapkan</button>
-    {{if or .Date .Keyword}}<a class="btn" href="/logs">Bersihkan filter</a>{{end}}
     <div>
-      <label class="hint" style="margin:0 0 4px; display:block;" for="log-auto-refresh">Refresh otomatis</label>
+      <button type="submit" class="primary">{{t .Language "logs_btn_apply"}}</button>
+    </div>
+    {{if or .Date .Keyword}}
+    <div>
+      <a class="btn" href="/logs">{{t .Language "logs_btn_clear"}}</a>
+    </div>
+    {{end}}
+    <div>
+      <label class="hint" style="margin:0 0 4px; display:block;" for="log-auto-refresh">{{t .Language "logs_auto_refresh"}}</label>
       <select id="log-auto-refresh">
-        <option value="0">Nonaktif</option>
-        <option value="5">5 detik</option>
-        <option value="10">10 detik</option>
-        <option value="20">20 detik</option>
+        <option value="0">{{t .Language "disabled"}}</option>
+        <option value="5">5 {{t .Language "seconds"}}</option>
+        <option value="10">10 {{t .Language "seconds"}}</option>
+        <option value="20">20 {{t .Language "seconds"}}</option>
       </select>
     </div>
   </form>
@@ -30,12 +36,12 @@
 
 <div class="panel">
   {{if not .Lines}}
-  <div class="empty-state"><h3>Tidak ada log yang cocok</h3><p>Coba ubah tanggal atau kata kunci pencarian.</p></div>
+  <div class="empty-state"><h3>{{t .Language "logs_empty_title"}}</h3><p>{{t .Language "logs_empty_desc"}}</p></div>
   {{else}}
-  <p class="hint" style="margin-bottom:10px">Menampilkan {{len .Lines}} baris terbaru yang cocok, terbaru di atas.</p>
+  <p class="hint" style="margin-bottom:10px">{{t .Language "logs_showing_count" (len .Lines)}}</p>
   <div class="table-scroll">
   <table>
-    <tr><th>Waktu</th><th>Status</th><th>Baris log</th></tr>
+    <tr><th>{{t .Language "time"}}</th><th>{{t .Language "status"}}</th><th>{{t .Language "logs_col_logline"}}</th></tr>
     {{range .Lines}}
     <tr>
       <td class="muted" style="white-space:nowrap">{{if .Time.IsZero}}-{{else}}{{.Time.Format "15:04:05"}}{{end}}</td>

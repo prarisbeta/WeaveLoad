@@ -3,8 +3,8 @@
 {{define "acl_content"}}
 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:12px;">
   <div>
-    <h1>Aturan &amp; Rute Domain</h1>
-    <p class="hint">Hubungkan nama domain publik (misal: <code>app.cni.net.id</code>) ke Pool server tujuan. Perubahan rute pada tabel di bawah ini langsung aktif seketika tanpa perlu restart layanan.</p>
+    <h1>{{t .Language "acl_title"}}</h1>
+    <p class="hint">{{t .Language "acl_desc"}}</p>
   </div>
 </div>
 
@@ -15,7 +15,7 @@
 
 {{define "acl_list.html"}}
 {{if not .Files}}
-<div class="panel"><div class="empty-state"><h3>Belum ada daftar aturan yang dikelola</h3></div></div>
+<div class="panel"><div class="empty-state"><h3>{{t .Language "acl_empty_all"}}</h3></div></div>
 {{end}}
 
 {{range .Files}}
@@ -27,9 +27,9 @@
       </h3>
       <p class="hint" style="margin:0;">
         {{if .ValueIsPool}}
-        Setiap permintaan pengunjung yang membuka domain di kolom kiri akan diteruskan ke Pool backend di kolom kanan.
+        {{t $.Language "acl_desc_route"}}
         {{else}}
-        Daftar alamat IP atau parameter filter keamanan untuk layanan ini.
+        {{t $.Language "acl_desc_security"}}
         {{end}}
       </p>
     </div>
@@ -37,21 +37,21 @@
 
   {{if not .Entries}}
   <div class="empty-state" style="padding:16px; border:1px dashed var(--border); border-radius:6px; margin:12px 0;">
-    <p style="margin:0;">Belum ada entri rute. Tambahkan domain baru pada formulir di bawah.</p>
+    <p style="margin:0;">{{t $.Language "acl_empty_entries"}}</p>
   </div>
   {{else}}
   <div class="table-scroll" style="margin-top:12px;">
   <table>
     {{if .HasValue}}
     <tr>
-      <th style="width:40%;">Nama Domain / Host</th>
-      <th style="width:45%;">Pool Target (Kelompok Server)</th>
-      <th style="width:15%; text-align:right;">Tindakan</th>
+      <th style="width:40%;">{{t $.Language "acl_col_domain"}}</th>
+      <th style="width:45%;">{{t $.Language "acl_col_target_pool"}}</th>
+      <th style="width:15%; text-align:right;">{{t $.Language "actions"}}</th>
     </tr>
     {{else}}
     <tr>
-      <th style="width:85%;">Alamat IP / Nilai</th>
-      <th style="width:15%; text-align:right;">Tindakan</th>
+      <th style="width:85%;">{{t $.Language "acl_col_ip_val"}}</th>
+      <th style="width:15%; text-align:right;">{{t $.Language "actions"}}</th>
     </tr>
     {{end}}
 
@@ -72,14 +72,14 @@
           <input type="hidden" name="key" value="{{.Key}}">
           <span style="color:var(--text-muted); font-size:14px;">&rarr;</span>
           {{if $poolOptions}}
-          <select name="value" aria-label="Kelompok server tujuan baru untuk {{.Key}}" style="padding:4px 8px; font-size:12px;">
+          <select name="value" aria-label="{{t $.Language "acl_col_target_pool"}} {{.Key}}" style="padding:4px 8px; font-size:12px;">
             {{$current := .Value}}
             {{range $poolOptions}}<option value="{{.}}"{{if eq . $current}} selected{{end}}>{{.}}</option>{{end}}
           </select>
           {{else}}
-          <input type="text" name="value" value="{{.Value}}" aria-label="Tujuan baru untuk {{.Key}}" required style="padding:4px 8px; font-size:12px;">
+          <input type="text" name="value" value="{{.Value}}" aria-label="{{t $.Language "acl_col_target_pool"}} {{.Key}}" required style="padding:4px 8px; font-size:12px;">
           {{end}}
-          <button type="submit" title="Simpan perubahan tujuan untuk {{.Key}}" style="padding:4px 10px; font-size:11px;">Simpan</button>
+          <button type="submit" title="{{t $.Language "save"}}" style="padding:4px 10px; font-size:11px;">{{t $.Language "save"}}</button>
         </form>
         {{else}}
         <span class="badge" style="background:rgba(255,255,255,0.05); color:var(--text-bright);">&rarr; {{.Value}}</span>
@@ -88,7 +88,7 @@
       {{end}}
       <td style="text-align:right;">
         {{if $canOperate}}
-        <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Hapus &quot;{{.Key}}&quot; dari daftar ini?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}' style="padding:4px 10px; font-size:11px;">Hapus</button>
+        <button class="danger" hx-post="/api/acl/delete" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "delete"}} &quot;{{.Key}}&quot;?" hx-vals='{"path":"{{$path}}","key":"{{.Key}}"}' style="padding:4px 10px; font-size:11px;">{{t $.Language "delete"}}</button>
         {{end}}
       </td>
     </tr>
@@ -99,7 +99,7 @@
 
   {{if $.User.Role.Can "runtime_control"}}
   <div style="margin-top:14px; padding:12px; background:rgba(255,255,255,0.02); border-radius:6px; border:1px solid var(--border);">
-    <strong style="font-size:12px; display:block; margin-bottom:8px; color:var(--text-bright);">+ Tambah {{if .HasValue}}Rute Domain Baru{{else}}Entri Baru{{end}}</strong>
+    <strong style="font-size:12px; display:block; margin-bottom:8px; color:var(--text-bright);">+ {{t $.Language "acl_btn_entry"}}</strong>
     <form class="member-form" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
       <input type="hidden" name="path" value="{{.Path}}">
       <div style="flex:1; min-width:200px;">
@@ -108,17 +108,17 @@
       {{if .HasValue}}
         <div style="flex:1; min-width:200px;">
         {{if .PoolOptions}}
-        <select name="value" aria-label="Kelompok server tujuan" required style="width:100%;">
-          <option value="" disabled selected>Pilih Pool Tujuan&hellip;</option>
+        <select name="value" aria-label="{{t $.Language "acl_col_target_pool"}}" required style="width:100%;">
+          <option value="" disabled selected>{{t $.Language "acl_col_target_pool"}}&hellip;</option>
           {{range .PoolOptions}}<option value="{{.}}">{{.}}</option>{{end}}
         </select>
         {{else}}
-        <input type="text" name="value" placeholder="Nama pool tujuan" required style="width:100%;">
+        <input type="text" name="value" placeholder="{{t $.Language "acl_col_target_pool"}}" required style="width:100%;">
         {{end}}
         </div>
       {{end}}
       <div>
-        <button type="submit" class="primary" style="padding:7px 16px; font-size:12px; white-space:nowrap;">Tambahkan Rute</button>
+        <button type="submit" class="primary" style="padding:7px 16px; font-size:12px; white-space:nowrap;">{{t $.Language "acl_btn_entry"}}</button>
       </div>
     </form>
   </div>

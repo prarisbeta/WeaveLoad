@@ -1,21 +1,21 @@
 {{define "nodes.html"}}{{template "chrome_header" .}}{{template "nodes_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "nodes_content"}}
-<h1>Node</h1>
-<p class="hint">Node adalah mesin atau server aplikasi (misalnya 192.168.200.108). Tabel ini menunjukkan setiap node dan kelompok server (pool) yang memakainya. Satu node bisa dipakai di lebih dari satu kelompok sekaligus.</p>
+<h1>{{t .Language "nav_nodes"}}</h1>
+<p class="hint">{{t .Language "nodes_desc"}}</p>
 {{if .StatsErr}}<div class="panel notice-warn">{{.StatsErr}}</div>{{end}}
 <div class="panel">
   {{if not .Nodes}}
-  <div class="empty-state"><h3>Belum ada node</h3><p>Belum ada server yang terdaftar di kelompok mana pun.</p></div>
+  <div class="empty-state"><h3>{{t .Language "nodes_empty_title"}}</h3><p>{{t .Language "nodes_empty_desc"}}</p></div>
   {{else}}
   <div class="table-scroll">
   <table>
     <tr>
-      <th>Node</th>
-      <th>Aktif</th>
-      <th>Dipakai di</th>
-      {{if .CanRuntime}}<th>Aksi Node (Semua Pool)</th>{{end}}
-      {{if .CanAdmin}}<th>Tambahkan ke kelompok server</th>{{end}}
+      <th>{{t .Language "nodes_col_node"}}</th>
+      <th>{{t .Language "nodes_col_active"}}</th>
+      <th>{{t .Language "nodes_col_used_in"}}</th>
+      {{if .CanRuntime}}<th>{{t .Language "nodes_col_actions"}}</th>{{end}}
+      {{if .CanAdmin}}<th>{{t .Language "nodes_col_add_to_pool"}}</th>{{end}}
     </tr>
     {{range .Nodes}}
     <tr>
@@ -25,7 +25,7 @@
         <div class="node-uses">
         {{range .Uses}}
         <a class="node-use" href="/pools/{{.Pool}}" title="{{.Server}}{{if .HasLive}}: {{.Live.Status}}{{end}}">
-          <span class="dot {{if not .HasLive}}dot-unknown{{else if .Live.Up}}dot-up{{else if .Live.Down}}dot-down{{else}}dot-maint{{end}}"></span>{{.Pool}}{{if .Port}}:{{.Port}}{{end}}{{if .Backup}} <span class="muted">(cadangan)</span>{{end}}
+          <span class="dot {{if not .HasLive}}dot-unknown{{else if .Live.Up}}dot-up{{else if .Live.Down}}dot-down{{else}}dot-maint{{end}}"></span>{{.Pool}}{{if .Port}}:{{.Port}}{{end}}{{if .Backup}} <span class="muted">({{t $.Language "nodes_backup_tag"}})</span>{{end}}
         </a>
         {{end}}
         </div>
@@ -33,9 +33,9 @@
       {{if $.CanRuntime}}
       <td>
         <div style="display:flex; gap:6px; flex-wrap:wrap">
-          <button type="button" class="btn" style="padding:4px 8px; font-size:12px" hx-post="/api/nodes/action" hx-vals='{"host":"{{.Host}}","action":"ready"}' hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Aktifkan {{.Host}} di semua ({{.Total}}) kelompok server?">Aktifkan Semua</button>
-          <button type="button" class="btn" style="padding:4px 8px; font-size:12px" hx-post="/api/nodes/action" hx-vals='{"host":"{{.Host}}","action":"drain"}' hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Kosongkan (drain) koneksi {{.Host}} di semua ({{.Total}}) kelompok server?">Drain Semua</button>
-          <button type="button" class="btn danger" style="padding:4px 8px; font-size:12px" hx-post="/api/nodes/action" hx-vals='{"host":"{{.Host}}","action":"maint"}' hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="Nonaktifkan (maintenance) {{.Host}} di semua ({{.Total}}) kelompok server?">Maint Semua</button>
+          <button type="button" class="btn" style="padding:4px 8px; font-size:12px" hx-post="/api/nodes/action" hx-vals='{"host":"{{.Host}}","action":"ready"}' hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "btn_activate"}} {{.Host}}?">{{t $.Language "nodes_btn_activate_all"}}</button>
+          <button type="button" class="btn" style="padding:4px 8px; font-size:12px" hx-post="/api/nodes/action" hx-vals='{"host":"{{.Host}}","action":"drain"}' hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "btn_drain"}} {{.Host}}?">{{t $.Language "nodes_btn_drain_all"}}</button>
+          <button type="button" class="btn danger" style="padding:4px 8px; font-size:12px" hx-post="/api/nodes/action" hx-vals='{"host":"{{.Host}}","action":"maint"}' hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "btn_disable"}} {{.Host}}?">{{t $.Language "nodes_btn_maint_all"}}</button>
         </div>
       </td>
       {{end}}
@@ -43,10 +43,10 @@
       <td>
         <form class="add-to-pool-form" method="get" action="/nodes/add-to-pool">
           <input type="hidden" name="node" value="{{.Host}}">
-          <select name="pool" aria-label="Pilih kelompok server tujuan untuk {{.Host}}">
+          <select name="pool" aria-label="{{t $.Language "nodes_col_add_to_pool"}} {{.Host}}">
             {{range $.Pools}}<option value="{{.}}">{{.}}</option>{{end}}
           </select>
-          <button type="submit" class="primary">+ Tambahkan</button>
+          <button type="submit" class="primary">{{t $.Language "nodes_btn_add_to_pool"}}</button>
         </form>
       </td>
       {{end}}

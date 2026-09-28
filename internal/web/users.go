@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/omsdir"
@@ -251,14 +252,19 @@ func (h *ProfileLanguageHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "invalid language", http.StatusBadRequest)
 		return
 	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "gateway_lang",
+		Value:    lang,
+		Path:     "/",
+		HttpOnly: false,
+		SameSite: http.SameSiteLaxMode,
+		Expires:  time.Now().Add(365 * 24 * time.Hour),
+	})
+
 	u, ok := auth.UserFromContext(r.Context())
-	if !ok || u.ID == 0 {
-		http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
-		return
-	}
-	if err := h.Store.SetLanguage(u.ID, lang); err != nil {
-		http.Error(w, "failed to set language: "+err.Error(), http.StatusInternalServerError)
-		return
+	if ok && u.ID != 0 {
+		_ = h.Store.SetLanguage(u.ID, lang)
 	}
 
 	ref := strings.TrimSpace(r.Header.Get("Referer"))
