@@ -142,11 +142,16 @@
   {{if .Pool.RateLimit}}
   <div class="panel" style="background:rgba(15, 23, 42, 0.5); border-left:4px solid var(--accent); margin-bottom:16px;">
     <p style="margin:0; font-size:13px;">
-      <strong>Status Batas Laju:</strong> Maksimum <strong>{{.Pool.RateLimit.RPS}} permintaan/detik per IP</strong>.
+      <strong>Status Batas Laju:</strong> Maksimum <strong>{{.Pool.RateLimit.RPS}} permintaan per 10 detik per IP</strong>.
       Pelanggar dialihkan ke ruang tunggu ({{if eq .Pool.RateLimit.Action "deny"}}Tolak langsung / Deny{{else}}Tunda koneksi / Tarpit{{end}}).
       <span class="badge badge-up" style="margin-left:6px;">Ruang Tunggu Aktif</span>
       {{if .Pool.RateLimit.IgnoreCloudflare}}
       <span class="badge badge-up" style="margin-left:6px;">Cloudflare Bypass Aktif</span>
+      {{end}}
+      {{if .Pool.RateLimit.ExcludeStatic}}
+      <span class="badge badge-up" style="margin-left:6px;">File Statis Dikecualikan</span>
+      {{else}}
+      <span class="badge badge-maint" style="margin-left:6px;" title="Aturan ini dibuat sebelum fitur pengecualian. Simpan ulang dengan opsi dicentang.">File Statis Ikut Dihitung</span>
       {{end}}
     </p>
   </div>
@@ -158,7 +163,7 @@
   {{end}}
 
   <form class="member-form" hx-post="/api/pools/{{.Pool.Name}}/rate-limit/preview" hx-target="#rate-limit-preview" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
-    <label>Batas Maksimum <span class="muted">(permintaan/detik per IP)</span><input type="text" name="rps" value="{{if .Pool.RateLimit}}{{.Pool.RateLimit.RPS}}{{else}}20{{end}}" required size="6" inputmode="numeric"></label>
+    <label>Batas Maksimum <span class="muted">(permintaan per 10 detik per IP)</span><input type="text" name="rps" value="{{if .Pool.RateLimit}}{{.Pool.RateLimit.RPS}}{{else}}20{{end}}" required size="6" inputmode="numeric"></label>
     <label>Aksi &amp; Respon Pengunjung
       <select name="action">
         <option value="deny" {{if or (not .Pool.RateLimit) (eq .Pool.RateLimit.Action "deny")}}selected{{end}}>Alihkan langsung ke Ruang Tunggu (HTTP 429 Deny: Rekomendasi)</option>
@@ -169,6 +174,12 @@
       <label class="check" style="display:flex; align-items:center; gap:8px;">
         <input type="checkbox" name="ignore_cf" value="1" {{if or (not .Pool.RateLimit) .Pool.RateLimit.IgnoreCloudflare}}checked{{end}}>
         <span><strong>Abaikan IP Proxy Cloudflare</strong> (Mengekstrak IP asli dari <code>CF-Connecting-IP</code> agar node CDN Cloudflare tidak terkena batas laju massal)</span>
+      </label>
+    </div>
+    <div style="grid-column: 1 / -1;">
+      <label class="check" style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" name="exclude_static" value="1" {{if or (not .Pool.RateLimit) .Pool.RateLimit.ExcludeStatic}}checked{{end}}>
+        <span><strong>Kecualikan file statis</strong> (CSS, JS, gambar, font, video: tidak dihitung dan tidak pernah ditolak, supaya satu muat halaman tidak langsung melewati batas)</span>
       </label>
     </div>
     <div><button type="submit">{{if .Pool.RateLimit}}Pratinjau Perubahan Batas Laju{{else}}Pratinjau &amp; Aktifkan Ruang Tunggu{{end}}</button></div>
@@ -287,6 +298,7 @@
     <input type="hidden" name="rps" value="{{.Spec.RPS}}">
     <input type="hidden" name="action" value="{{.Spec.Action}}">
     {{if .Spec.IgnoreCloudflare}}<input type="hidden" name="ignore_cf" value="1">{{end}}
+    {{if .Spec.ExcludeStatic}}<input type="hidden" name="exclude_static" value="1">{{end}}
     <button type="submit" class="primary">Terapkan</button>
   </form>
   {{else}}

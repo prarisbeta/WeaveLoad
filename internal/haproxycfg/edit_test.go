@@ -676,3 +676,103 @@ func TestRemoveRateLimit_RemovesNewOrderBlock(t *testing.T) {
 		}
 	}
 }
+
+// Static files must neither count toward the limit nor be rejected by it: a
+// single page load fetches dozens of them, so a limit of a few requests would
+// otherwise turn every first visit into a 429.
+func TestRateLimitLines_ExcludeStatic(t *testing.T) {
+	for name, spec := range map[string]RateLimitSpec{
+		"plain":      {RPS: 20, Action: "deny", ExcludeStatic: true},
+		"cloudflare": {RPS: 20, Action: "tarpit", IgnoreCloudflare: true, ExcludeStatic: true},
+	} {
+		lines := rateLimitLines("", spec)
+		joined := strings.Join(lines, "\n")
+		if !strings.Contains(joined, "acl rl_static path_end -i .css .js") {
+			t.Errorf("%s: missing the static ACL:\n%s", name, joined)
+		}
+		if !strings.Contains(lines[0], "exclude_static=true") {
+			t.Errorf("%s: marker must record the option: %q", name, lines[0])
+		}
+		for _, l := range lines {
+			isCheck := strings.Contains(l, "table_http_req_rate")
+			isTrack := strings.Contains(l, "track-sc0")
+			if (isCheck || isTrack) && !strings.Contains(l, "!rl_static") {
+				t.Errorf("%s: %q counts or rejects without excluding static files", name, l)
+			}
+		}
+		// The ACL has to exist before the first line that uses it.
+		acl, use := -1, -1
+		for i, l := range lines {
+			if strings.HasPrefix(l, "acl rl_static") && acl < 0 {
+				acl = i
+			}
+			if strings.Contains(l, "!rl_static") && use < 0 {
+				use = i
+			}
+		}
+		if acl < 0 || use < 0 || acl > use {
+			t.Errorf("%s: acl at %d, first use at %d", name, acl, use)
+		}
+	}
+}
+
+func TestRateLimitLines_WithoutExcludeStaticIsUnchanged(t *testing.T) {
+	joined := strings.Join(rateLimitLines("", RateLimitSpec{RPS: 5, Action: "deny"}), "\n")
+	if strings.Contains(joined, "rl_static") || strings.Contains(joined, "exclude_static") {
+		t.Errorf("the option is off, but the block mentions it:\n%s", joined)
+	}
+}
+
+// The marker round-trips and LineCount follows it, so Replace and Remove cut
+// exactly the lines written, for every combination, and still handle blocks
+// written before this option existed.
+func TestSetRateLimit_ExcludeStaticRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		cf, static bool
+		lines      int
+	}{{false, false, 6}, {false, true, 7}, {true, false, 8}, {true, true, 9}} {
+		out, _, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny", IgnoreCloudflare: tc.cf, ExcludeStatic: tc.static})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, _ := Parse(out).Pool("http_oms")
+		if p.RateLimit == nil || p.RateLimit.ExcludeStatic != tc.static || p.RateLimit.IgnoreCloudflare != tc.cf {
+			t.Fatalf("cf=%v static=%v: parsed %+v", tc.cf, tc.static, p.RateLimit)
+		}
+		if p.RateLimit.LineCount() != tc.lines {
+			t.Errorf("cf=%v static=%v: LineCount = %d, want %d", tc.cf, tc.static, p.RateLimit.LineCount(), tc.lines)
+		}
+		if got := len(rateLimitLines("", RateLimitSpec{RPS: 20, Action: "deny", IgnoreCloudflare: tc.cf, ExcludeStatic: tc.static})); got != tc.lines {
+			t.Errorf("cf=%v static=%v: generator wrote %d lines, parser expects %d", tc.cf, tc.static, got, tc.lines)
+		}
+		clean, err := RemoveRateLimit(out, "http_oms")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(clean, "rl_static") || strings.Contains(clean, "track-sc0") || strings.Contains(clean, "table_http_req_rate") {
+			t.Errorf("cf=%v static=%v: block not fully removed:\n%s", tc.cf, tc.static, clean)
+		}
+		if p2, _ := Parse(clean).Pool("http_oms"); len(p2.Members) != 3 {
+			t.Errorf("cf=%v static=%v: members = %d, want 3 untouched", tc.cf, tc.static, len(p2.Members))
+		}
+	}
+}
+
+// Switching the option on for a block written without it replaces that block
+// in place instead of leaving a second one behind.
+func TestSetRateLimit_UpgradeLegacyBlockToExcludeStatic(t *testing.T) {
+	legacy, _, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := SetRateLimit(legacy, "http_oms", RateLimitSpec{RPS: 20, Action: "deny", ExcludeStatic: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out, "haproxy-gui:rate-limit") != 1 || strings.Count(out, "track-sc0") != 1 {
+		t.Errorf("expected exactly one block after upgrading:\n%s", out)
+	}
+	if p, _ := Parse(out).Pool("http_oms"); p.RateLimit == nil || !p.RateLimit.ExcludeStatic {
+		t.Errorf("RateLimit = %+v", p.RateLimit)
+	}
+}

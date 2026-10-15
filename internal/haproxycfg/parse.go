@@ -61,21 +61,29 @@ type RateLimit struct {
 	RPS              int
 	Action           string // "deny" or "tarpit"
 	IgnoreCloudflare bool
+	ExcludeStatic    bool // static files (css, js, images, fonts) neither count nor get rejected
 
 	markerLine int // line index of the "# haproxy-gui:rate-limit ..." comment
 }
 
 // LineCount returns the number of config lines occupied by this rate limit block.
 func (r *RateLimit) LineCount() int {
-	if r != nil && r.IgnoreCloudflare {
-		return 8
+	if r == nil {
+		return 6
 	}
-	return 6
+	n := 6
+	if r.IgnoreCloudflare {
+		n = 8
+	}
+	if r.ExcludeStatic {
+		n++ // the extra "acl rl_static" line
+	}
+	return n
 }
 
 // rateLimitMarkerRE matches the marker comment rateLimitLines writes, e.g.
 // "# haproxy-gui:rate-limit rps=20 action=deny" or with "ignore_cf=true".
-var rateLimitMarkerRE = regexp.MustCompile(`^#\s*haproxy-gui:rate-limit\s+rps=(\d+)\s+action=(deny|tarpit)(?:\s+ignore_cf=(true|false))?\s*$`)
+var rateLimitMarkerRE = regexp.MustCompile(`^#\s*haproxy-gui:rate-limit\s+rps=(\d+)\s+action=(deny|tarpit)(?:\s+ignore_cf=(true|false))?(?:\s+exclude_static=(true|false))?\s*$`)
 
 // Config is the parsed structure of one haproxy.cfg.
 type Config struct {
@@ -112,7 +120,8 @@ func Parse(content string) Config {
 			if m := rateLimitMarkerRE.FindStringSubmatch(strings.TrimSpace(text)); m != nil {
 				rps, _ := strconv.Atoi(m[1])
 				ignoreCF := len(m) > 3 && m[3] == "true"
-				cur.RateLimit = &RateLimit{RPS: rps, Action: m[2], IgnoreCloudflare: ignoreCF, markerLine: i}
+				excludeStatic := len(m) > 4 && m[4] == "true"
+				cur.RateLimit = &RateLimit{RPS: rps, Action: m[2], IgnoreCloudflare: ignoreCF, ExcludeStatic: excludeStatic, markerLine: i}
 				continue
 			}
 		}

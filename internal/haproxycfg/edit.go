@@ -406,7 +406,15 @@ type RateLimitSpec struct {
 	RPS              int
 	Action           string // "deny" (reject with 429) or "tarpit" (hold the connection open, then 429)
 	IgnoreCloudflare bool   // bypass Cloudflare proxy IPs and track client real IP from CF-Connecting-IP
+	ExcludeStatic    bool   // static files (see StaticExtensions) are never counted or rejected
 }
+
+// StaticExtensions are the file suffixes ExcludeStatic leaves out of the limit.
+// A page load fetches dozens of these, so counting them would trip any
+// sensible limit on the first visit. Dynamic endpoints (.json, .php, ...) are
+// deliberately not listed.
+const StaticExtensions = ".css .js .mjs .map .png .jpg .jpeg .gif .webp .avif .svg .ico .bmp " +
+	".woff .woff2 .ttf .otf .eot .mp4 .webm .mp3 .ogg .wav"
 
 // rateLimitLines renders spec as the 6 or 8 line block SetRateLimit/RemoveRateLimit
 // recognize by its leading marker comment — see RateLimit in parse.go.
@@ -417,26 +425,43 @@ type RateLimitSpec struct {
 // with every retry and never drops back under the limit.
 func rateLimitLines(indent string, spec RateLimitSpec) []string {
 	const allow = "!{ src -f /etc/haproxy/maps/allowlist_ip.lst }"
+	// notStatic is appended to every condition that counts or rejects requests.
+	notStatic, marker := "", ""
+	var staticACL []string
+	if spec.ExcludeStatic {
+		notStatic = " !rl_static"
+		marker = " exclude_static=true"
+		staticACL = []string{indent + "acl rl_static path_end -i " + StaticExtensions}
+	}
 	if spec.IgnoreCloudflare {
-		return []string{
-			indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s ignore_cf=true", spec.RPS, spec.Action),
+		lines := []string{
+			indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s ignore_cf=true%s", spec.RPS, spec.Action, marker),
 			indent + "acl is_cloudflare src " + CloudflareCIDRs,
-			indent + "http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst } !is_cloudflare",
-			indent + "http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }",
-			indent + "stick-table type ip size 100k expire 30s store http_req_rate(10s)",
-			indent + fmt.Sprintf("http-request %s deny_status 429 if is_cloudflare { req.hdr(CF-Connecting-IP),table_http_req_rate() gt %d } %s || !is_cloudflare { src,table_http_req_rate() gt %d } %s", spec.Action, spec.RPS, allow, spec.RPS, allow),
-			indent + "http-request track-sc0 req.hdr(CF-Connecting-IP) if is_cloudflare { req.hdr(CF-Connecting-IP) -m found }",
-			indent + "http-request track-sc0 src if !is_cloudflare",
 		}
+		lines = append(lines, staticACL...)
+		return append(lines,
+			indent+"http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst } !is_cloudflare",
+			indent+"http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }",
+			indent+"stick-table type ip size 100k expire 30s store http_req_rate(10s)",
+			indent+fmt.Sprintf("http-request %s deny_status 429 if is_cloudflare%s { req.hdr(CF-Connecting-IP),table_http_req_rate() gt %d } %s || !is_cloudflare%s { src,table_http_req_rate() gt %d } %s", spec.Action, notStatic, spec.RPS, allow, notStatic, spec.RPS, allow),
+			indent+"http-request track-sc0 req.hdr(CF-Connecting-IP) if is_cloudflare { req.hdr(CF-Connecting-IP) -m found }"+notStatic,
+			indent+"http-request track-sc0 src if !is_cloudflare"+notStatic,
+		)
 	}
-	return []string{
-		indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s", spec.RPS, spec.Action),
-		indent + "http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst }",
-		indent + "http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }",
-		indent + "stick-table type ip size 100k expire 30s store http_req_rate(10s)",
-		indent + fmt.Sprintf("http-request %s deny_status 429 if { src,table_http_req_rate() gt %d } %s", spec.Action, spec.RPS, allow),
-		indent + "http-request track-sc0 src",
-	}
+	lines := []string{indent + fmt.Sprintf("# haproxy-gui:rate-limit rps=%d action=%s%s", spec.RPS, spec.Action, marker)}
+	lines = append(lines, staticACL...)
+	return append(lines,
+		indent+"http-request deny deny_status 403 if { src -f /etc/haproxy/maps/blocklist_ip.lst }",
+		indent+"http-request deny deny_status 429 if { hdr(host) -i -f /etc/haproxy/maps/ratelimit_host.map }",
+		indent+"stick-table type ip size 100k expire 30s store http_req_rate(10s)",
+		indent+fmt.Sprintf("http-request %s deny_status 429 if%s { src,table_http_req_rate() gt %d } %s", spec.Action, notStatic, spec.RPS, allow),
+		indent+"http-request track-sc0 src"+func() string {
+			if notStatic != "" {
+				return " if" + notStatic
+			}
+			return ""
+		}(),
+	)
 }
 
 // SetRateLimit adds pool's per-source-IP request rate limit, or replaces the

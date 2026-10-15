@@ -286,7 +286,8 @@ func rateLimitSpecFromForm(r *http.Request) haproxycfg.RateLimitSpec {
 		action = "deny"
 	}
 	ignoreCF := r.FormValue("ignore_cf") == "1" || r.FormValue("ignore_cf") == "true"
-	return haproxycfg.RateLimitSpec{RPS: rps, Action: action, IgnoreCloudflare: ignoreCF}
+	excludeStatic := r.FormValue("exclude_static") == "1" || r.FormValue("exclude_static") == "true"
+	return haproxycfg.RateLimitSpec{RPS: rps, Action: action, IgnoreCloudflare: ignoreCF, ExcludeStatic: excludeStatic}
 }
 
 type rateLimitPreviewData struct {
