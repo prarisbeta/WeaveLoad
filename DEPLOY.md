@@ -17,13 +17,13 @@ Rilis `bbd75bc-sslfix2`: perbaikan upload SSL (HTTP 500 pada hasil upload), pema
 ### 🚀 Langkah 1: Upload (dari terminal lokal)
 
 ```bash
-scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix2.tar.gz dist/haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/
+scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix2.tar.gz dist/haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/palapacloud.pem
 ```
 
 ### ⚙️ Langkah 2: Update + uji + snapshot otomatis (satu perintah)
 
 ```bash
-ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 && rm -rf haproxy-gui-bbd75bc-sslfix2 && tar xzf haproxy-gui-bbd75bc-sslfix2.tar.gz && sudo bash haproxy-gui-bbd75bc-sslfix2/deploy/apply-release.sh --cert /tmp/palapacloud.id.pem'
+ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 && rm -rf haproxy-gui-bbd75bc-sslfix2 && tar xzf haproxy-gui-bbd75bc-sslfix2.tar.gz && sudo bash haproxy-gui-bbd75bc-sslfix2/deploy/apply-release.sh --cert /tmp/palapacloud.pem'
 ```
 
 `apply-release.sh` bekerja berurutan dan berhenti aman di setiap tahap:
@@ -62,7 +62,7 @@ Ganti password setelah login pertama. Tidak ada lagi password tetap bawaan.
 Berkas `palapacloud.id.pem` adalah bundle lengkap (leaf → intermediate → root → private key), CN `*.palapacloud.id`, valid s/d 2 Apr 2027.
 
 1. Buka **Sertifikat SSL** (`/certs`) sebagai admin.
-2. Nama berkas `palapacloud.id.pem` (nama sama dengan di `/etc/haproxy/ssl/` agar menggantikan yang lama; `bind ... crt` tidak perlu diubah), pilih berkasnya, **Unggah & validasi**.
+2. Nama berkas `palapacloud.pem` (nama sama dengan berkas live di `/etc/haproxy/ssl/` agar menggantikan yang lama; `bind ... crt` tidak perlu diubah), pilih berkasnya, **Unggah & validasi**.
 3. Muat ulang halaman, di daftar **Siap dipasang** klik **Pasang & reload**.
 4. Verifikasi:
 ```bash
