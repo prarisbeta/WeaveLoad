@@ -62,6 +62,12 @@ func (fixedCerts) ListStaged() ([]certs.Info, error) {
 	return []certs.Info{{FileName: "palapacloud.id.pem", CommonName: "*.palapacloud.id", NotAfter: time.Now().Add(90 * 24 * time.Hour)}}, nil
 }
 
+func (fixedCerts) Remove(string) (certs.InstallResult, error) {
+	return certs.InstallResult{OK: true, Output: "removed"}, nil
+}
+
+func (fixedCerts) RemoveStaged(string) error { return nil }
+
 func (fixedCerts) Install(string) (certs.InstallResult, error) {
 	return certs.InstallResult{OK: true, Output: "installed"}, nil
 }
@@ -154,7 +160,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
 	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
 	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t)})
+	mux.Handle("GET /login", &auth.LoginHandler{Templates: realTemplates(t)})
 	mux.Handle("GET /certs", &web.CertsHandler{Certs: fixedCerts{}, Templates: realTemplates(t)})
+	mux.Handle("POST /api/certs/remove", &web.CertRemoveHandler{Remover: fixedCerts{}, Audit: noopAudit{}, Templates: realTemplates(t)})
 	mux.Handle("POST /api/certs/install", &web.CertInstallHandler{Installer: fixedCerts{}, Audit: noopAudit{}, Templates: realTemplates(t)})
 	mux.Handle("GET /queue", &web.QueueHandler{Store: fixedSettings{}, Templates: realTemplates(t)})
 	mux.Handle("GET /security", &web.SecurityHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
@@ -185,7 +193,11 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 			"weight 50"},
 		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
 		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
+		{"login.html", http.MethodGet, "/login", nil, `href="/auth/login"`},
 		{"certs.html", http.MethodGet, "/certs", nil, "palapacloud.id.pem"},
+		{"certs_remove_live", http.MethodGet, "/certs", nil, "/api/certs/remove"},
+		{"cert_remove_result.html", http.MethodPost, "/api/certs/remove", url.Values{"filename": {"old.pem"}, "scope": {"live"}}, "Berhasil diterapkan."},
+		{"cert_remove_staged_result.html", http.MethodPost, "/api/certs/remove", url.Values{"filename": {"palapacloud.id.pem"}, "scope": {"staged"}}, "Berhasil diterapkan."},
 		{"cert_install_result.html", http.MethodPost, "/api/certs/install", url.Values{"filename": {"palapacloud.id.pem"}}, "Berhasil diterapkan."},
 		{"queue.html", http.MethodGet, "/queue", nil, "belum dikonfigurasi"},
 		{"security.html", http.MethodGet, "/security", nil, "10.0.0.9"},

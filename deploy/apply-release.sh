@@ -45,7 +45,7 @@ step "3/6 install binaries, root helpers, sudoers, unit"
 visudo -cf "$HERE/sudoers.haproxy-gui" || fail "sudoers file failed validation"
 install -o root -g root -m 755 "$REL/bin/haproxy-gui" /usr/local/bin/haproxy-gui || fail "install haproxy-gui"
 install -o root -g root -m 755 "$REL/bin/konsolgw-mcp" /usr/local/bin/konsolgw-mcp || fail "install konsolgw-mcp"
-for h in apply restart install-cert; do
+for h in apply restart install-cert remove-cert; do
   install -o root -g root -m 750 "$HERE/haproxy-gui-$h.sh" "/usr/local/sbin/haproxy-gui-$h" || fail "install helper $h"
 done
 install -o root -g root -m 440 "$HERE/sudoers.haproxy-gui" /etc/sudoers.d/haproxy-gui || fail "install sudoers"

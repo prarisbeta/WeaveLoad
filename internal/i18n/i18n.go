@@ -33,6 +33,8 @@ var idCatalog = map[string]string{
 	"login":           "Masuk",
 	"login_sub":       "Masuk dengan akun kantor Anda untuk melanjutkan.",
 	"login_sso_btn":   "Masuk dengan akun SSO",
+	"totp_prompt":      "Kode 2FA (atau kode pemulihan)",
+	"login_verify_2fa": "Verifikasi",
 	"email":           "Alamat Email",
 	"password":        "Kata Sandi",
 	"save":            "Simpan",
@@ -344,6 +346,9 @@ var idCatalog = map[string]string{
 	"certs_staged_title":           "Siap dipasang",
 	"certs_install_btn":            "Pasang & reload",
 	"certs_install_confirm":        "Pasang sertifikat ini ke /etc/haproxy/ssl dan reload HAProxy? Sertifikat lama dengan nama sama dicadangkan dan dipulihkan otomatis jika gagal.",
+	"certs_remove_btn":            "Hapus",
+	"certs_remove_confirm_live":  "Hapus sertifikat ini dari /etc/haproxy/ssl dan reload HAProxy? Ditolak jika masih dipakai haproxy.cfg. Salinan cadangan disimpan di /etc/haproxy/backups.",
+	"certs_remove_confirm_staged": "Hapus berkas yang belum dipasang ini dari staging? Tindakan ini tidak dapat dibatalkan.",
 
 	// Queue Page
 	"queue_mgmt_title":             "Pusat Manajemen Antrean & Ruang Tunggu",
@@ -464,6 +469,8 @@ var enCatalog = map[string]string{
 	"login":           "Log In",
 	"login_sub":       "Sign in with your organization account to continue.",
 	"login_sso_btn":   "Sign In with SSO",
+	"totp_prompt":      "2FA code (or recovery code)",
+	"login_verify_2fa": "Verify",
 	"email":           "Email Address",
 	"password":        "Password",
 	"save":            "Save",
@@ -775,6 +782,9 @@ var enCatalog = map[string]string{
 	"certs_staged_title":           "Ready to install",
 	"certs_install_btn":            "Install & reload",
 	"certs_install_confirm":        "Install this certificate into /etc/haproxy/ssl and reload HAProxy? An existing certificate with the same name is backed up and restored automatically on failure.",
+	"certs_remove_btn":            "Remove",
+	"certs_remove_confirm_live":  "Remove this certificate from /etc/haproxy/ssl and reload HAProxy? Refused if haproxy.cfg still uses it. A backup copy is kept in /etc/haproxy/backups.",
+	"certs_remove_confirm_staged": "Delete this not-yet-installed file from staging? This cannot be undone.",
 
 	// Queue Page
 	"queue_mgmt_title":             "Queue & Waiting Room Control Center",
@@ -895,6 +905,8 @@ var zhCatalog = map[string]string{
 	"login":           "登录",
 	"login_sub":       "请使用您的企业账号登录以继续操作。",
 	"login_sso_btn":   "使用企业 SSO 账号登录",
+	"totp_prompt":      "2FA 验证码（或恢复码）",
+	"login_verify_2fa": "验证",
 	"email":           "电子邮箱",
 	"password":        "密码",
 	"save":            "保存",
@@ -1206,6 +1218,9 @@ var zhCatalog = map[string]string{
 	"certs_staged_title":           "待安装",
 	"certs_install_btn":            "安装并重载",
 	"certs_install_confirm":        "将此证书安装到 /etc/haproxy/ssl 并重载 HAProxy？同名旧证书会先备份，失败时自动恢复。",
+	"certs_remove_btn":            "删除",
+	"certs_remove_confirm_live":  "从 /etc/haproxy/ssl 删除此证书并重载 HAProxy？若 haproxy.cfg 仍在使用则拒绝。备份保存在 /etc/haproxy/backups。",
+	"certs_remove_confirm_staged": "从暂存区删除这个尚未安装的文件？此操作无法撤销。",
 
 	// Queue Page
 	"queue_mgmt_title":             "队列与虚拟等候室管理中心",
@@ -1326,6 +1341,8 @@ var jaCatalog = map[string]string{
 	"login":           "ログイン",
 	"login_sub":       "続行するには組織のアカウントでログインしてください。",
 	"login_sso_btn":   "組織のSSOでログイン",
+	"totp_prompt":      "2FAコード（またはリカバリーコード）",
+	"login_verify_2fa": "確認",
 	"email":           "メールアドレス",
 	"password":        "パスワード",
 	"save":            "保存",
@@ -1637,6 +1654,9 @@ var jaCatalog = map[string]string{
 	"certs_staged_title":           "インストール待ち",
 	"certs_install_btn":            "インストールして再読み込み",
 	"certs_install_confirm":        "この証明書を /etc/haproxy/ssl にインストールし、HAProxy を再読み込みしますか？同名の既存証明書はバックアップされ、失敗時は自動的に復元されます。",
+	"certs_remove_btn":            "削除",
+	"certs_remove_confirm_live":  "この証明書を /etc/haproxy/ssl から削除し、HAProxy を再読み込みしますか？haproxy.cfg が使用中の場合は拒否されます。バックアップは /etc/haproxy/backups に保存されます。",
+	"certs_remove_confirm_staged": "未インストールのこのファイルをステージングから削除しますか？元に戻せません。",
 
 	// Queue Page
 	"queue_mgmt_title":             "キュー＆待機室管理センター",

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -149,5 +150,41 @@ func TestPasswordLoginHandler_TOTPEnabledWithoutCode_NeverCreatesSession(t *test
 	}
 	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), "error=") {
 		t.Errorf("status=%d location=%q, want redirect to /login with an error", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+// loginPageTemplates mirrors the fields the real login.html reads, so a
+// handler that passes a struct missing one (e.g. RequireTOTP) fails here
+// instead of silently serving a truncated page.
+func loginPageTemplates(t *testing.T) *template.Template {
+	t.Helper()
+	return template.Must(template.New("login.html").Parse(
+		`<form>{{if .RequireTOTP}}code{{else}}user:{{.Username}}{{end}}</form>` +
+			`{{if .Error}}ERR={{.Error}}{{end}}{{if not .RequireTOTP}}<a href="/auth/login">sso</a>{{end}}END`))
+}
+
+func TestLoginHandler_RendersWholePageIncludingSSOButton(t *testing.T) {
+	h := &LoginHandler{Templates: loginPageTemplates(t)}
+	req := httptest.NewRequest(http.MethodGet, "/login?error=boom", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, `href="/auth/login"`) || !strings.HasSuffix(body, "END") {
+		t.Fatalf("status=%d, page cut short or SSO button missing: %q", rec.Code, body)
+	}
+	if !strings.Contains(body, "ERR=boom") {
+		t.Errorf("error message not shown: %q", body)
+	}
+}
+
+func TestLoginHandler_TemplateFailureIs500NotATruncatedPage(t *testing.T) {
+	broken := template.Must(template.New("login.html").Parse(`<form>{{.NoSuchField}}</form>tail`))
+	h := &LoginHandler{Templates: broken}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/login", nil))
+
+	if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "<form>") {
+		t.Errorf("status=%d body=%q, want 500 and no partial HTML", rec.Code, rec.Body.String())
 	}
 }

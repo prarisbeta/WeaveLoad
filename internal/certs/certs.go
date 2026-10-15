@@ -57,6 +57,7 @@ type Store struct {
 	// set, is prepended as "<SudoBin> -n <script> <path>" (see
 	// deploy/sudoers.haproxy-gui); tests leave it empty.
 	InstallScript string
+	RemoveScript  string // deploy/haproxy-gui-remove-cert.sh
 	SudoBin       string
 }
 
@@ -191,12 +192,38 @@ func (s *Store) Install(fileName string) (InstallResult, error) {
 	if !validPEMFileName(fileName) {
 		return InstallResult{}, fmt.Errorf("%w: %q", ErrInvalidFileName, fileName)
 	}
-	args := []string{filepath.Join(s.StagingDir, fileName)}
+	return s.runHelper(s.InstallScript, filepath.Join(s.StagingDir, fileName))
+}
+
+// Remove deletes the live certificate fileName from the ssl directory via the
+// root helper, which refuses a file haproxy.cfg still references, backs it up
+// first, checks the config, reloads, and restores it on failure. Like
+// Install, the helper's refusal or failure comes back in the result.
+func (s *Store) Remove(fileName string) (InstallResult, error) {
+	if !validPEMFileName(fileName) {
+		return InstallResult{}, fmt.Errorf("%w: %q", ErrInvalidFileName, fileName)
+	}
+	return s.runHelper(s.RemoveScript, fileName)
+}
+
+// RemoveStaged deletes an uploaded bundle that was never installed. It needs
+// no root: the staging directory belongs to the service user.
+func (s *Store) RemoveStaged(fileName string) error {
+	if !validPEMFileName(fileName) {
+		return fmt.Errorf("%w: %q", ErrInvalidFileName, fileName)
+	}
+	if err := os.Remove(filepath.Join(s.StagingDir, fileName)); err != nil {
+		return fmt.Errorf("remove staged certificate: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) runHelper(script, arg string) (InstallResult, error) {
 	var cmd *exec.Cmd
 	if s.SudoBin != "" {
-		cmd = exec.Command(s.SudoBin, append([]string{"-n", s.InstallScript}, args...)...)
+		cmd = exec.Command(s.SudoBin, "-n", script, arg)
 	} else {
-		cmd = exec.Command(s.InstallScript, args...)
+		cmd = exec.Command(script, arg)
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -204,7 +231,7 @@ func (s *Store) Install(fileName string) (InstallResult, error) {
 		if errors.As(err, &exitErr) {
 			return InstallResult{OK: false, Output: string(out)}, nil
 		}
-		return InstallResult{}, fmt.Errorf("run install helper: %w", err)
+		return InstallResult{}, fmt.Errorf("run %s: %w", filepath.Base(script), err)
 	}
 	return InstallResult{OK: true, Output: string(out)}, nil
 }

@@ -1,6 +1,6 @@
 # Panduan Deploy Rilis ke Server (HAProxy GUI / Konsol Gateway)
 
-Rilis `bbd75bc-sslfix2`: perbaikan upload SSL (HTTP 500 pada hasil upload), pemasangan sertifikat dari GUI, 2FA/manajemen user, traffic, alerts, AI investigation, serta sistem snapshot/rollback di server.
+Rilis `bbd75bc-sslfix3`: halaman login menampilkan form dan tombol SSO lagi, hapus sertifikat dari GUI, perbaikan upload SSL (HTTP 500), pemasangan sertifikat dari GUI, 2FA/manajemen user, traffic, alerts, AI investigation, serta sistem snapshot/rollback di server.
 
 ---
 
@@ -8,23 +8,23 @@ Rilis `bbd75bc-sslfix2`: perbaikan upload SSL (HTTP 500 pada hasil upload), pema
 
 | Nama Berkas | Lokasi Lokal | SHA256 |
 | :--- | :--- | :--- |
-| **Tarball** | `dist/haproxy-gui-bbd75bc-sslfix2.tar.gz` | `d06056b938f871dd6bfb1b6e71c8b853f7dfd9438959b4f5b9ecd21e457d1b1b` |
-| **haproxy-gui** | `dist/haproxy-gui-bbd75bc-sslfix2/bin/haproxy-gui` | `191dba33cfabe4d942c94504a4dee29ecd5f9be0743d960ab017705fea461264` |
-| **konsolgw-mcp** | `dist/haproxy-gui-bbd75bc-sslfix2/bin/konsolgw-mcp` | `c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df` |
+| **Tarball** | `dist/haproxy-gui-bbd75bc-sslfix3.tar.gz` | `4a1f74a31bca1b1918db5979bc245c6b7048ee12e3658176d5b3f351bd062400` |
+| **haproxy-gui** | `dist/haproxy-gui-bbd75bc-sslfix3/bin/haproxy-gui` | `9d891fd85e041fb57effcf768f3a5baf166c577e4cb82296267ad0378c7a7873` |
+| **konsolgw-mcp** | `dist/haproxy-gui-bbd75bc-sslfix3/bin/konsolgw-mcp` | `c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df` |
 
 ---
 
 ### 🚀 Langkah 1: Upload (dari terminal lokal)
 
 ```bash
-scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix2.tar.gz dist/haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 programmer@103.31.159.8:/tmp/
+scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix3.tar.gz dist/haproxy-gui-bbd75bc-sslfix3.tar.gz.sha256 programmer@103.31.159.8:/tmp/
 scp -P 2212 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/palapacloud.pem
 ```
 
 ### ⚙️ Langkah 2: Update + uji + snapshot otomatis (satu perintah)
 
 ```bash
-ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 && rm -rf haproxy-gui-bbd75bc-sslfix2 && tar xzf haproxy-gui-bbd75bc-sslfix2.tar.gz && sudo bash haproxy-gui-bbd75bc-sslfix2/deploy/apply-release.sh --cert /tmp/palapacloud.pem'
+ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-bbd75bc-sslfix3.tar.gz.sha256 && rm -rf haproxy-gui-bbd75bc-sslfix3 && tar xzf haproxy-gui-bbd75bc-sslfix3.tar.gz && sudo bash haproxy-gui-bbd75bc-sslfix3/deploy/apply-release.sh --cert /tmp/palapacloud.pem'
 ```
 
 `apply-release.sh` bekerja berurutan dan berhenti aman di setiap tahap:
@@ -69,6 +69,12 @@ Berkas `palapacloud.id.pem` adalah bundle lengkap (leaf → intermediate → roo
 ```bash
 echo | openssl s_client -connect 127.0.0.1:443 -servername palapacloud.id 2>/dev/null | openssl x509 -noout -subject -dates
 ```
+
+---
+
+### 🗑️ Menghapus sertifikat
+
+Di `/certs` ada tombol **Hapus** untuk sertifikat live dan berkas staging. Sertifikat live yang masih dirujuk `haproxy.cfg` (mis. di baris `bind ... crt`) **ditolak** oleh helper; selain itu dicadangkan ke `/etc/haproxy/backups/`, dihapus, `haproxy -c`, reload, dan dipulihkan otomatis jika gagal.
 
 ---
 

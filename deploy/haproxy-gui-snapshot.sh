@@ -26,6 +26,7 @@ FILES=(
   /usr/local/sbin/haproxy-gui-apply
   /usr/local/sbin/haproxy-gui-restart
   /usr/local/sbin/haproxy-gui-install-cert
+  /usr/local/sbin/haproxy-gui-remove-cert
   /usr/local/sbin/haproxy-gui-snapshot
   /etc/sudoers.d/haproxy-gui
   /etc/systemd/system/haproxy-gui.service

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"html/template"
 	"log"
 	"net/http"
@@ -16,13 +17,23 @@ type LoginHandler struct{ Templates *template.Template }
 
 func (h *LoginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	errMsg := r.URL.Query().Get("error")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	al := r.Header.Get("Accept-Language")
 	lang := "id"
 	if len(al) >= 2 && (al[0:2] == "id" || al[0:2] == "en") {
 		lang = al[0:2]
 	}
-	_ = h.Templates.ExecuteTemplate(w, "login.html", struct{ Error, Language string }{Error: errMsg, Language: lang})
+	// loginView carries every field login.html reads (RequireTOTP, Username,
+	// ...). Render to a buffer first: a template error halfway through would
+	// otherwise leave the browser with a page cut off before the form and the
+	// SSO button.
+	var buf bytes.Buffer
+	if err := h.Templates.ExecuteTemplate(&buf, "login.html", loginView{Error: errMsg, Language: lang}); err != nil {
+		log.Printf("render login page: %v", err)
+		http.Error(w, "gagal menampilkan halaman masuk", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
 }
 
 // BeginLoginHandler starts the OIDC flow (GET /auth/login).

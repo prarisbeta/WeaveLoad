@@ -9,7 +9,7 @@
   {{else}}
   <div class="table-scroll">
   <table>
-    <tr><th>{{t .Language "certs_col_file"}}</th><th>{{t .Language "certs_col_domain"}}</th><th>{{t .Language "certs_col_alt_domains"}}</th><th>{{t .Language "certs_col_valid_until"}}</th><th>{{t .Language "status"}}</th></tr>
+    <tr><th>{{t .Language "certs_col_file"}}</th><th>{{t .Language "certs_col_domain"}}</th><th>{{t .Language "certs_col_alt_domains"}}</th><th>{{t .Language "certs_col_valid_until"}}</th><th>{{t .Language "status"}}</th>{{if $.CanUpload}}<th></th>{{end}}</tr>
     {{range .Certs}}
     <tr>
       <td>{{.FileName}}</td>
@@ -21,10 +21,14 @@
         {{else if .ExpiresWithin30 $.Now}}<span class="badge badge-maint">{{t $.Language "certs_status_expiring_soon"}}</span>
         {{else}}<span class="badge badge-up">{{t $.Language "certs_status_valid"}}</span>{{end}}
       </td>
+      {{if $.CanUpload}}<td>
+        <button type="button" hx-post="/api/certs/remove" hx-vals='{"filename":"{{.FileName}}","scope":"live"}' hx-target="#remove-out" hx-confirm="{{t $.Language "certs_remove_confirm_live"}}" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "certs_remove_btn"}}</button>
+      </td>{{end}}
     </tr>
     {{end}}
   </table>
   </div>
+  <div id="remove-out"></div>
   {{end}}
 </div>
 
@@ -53,6 +57,7 @@
       <td>{{.NotAfter.Format "2 Jan 2006"}}</td>
       <td>
         <button type="button" class="primary" hx-post="/api/certs/install" hx-vals='{"filename":"{{.FileName}}"}' hx-target="#install-out" hx-confirm="{{t $.Language "certs_install_confirm"}}" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "certs_install_btn"}}</button>
+        <button type="button" hx-post="/api/certs/remove" hx-vals='{"filename":"{{.FileName}}","scope":"staged"}' hx-target="#install-out" hx-confirm="{{t $.Language "certs_remove_confirm_staged"}}" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "certs_remove_btn"}}</button>
       </td>
     </tr>
     {{end}}

@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"haproxy-gui/internal/auth"
@@ -159,4 +160,77 @@ func (h *CertInstallHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, true, res.Output))
+}
+
+// CertRemover is the subset of *certs.Store the remove action needs.
+type CertRemover interface {
+	Remove(fileName string) (certs.InstallResult, error)
+	RemoveStaged(fileName string) error
+}
+
+// CertRemoveHandler deletes either an uploaded-but-not-installed bundle
+// (scope "staged", no root needed) or a live certificate (scope "live", via
+// the root helper, which refuses files haproxy.cfg still references). Every
+// attempt is audit-logged.
+type CertRemoveHandler struct {
+	Remover   CertRemover
+	Audit     AuditRecorder
+	Templates *template.Template
+}
+
+func (h *CertRemoveHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	filename := r.FormValue("filename")
+	scope := r.FormValue("scope")
+	u, _ := auth.UserFromContext(r.Context())
+
+	var (
+		action string
+		res    certs.InstallResult
+		err    error
+	)
+	switch scope {
+	case "staged":
+		action = "cert.remove_staged"
+		res.OK = true
+		err = h.Remover.RemoveStaged(filename)
+	case "live":
+		action = "cert.remove"
+		res, err = h.Remover.Remove(filename)
+	default:
+		http.Error(w, "scope must be staged or live", http.StatusBadRequest)
+		return
+	}
+	switch {
+	case errors.Is(err, certs.ErrInvalidFileName):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	case errors.Is(err, os.ErrNotExist):
+		http.Error(w, "certificate not found: "+filename, http.StatusNotFound)
+		return
+	case err != nil:
+		http.Error(w, "failed to remove certificate: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	detail := "removed"
+	if !res.OK {
+		detail = "remove failed: " + res.Output
+	}
+	if err := h.Audit.Record(store.AuditEntry{
+		UserEmail: u.Email, RemoteIP: clientIP(r),
+		Action: action, Target: filename, Detail: detail,
+	}); err != nil {
+		http.Error(w, "removal outcome could not be audit-logged: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !res.OK {
+		http.Error(w, "Penghapusan ditolak atau gagal: "+res.Output, http.StatusBadGateway)
+		return
+	}
+	msg := res.Output
+	if scope == "staged" {
+		msg = "Staged file " + filename + " removed."
+	}
+	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, true, msg))
 }

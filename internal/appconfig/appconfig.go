@@ -15,17 +15,18 @@ import (
 type Config struct {
 	ListenAddr string // e.g. 127.0.0.1:9900
 
-	HAProxySocket string // e.g. /var/lib/haproxy/stats
-	HAProxyBin    string // e.g. /usr/sbin/haproxy
-	HAProxyCfg    string // e.g. /etc/haproxy/haproxy.cfg
-	StagingDir    string // e.g. /var/lib/haproxy-gui/staging
-	ApplyScript   string // e.g. /usr/local/sbin/haproxy-gui-apply
-	RestartScript string // e.g. /usr/local/sbin/haproxy-gui-restart
-	CertScript    string // e.g. /usr/local/sbin/haproxy-gui-install-cert
-	SudoBin       string // e.g. sudo — set to "" only for local dev without sudoers configured
-	SSLDir        string // e.g. /etc/haproxy/ssl
-	BackupDir     string // e.g. /var/lib/haproxy-gui/backups or /etc/haproxy/backups
-	LogPath       string // e.g. /var/log/haproxy.log (where rsyslog writes the "log local2" traffic in haproxy.cfg)
+	HAProxySocket    string // e.g. /var/lib/haproxy/stats
+	HAProxyBin       string // e.g. /usr/sbin/haproxy
+	HAProxyCfg       string // e.g. /etc/haproxy/haproxy.cfg
+	StagingDir       string // e.g. /var/lib/haproxy-gui/staging
+	ApplyScript      string // e.g. /usr/local/sbin/haproxy-gui-apply
+	RestartScript    string // e.g. /usr/local/sbin/haproxy-gui-restart
+	CertScript       string // e.g. /usr/local/sbin/haproxy-gui-install-cert
+	CertRemoveScript string // e.g. /usr/local/sbin/haproxy-gui-remove-cert
+	SudoBin          string // e.g. sudo — set to "" only for local dev without sudoers configured
+	SSLDir           string // e.g. /etc/haproxy/ssl
+	BackupDir        string // e.g. /var/lib/haproxy-gui/backups or /etc/haproxy/backups
+	LogPath          string // e.g. /var/log/haproxy.log (where rsyslog writes the "log local2" traffic in haproxy.cfg)
 
 	DBPath string // e.g. /var/lib/haproxy-gui/app.db
 
@@ -82,17 +83,18 @@ func Load() (Config, error) {
 	cfg := Config{
 		ListenAddr: getenv("LISTEN_ADDR", "127.0.0.1:9900"),
 
-		HAProxySocket: getenv("HAPROXY_SOCKET", "/var/lib/haproxy/stats"),
-		HAProxyBin:    getenv("HAPROXY_BIN", "/usr/sbin/haproxy"),
-		HAProxyCfg:    getenv("HAPROXY_CFG", "/etc/haproxy/haproxy.cfg"),
-		StagingDir:    getenv("STAGING_DIR", "/var/lib/haproxy-gui/staging"),
-		ApplyScript:   getenv("APPLY_SCRIPT", "/usr/local/sbin/haproxy-gui-apply"),
-		RestartScript: getenv("RESTART_SCRIPT", "/usr/local/sbin/haproxy-gui-restart"),
-		CertScript:    getenv("INSTALL_CERT_SCRIPT", "/usr/local/sbin/haproxy-gui-install-cert"),
-		SudoBin:       getenv("SUDO_BIN", "sudo"),
-		SSLDir:        getenv("SSL_DIR", "/etc/haproxy/ssl"),
-		BackupDir:     getenv("BACKUP_DIR", "/etc/haproxy/backups"),
-		LogPath:       getenv("HAPROXY_LOG_PATH", "/var/log/haproxy.log"),
+		HAProxySocket:    getenv("HAPROXY_SOCKET", "/var/lib/haproxy/stats"),
+		HAProxyBin:       getenv("HAPROXY_BIN", "/usr/sbin/haproxy"),
+		HAProxyCfg:       getenv("HAPROXY_CFG", "/etc/haproxy/haproxy.cfg"),
+		StagingDir:       getenv("STAGING_DIR", "/var/lib/haproxy-gui/staging"),
+		ApplyScript:      getenv("APPLY_SCRIPT", "/usr/local/sbin/haproxy-gui-apply"),
+		RestartScript:    getenv("RESTART_SCRIPT", "/usr/local/sbin/haproxy-gui-restart"),
+		CertScript:       getenv("INSTALL_CERT_SCRIPT", "/usr/local/sbin/haproxy-gui-install-cert"),
+		CertRemoveScript: getenv("REMOVE_CERT_SCRIPT", "/usr/local/sbin/haproxy-gui-remove-cert"),
+		SudoBin:          getenv("SUDO_BIN", "sudo"),
+		SSLDir:           getenv("SSL_DIR", "/etc/haproxy/ssl"),
+		BackupDir:        getenv("BACKUP_DIR", "/etc/haproxy/backups"),
+		LogPath:          getenv("HAPROXY_LOG_PATH", "/var/log/haproxy.log"),
 
 		DBPath: getenv("DB_PATH", "/var/lib/haproxy-gui/app.db"),
 

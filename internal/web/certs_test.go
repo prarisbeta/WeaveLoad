@@ -2,10 +2,12 @@ package web
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -206,5 +208,108 @@ func TestCertInstallHandler_InvalidName_400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+type fakeCertRemover struct {
+	res        certs.InstallResult
+	liveErr    error
+	stagedErr  error
+	liveName   string
+	stagedName string
+}
+
+func (f *fakeCertRemover) Remove(name string) (certs.InstallResult, error) {
+	f.liveName = name
+	return f.res, f.liveErr
+}
+
+func (f *fakeCertRemover) RemoveStaged(name string) error {
+	f.stagedName = name
+	return f.stagedErr
+}
+
+func removeRequest(name, scope string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/certs/remove", strings.NewReader("filename="+name+"&scope="+scope))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return withUser(req, store.User{Email: "admin@example.com"})
+}
+
+func TestCertRemoveHandler_Live_AuditedAndRendered(t *testing.T) {
+	rm := &fakeCertRemover{res: certs.InstallResult{OK: true, Output: "removed"}}
+	au := &fakeAudit{}
+	h := &CertRemoveHandler{Remover: rm, Audit: au, Templates: certsTemplates(t)}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, removeRequest("old.pem", "live"))
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "LANG=id OK=true") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if rm.liveName != "old.pem" || rm.stagedName != "" {
+		t.Errorf("live=%q staged=%q", rm.liveName, rm.stagedName)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "cert.remove" || au.entries[0].Target != "old.pem" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestCertRemoveHandler_Staged_NeverTouchesLive(t *testing.T) {
+	rm := &fakeCertRemover{}
+	au := &fakeAudit{}
+	h := &CertRemoveHandler{Remover: rm, Audit: au, Templates: certsTemplates(t)}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, removeRequest("new.pem", "staged"))
+
+	if rec.Code != http.StatusOK || rm.stagedName != "new.pem" || rm.liveName != "" {
+		t.Fatalf("status=%d staged=%q live=%q", rec.Code, rm.stagedName, rm.liveName)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "cert.remove_staged" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestCertRemoveHandler_HelperRefusal_502AndAudited(t *testing.T) {
+	rm := &fakeCertRemover{res: certs.InstallResult{OK: false, Output: "still referenced by haproxy.cfg"}}
+	au := &fakeAudit{}
+	h := &CertRemoveHandler{Remover: rm, Audit: au, Templates: certsTemplates(t)}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, removeRequest("in-use.pem", "live"))
+
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "still referenced") {
+		t.Errorf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(au.entries) != 1 || !strings.Contains(au.entries[0].Detail, "failed") {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestCertRemoveHandler_BadInput_400(t *testing.T) {
+	cases := []struct {
+		name, scope string
+		liveErr     error
+	}{
+		{"x.pem", "elsewhere", nil},
+		{"..%2Fetc.pem", "live", certs.ErrInvalidFileName},
+	}
+	for _, c := range cases {
+		h := &CertRemoveHandler{Remover: &fakeCertRemover{liveErr: c.liveErr}, Audit: &fakeAudit{}, Templates: certsTemplates(t)}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, removeRequest(c.name, c.scope))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s/%s: status = %d, want 400", c.name, c.scope, rec.Code)
+		}
+	}
+}
+
+func TestCertRemoveHandler_StagedMissing_404(t *testing.T) {
+	rm := &fakeCertRemover{stagedErr: fmt.Errorf("remove staged certificate: %w", os.ErrNotExist)}
+	h := &CertRemoveHandler{Remover: rm, Audit: &fakeAudit{}, Templates: certsTemplates(t)}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, removeRequest("gone.pem", "staged"))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }

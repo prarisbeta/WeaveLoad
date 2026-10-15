@@ -203,6 +203,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/certs/install", chain(&web.CertInstallHandler{
 		Installer: d.certs, Audit: d.store, Templates: d.templates,
 	}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/certs/remove", chain(&web.CertRemoveHandler{
+		Remover: d.certs, Audit: d.store, Templates: d.templates,
+	}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
 	// --- manage users, manage settings ---
 	usersHandler := &web.UsersHandler{Store: d.store, Audit: d.store, Templates: d.templates}

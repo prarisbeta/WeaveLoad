@@ -1,9 +1,11 @@
 # /etc/sudoers.d/haproxy-gui — install with: visudo -cf then cp, mode 440.
-# Grants the haproxy-gui service user exactly three fixed commands, with no
+# Grants the haproxy-gui service user exactly four fixed commands, with no
 # argument substitution beyond what each script itself restricts (apply to
 # the staging directory; install-cert takes one staged .pem path and checks
-# it the same way; restart takes no arguments at all). NOPASSWD
+# it the same way; remove-cert takes one file name and refuses certs the
+# config still uses; restart takes no arguments at all). NOPASSWD
 # because these run from an unattended web process, not an interactive shell.
 haproxy-gui ALL=(root) NOPASSWD: /usr/local/sbin/haproxy-gui-apply
 haproxy-gui ALL=(root) NOPASSWD: /usr/local/sbin/haproxy-gui-restart
 haproxy-gui ALL=(root) NOPASSWD: /usr/local/sbin/haproxy-gui-install-cert
+haproxy-gui ALL=(root) NOPASSWD: /usr/local/sbin/haproxy-gui-remove-cert

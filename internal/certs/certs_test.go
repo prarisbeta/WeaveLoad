@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -287,6 +288,81 @@ func TestInstall_RejectsBadFileName(t *testing.T) {
 	for _, name := range []string{"", "../x.pem", "a/b.pem", "x.crt"} {
 		if _, err := s.Install(name); err == nil {
 			t.Errorf("Install(%q) = nil error, want rejection", name)
+		}
+	}
+}
+
+func TestRemoveStaged_DeletesOnlyTheNamedStagedBundle(t *testing.T) {
+	staging := t.TempDir()
+	os.WriteFile(filepath.Join(staging, "old.pem"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(staging, "keep.pem"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(staging, "draft-1.cfg"), []byte("x"), 0o600)
+	s := New(t.TempDir())
+	s.StagingDir = staging
+
+	if err := s.RemoveStaged("old.pem"); err != nil {
+		t.Fatalf("RemoveStaged: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(staging, "old.pem")); !os.IsNotExist(err) {
+		t.Error("old.pem still exists")
+	}
+	for _, name := range []string{"keep.pem", "draft-1.cfg"} {
+		if _, err := os.Stat(filepath.Join(staging, name)); err != nil {
+			t.Errorf("%s should be untouched: %v", name, err)
+		}
+	}
+}
+
+func TestRemoveStaged_RejectsBadNamesAndMissingFiles(t *testing.T) {
+	s := New(t.TempDir())
+	s.StagingDir = t.TempDir()
+	for _, name := range []string{"", "../x.pem", "a/b.pem", "draft-1.cfg"} {
+		if err := s.RemoveStaged(name); !errors.Is(err, ErrInvalidFileName) {
+			t.Errorf("RemoveStaged(%q) = %v, want ErrInvalidFileName", name, err)
+		}
+	}
+	if err := s.RemoveStaged("missing.pem"); err == nil || errors.Is(err, ErrInvalidFileName) {
+		t.Errorf("RemoveStaged(missing) = %v, want a not-found error", err)
+	}
+}
+
+func TestRemove_PassesOnlyTheFileNameToHelperViaSudo(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "called-with.txt")
+	sudo := filepath.Join(dir, "fake-sudo.sh")
+	os.WriteFile(sudo, []byte("#!/bin/sh\nshift\nexec \"$@\"\n"), 0o755)
+
+	s := New(t.TempDir())
+	s.RemoveScript = installScript(t, dir, "echo \"$1\" > "+logFile+"\necho removed\n")
+	s.SudoBin = sudo
+
+	res, err := s.Remove("old.pem")
+	if err != nil || !res.OK || res.Output != "removed\n" {
+		t.Fatalf("Remove = %+v, %v", res, err)
+	}
+	got, _ := os.ReadFile(logFile)
+	if string(got) != "old.pem\n" {
+		t.Errorf("helper called with %q, want just the file name", got)
+	}
+}
+
+func TestRemove_HelperRefusalIsAResultNotAnError(t *testing.T) {
+	dir := t.TempDir()
+	s := New(t.TempDir())
+	s.RemoveScript = installScript(t, dir, "echo 'still referenced by haproxy.cfg' >&2\nexit 1\n")
+
+	res, err := s.Remove("in-use.pem")
+	if err != nil || res.OK || res.Output != "still referenced by haproxy.cfg\n" {
+		t.Errorf("res = %+v, err = %v", res, err)
+	}
+}
+
+func TestRemove_RejectsBadFileName(t *testing.T) {
+	s := New(t.TempDir())
+	s.RemoveScript = "/bin/true"
+	for _, name := range []string{"", "../x.pem", "a/b.pem", "x.crt"} {
+		if _, err := s.Remove(name); !errors.Is(err, ErrInvalidFileName) {
+			t.Errorf("Remove(%q) = %v, want ErrInvalidFileName", name, err)
 		}
 	}
 }
