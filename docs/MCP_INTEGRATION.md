@@ -23,9 +23,9 @@ Keduanya memakai **token API** (bagian 2). Sebelum perbaikan ini tidak ada cara 
 
 ## 2. Membuat token
 
-1. Masuk sebagai admin, buka **Konfigurasi → Pengaturan → Token API**.
+1. Masuk sebagai admin, buka **Konfigurasi**, panel **Setup Integrasi MCP & AI**, bagian **Token API**.
 2. Isi nama (mis. aplikasi yang memakainya), klik **Buat token**.
-3. Salin token (`kgw_...`) **sekarang**; tidak akan ditampilkan lagi.
+3. Salin token (`kgw_...`) **sekarang**; tidak akan ditampilkan lagi. Token baru otomatis terisi di kolom token panel, sehingga potongan konfigurasi di bawahnya langsung siap salin.
 4. Satu token per aplikasi, supaya bisa dicabut sendiri-sendiri. Kolom *Terakhir dipakai* membantu menemukan token yang tidak terpakai.
 
 Panel **Konfigurasi → Setup MCP / AI** menghasilkan potongan konfigurasi siap salin untuk tiap klien (isi token di kolom yang tersedia) dan tombol **Uji** yang memeriksa REST dan MCP **hanya dengan token** (tanpa sesi login Anda).

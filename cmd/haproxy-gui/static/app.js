@@ -749,7 +749,7 @@
             "curl -sk " + mcpUrl + ' -H "' + plainHdr + '" -H "Content-Type: application/json" -d \'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\'' + "\n\n" +
             "# 4b) Windows cmd.exe (kutip tunggal tidak dikenali, pakai kutip ganda ber-escape)\n" +
             "curl -sk " + mcpUrl + ' -H "' + plainHdr + '" -H "Content-Type: application/json" -d "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"tools/list\\"}"';
-          if (mcpTabHint) mcpTabHint.innerHTML = 'Endpoint MCP HTTP: <code>' + mcpUrl + '</code>. Butuh token dari <a href="/config#settings">Konfigurasi → Pengaturan → Token API</a>. Alamat ini hanya bisa dijangkau dari IP yang diizinkan (VPN); sertifikat self-signed perlu dipercaya klien (di Node: <code>NODE_EXTRA_CA_CERTS</code>, atau <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> hanya untuk uji).';
+          if (mcpTabHint) mcpTabHint.innerHTML = 'Endpoint MCP HTTP: <code>' + mcpUrl + '</code>. Butuh token dari bagian <a href="#api-tokens">Token API</a> di atas. Alamat ini hanya bisa dijangkau dari IP yang diizinkan (VPN); sertifikat self-signed perlu dipercaya klien (di Node: <code>NODE_EXTRA_CA_CERTS</code>, atau <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> hanya untuk uji).';
         }
         mcpSnippetArea.style.height = activeMcpTab === "remote" ? "300px" : "130px";
       }
@@ -760,6 +760,15 @@
       }
 
       updateMcpSnippet();
+
+      // A freshly created API token fills the token field so the snippets are ready to copy.
+      document.body.addEventListener("htmx:afterSwap", function (evt) {
+        if (!mcpApiTokenInput || !evt.target || evt.target.id !== "apitoken-out") return;
+        var created = evt.target.querySelector("[data-new-api-token]");
+        if (!created) return;
+        mcpApiTokenInput.value = created.getAttribute("data-new-api-token");
+        updateMcpSnippet();
+      });
 
       if (mcpBaseUrlInput) mcpBaseUrlInput.addEventListener("input", updateMcpSnippet);
       if (mcpApiTokenInput) mcpApiTokenInput.addEventListener("input", updateMcpSnippet);

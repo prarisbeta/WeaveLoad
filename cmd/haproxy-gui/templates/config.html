@@ -53,6 +53,40 @@
   </div>
   <div id="mcp-test-status" style="margin-bottom:12px;"></div>
 
+  {{if .ShowAPITokens}}
+  <div id="api-tokens" style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:12px; border-radius:6px; margin-bottom:14px;">
+    <h4 style="margin:0 0 4px 0;">{{t .Language "settings_apitoken_title"}}</h4>
+    <p class="hint" style="margin:0 0 8px 0;">{{t .Language "settings_apitoken_desc"}}</p>
+    <p style="margin:0 0 8px 0;">MCP: <code>{{.MCPURL}}</code> &middot; REST: <code>{{.APIURL}}</code></p>
+    <form id="apitoken-form" class="member-form">
+      <label>{{t .Language "settings_apitoken_name"}}<input type="text" name="name" required maxlength="80" placeholder="claude-code"></label>
+      <div class="row-actions">
+        <button type="button" class="primary" hx-post="/api/settings/api-tokens" hx-include="#apitoken-form" hx-target="#apitoken-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>{{t .Language "settings_apitoken_btn_create"}}</button>
+      </div>
+    </form>
+    <div id="apitoken-out"></div>
+    {{if .APITokens}}
+    <div class="table-scroll">
+    <table>
+      <tr><th>{{t .Language "settings_apitoken_col_name"}}</th><th>{{t .Language "settings_apitoken_col_prefix"}}</th><th>{{t .Language "settings_apitoken_col_created"}}</th><th>{{t .Language "settings_apitoken_col_last_used"}}</th><th>{{t .Language "status"}}</th><th></th></tr>
+      {{range .APITokens}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td><code>{{.Prefix}}&hellip;</code></td>
+        <td>{{.CreatedAt.Format "2 Jan 2006 15:04"}} <span class="muted">{{.CreatedBy}}</span></td>
+        <td>{{if .LastUsedAt.IsZero}}<span class="muted">{{t $.Language "settings_apitoken_never"}}</span>{{else}}{{.LastUsedAt.Format "2 Jan 2006 15:04"}}{{end}}</td>
+        <td>{{if .Revoked}}<span class="badge badge-down">{{t $.Language "settings_apitoken_revoked"}}</span>{{else}}<span class="badge badge-up">{{t $.Language "settings_token_active"}}</span>{{end}}</td>
+        <td>{{if not .Revoked}}<button type="button" hx-post="/api/settings/api-tokens/revoke" hx-vals='{"id":"{{.ID}}"}' hx-confirm="{{t $.Language "settings_apitoken_confirm_revoke"}}" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "settings_apitoken_btn_revoke"}}</button>{{end}}</td>
+      </tr>
+      {{end}}
+    </table>
+    </div>
+    {{else}}
+    <p class="muted">{{t .Language "settings_apitoken_empty"}}</p>
+    {{end}}
+  </div>
+  {{end}}
+
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
     <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
       <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">{{t .Language "mcp_endpoint_label"}}</label>
