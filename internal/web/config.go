@@ -101,6 +101,15 @@ type SaveApplyAction struct {
 	Config    ConfigStore
 	Audit     AuditRecorder
 	Templates *template.Template
+	// Canary, when set, is told about every successful apply so it can watch
+	// for a spike in errors and roll the change back.
+	Canary ApplyWatcher
+}
+
+// ApplyWatcher watches traffic after an apply; prev is the configuration the
+// apply replaced.
+type ApplyWatcher interface {
+	Watch(prev, by string)
 }
 
 func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -137,10 +146,14 @@ func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	prev, _ := h.Config.Active() // what the canary restores if this apply goes wrong
 	res, err := h.Config.Apply(draftPath)
 	if err != nil {
 		http.Error(w, "failed to run apply helper: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+	if res.OK && h.Canary != nil {
+		h.Canary.Watch(prev, u.Email)
 	}
 
 	// Trigger auto-encryption on newly generated backups

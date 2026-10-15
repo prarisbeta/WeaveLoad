@@ -173,6 +173,14 @@ func (h *PolicyConfigAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		c.MaxTTL = time.Duration(n) * time.Minute
 	}
+	if v := r.FormValue("canary_min"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 || n > 60 {
+			redirectPolicy(w, r, "Gagal: menit canary harus 0-60 (0 = mati)")
+			return
+		}
+		c.CanaryMinutes = n
+	}
 	c.ProtectedCIDRs = nil
 	for _, line := range strings.FieldsFunc(r.FormValue("protected_cidrs"), func(r rune) bool { return r == '\n' || r == ',' || r == ' ' || r == '\r' }) {
 		c.ProtectedCIDRs = append(c.ProtectedCIDRs, line)

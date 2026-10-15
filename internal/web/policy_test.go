@@ -10,6 +10,7 @@ import (
 
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/policy"
+	"haproxy-gui/internal/security"
 	"haproxy-gui/internal/store"
 )
 
@@ -117,6 +118,37 @@ func TestPolicyDecisionAndKillSwitchActions(t *testing.T) {
 	mux.ServeHTTP(httptest.NewRecorder(), kill)
 	if !e.Config().KillSwitch {
 		t.Error("kill switch did not turn on")
+	}
+}
+
+func TestReplayWouldBlock_ReportsTheCurrentVerdict(t *testing.T) {
+	e, _, _ := policyHarness(t, policy.ModeShadow)
+	h := &PolicyReplayHandler{Engine: e}
+	dets := []security.Detection{
+		{Rule: security.RuleThreatIntel, Severity: security.SeverityCritical, SubjectType: security.SubjectIP, Subject: "9.9.9.9", Count: 3,
+			Evidence: map[string]any{"threats": []string{"Log4Shell"}, "mitre": []string{"T1190"}}},
+		{Rule: security.RuleThreatIntel, Severity: security.SeverityCritical, SubjectType: security.SubjectIP, Subject: "127.0.0.1", Count: 1,
+			Evidence: map[string]any{"threats": []string{"Log4Shell"}}},
+		{Rule: security.RuleThreatIntel, Severity: security.SeverityHigh, SubjectType: security.SubjectIP, Subject: "8.8.8.8"},
+		{Rule: security.RuleBruteForce, Severity: security.SeverityCritical, SubjectType: security.SubjectIP, Subject: "7.7.7.7"},
+	}
+	rows := h.wouldBlock(dets)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want only the two critical threat-intel IPs", rows)
+	}
+	var good, loop replayRow
+	for _, r := range rows {
+		if r.IP == "9.9.9.9" {
+			good = r
+		} else {
+			loop = r
+		}
+	}
+	if !good.Allowed || good.Mode != "shadow" || good.Hits != 3 || good.MITRE[0] != "T1190" {
+		t.Errorf("good = %+v", good)
+	}
+	if loop.Allowed || len(loop.Reasons) == 0 {
+		t.Errorf("the loopback address must be reported as refused: %+v", loop)
 	}
 }
 

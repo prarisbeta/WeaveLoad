@@ -9,6 +9,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 
 	"haproxy-gui/internal/appconfig"
 	"haproxy-gui/internal/auth"
+	"haproxy-gui/internal/canary"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/haproxycfg"
@@ -121,8 +123,36 @@ func run() error {
 		Audit: s,
 	}
 
+	canaryWatcher := &canary.Watcher{
+		Window: policyEngine.CanaryWindow,
+		NewSource: func() (canary.LogSource, error) {
+			return haproxylog.NewTailerAtEnd(cfg.LogPath)
+		},
+		Rollback: func(prev string) error {
+			draft, err := cf.SaveDraft("canary-rollback", prev)
+			if err != nil {
+				return err
+			}
+			res, err := cf.Apply(draft)
+			if err != nil {
+				return err
+			}
+			if !res.OK {
+				return fmt.Errorf("apply helper refused the previous config: %s", res.Output)
+			}
+			return nil
+		},
+		Alert: func(rule, severity, subject, message string) {
+			if _, err := s.CreateAlert(rule, severity, subject, message); err != nil {
+				log.Printf("canary: create alert: %v", err)
+			}
+		},
+		Audit: s,
+	}
+
 	mux := buildRoutes(routeDeps{
 		policy:    policyEngine,
+		canary:    canaryWatcher,
 		templates: tpl,
 		store:     s,
 		runtime:   rt,

@@ -74,6 +74,9 @@ type Config struct {
 	DefaultTTL     time.Duration       `json:"default_ttl"`
 	MaxTTL         time.Duration       `json:"max_ttl"`
 	ProtectedCIDRs []string            `json:"protected_cidrs"`
+	// CanaryMinutes is how long after a config apply the gateway watches the
+	// 5xx rate and rolls the change back on a spike. 0 turns the canary off.
+	CanaryMinutes int `json:"canary_minutes"`
 }
 
 // DefaultConfig is the safe starting policy: nothing runs without a human.
@@ -171,7 +174,18 @@ func (e *Engine) Config() Config {
 		c.MaxTTL = stored.MaxTTL
 	}
 	c.ProtectedCIDRs = stored.ProtectedCIDRs
+	c.CanaryMinutes = stored.CanaryMinutes
 	return c
+}
+
+// CanaryWindow is how long to watch after a config apply; zero means the
+// canary is off (or the kill switch is on).
+func (e *Engine) CanaryWindow() time.Duration {
+	c := e.Config()
+	if c.KillSwitch || c.CanaryMinutes <= 0 {
+		return 0
+	}
+	return time.Duration(c.CanaryMinutes) * time.Minute
 }
 
 // SaveConfig validates and persists c, recording who changed it.
@@ -188,6 +202,9 @@ func (e *Engine) SaveConfig(c Config, actor string) error {
 		if _, _, err := net.ParseCIDR(cidr); err != nil {
 			return fmt.Errorf("invalid protected CIDR %q", cidr)
 		}
+	}
+	if c.CanaryMinutes < 0 || c.CanaryMinutes > 60 {
+		return errors.New("canary minutes must be between 0 and 60")
 	}
 	if c.DefaultTTL <= 0 || c.MaxTTL <= 0 || c.DefaultTTL > c.MaxTTL {
 		return errors.New("default TTL must be positive and not exceed max TTL")

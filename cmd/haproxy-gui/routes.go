@@ -12,6 +12,7 @@ import (
 	"haproxy-gui/internal/ai"
 	"haproxy-gui/internal/appconfig"
 	"haproxy-gui/internal/auth"
+	"haproxy-gui/internal/canary"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/errorpages"
@@ -59,6 +60,7 @@ type routeDeps struct {
 	sys       *sysinfo.Sampler
 	cfg       appconfig.Config
 	policy    *policy.Engine
+	canary    *canary.Watcher
 }
 
 // chain applies middleware in the order given: chain(h, a, b, c) runs
@@ -185,7 +187,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	configHandler := &web.ConfigHandler{Config: d.cfgfile, Audit: d.store, Templates: d.templates, Settings: d.store, Tokens: d.store}
 	mux.Handle("GET /config", chain(configHandler, requireAuth, requireManageConfig))
 	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
-	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates, Canary: d.canary}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/config/rollback", chain(&web.RollbackAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("GET /api/config/backup/download", chain(&web.BackupDownloadAction{Config: d.cfgfile}, requireAuth, requireManageConfig))
 	mux.Handle("POST /api/config/backup/delete", chain(&web.BackupDeleteAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
@@ -248,6 +250,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	}
 	mux.Handle("POST /api/policy/kill-switch", chain(&web.PolicyKillSwitchAction{Engine: d.policy}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
 	mux.Handle("POST /api/policy/config", chain(&web.PolicyConfigAction{Engine: d.policy}, requireAuth, requireManageSettings, auth.RequireCSRF))
+	mux.Handle("GET /api/policy/replay", chain(&web.PolicyReplayHandler{Engine: d.policy, LogPath: d.cfg.LogPath}, requireAuth, requireViewSecurity))
 	mux.Handle("POST /api/v1/policy/check", chain(&web.APIV1PolicyCheckHandler{Engine: d.policy}, requireAPI, requireViewSecurity, auth.RequireCSRF))
 
 	// --- HTTP API /api/v1 (C1-4) ---

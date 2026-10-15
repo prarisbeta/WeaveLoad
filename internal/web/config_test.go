@@ -210,6 +210,35 @@ func TestSaveApplyAction_ApplyHelperFails_502AndAudited(t *testing.T) {
 	}
 }
 
+type recordingWatcher struct{ prev, by []string }
+
+func (r *recordingWatcher) Watch(prev, by string) {
+	r.prev, r.by = append(r.prev, prev), append(r.by, by)
+}
+
+func TestSaveApplyAction_StartsCanaryOnlyAfterASuccessfulApply(t *testing.T) {
+	post := func(applyOK bool) *recordingWatcher {
+		cs := &fakeConfigStore{
+			active:      "OLD CONFIG",
+			validateRes: cfgfile.ValidateResult{OK: true},
+			applyRes:    cfgfile.ApplyResult{OK: applyOK},
+		}
+		w := &recordingWatcher{}
+		h := &SaveApplyAction{Config: cs, Audit: &fakeAudit{}, Templates: testConfigTemplates(t), Canary: w}
+		req := httptest.NewRequest(http.MethodPost, "/api/config/apply", strings.NewReader("content=NEW"))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		h.ServeHTTP(httptest.NewRecorder(), withUser(req, store.User{Email: "admin@example.com"}))
+		return w
+	}
+
+	if w := post(true); len(w.prev) != 1 || w.prev[0] != "OLD CONFIG" || w.by[0] != "admin@example.com" {
+		t.Errorf("successful apply: watcher saw prev=%v by=%v, want the replaced config", w.prev, w.by)
+	}
+	if w := post(false); len(w.prev) != 0 {
+		t.Errorf("failed apply started a canary: %v", w.prev)
+	}
+}
+
 func TestRollbackAction_RejectsUnknownBackupPath(t *testing.T) {
 	cs := &fakeConfigStore{backups: []cfgfile.Backup{{Name: "haproxy.cfg.bak-1", Path: "/etc/haproxy/backups/haproxy.cfg.bak-1"}}}
 	h := &RollbackAction{Config: cs, Audit: &fakeAudit{}, Templates: testConfigTemplates(t)}

@@ -69,6 +69,8 @@
     {{end}}
     <label>TTL bawaan (menit)<input type="number" min="1" name="default_ttl_min" value="{{.DefaultMin}}" {{if not .CanConfigure}}disabled{{end}}></label>
     <label>TTL maksimum (menit)<input type="number" min="1" name="max_ttl_min" value="{{.MaxMin}}" {{if not .CanConfigure}}disabled{{end}}></label>
+    <label>Canary konfigurasi (menit; 0 = mati)<input type="number" min="0" max="60" name="canary_min" value="{{.Config.CanaryMinutes}}" {{if not .CanConfigure}}disabled{{end}}></label>
+    <p class="hint">Setelah "Simpan &amp; Terapkan", gateway memantau log selama menit ini; bila lebih dari 25% permintaan menjadi 5xx (minimal 20 permintaan), konfigurasi sebelumnya dipulihkan otomatis dan alert dibuat.</p>
     <label>Rentang IP terlindungi (CIDR, satu per baris; tidak pernah diblokir)<textarea name="protected_cidrs" rows="3" {{if not .CanConfigure}}disabled{{end}}>{{.Protected}}</textarea></label>
     {{if .CanConfigure}}<div class="row-actions"><button type="submit" class="primary" onclick="return confirm('Simpan konfigurasi policy? Mode auto menjalankan aksi tanpa persetujuan manusia.')">Simpan</button></div>
     {{else}}<p class="muted">Mengubah konfigurasi butuh hak manage_settings.</p>{{end}}
