@@ -138,6 +138,25 @@ func TestOffAndKillSwitchRefuse(t *testing.T) {
 	}
 }
 
+func TestUnlicensedEditionNeverAutoRuns(t *testing.T) {
+	h := newHarness(t, ModeAuto)
+	h.e.Allow = func(f string) bool { return f != "auto_remediation" && f != "canary" }
+	rec, d, _ := h.e.Submit(Action{Type: BlockIP, Target: "9.9.9.9"})
+	if !d.Allowed || rec.Status != "pending" || len(h.x.blocked) != 0 {
+		t.Errorf("auto mode without a licence must fall back to propose: rec=%+v blocked=%v", rec, h.x.blocked)
+	}
+	c := h.e.Config()
+	c.CanaryMinutes = 3
+	_ = h.e.SaveConfig(c, "admin")
+	if h.e.CanaryWindow() != 0 {
+		t.Error("the canary ran without a licence")
+	}
+	h.e.Allow = nil
+	if h.e.CanaryWindow() != 3*time.Minute {
+		t.Error("the canary must run when allowed")
+	}
+}
+
 func TestMaxModeCapsAutoToPropose(t *testing.T) {
 	h := newHarness(t, ModeAuto)
 	rec, d, _ := h.e.Submit(Action{Type: BlockIP, Target: "9.9.9.9", MaxMode: ModePropose, Source: "api:tok"})

@@ -4,6 +4,8 @@
 <h1>Policy Engine</h1>
 <p class="hint">Satu-satunya gerbang antara deteksi/AI dan perubahan nyata pada HAProxy. Setiap aksi dicatat di audit log, dibatasi per jam, berbatas waktu (TTL), dan otomatis dibatalkan saat TTL habis.</p>
 
+{{if .Edition}}<p class="hint">Edisi: {{.Edition}}</p>{{end}}
+
 {{if .Notice}}<div class="panel notice-ok"><strong>{{.Notice}}</strong></div>{{end}}
 
 <div class="panel" style="{{if .Config.KillSwitch}}border:1px solid var(--danger, #dc2626);{{end}}">

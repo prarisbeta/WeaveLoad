@@ -195,6 +195,12 @@ CREATE TABLE IF NOT EXISTS policy_actions (
 CREATE INDEX IF NOT EXISTS idx_policy_status ON policy_actions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_policy_target ON policy_actions(type, target);
 
+CREATE TABLE IF NOT EXISTS fleet_nodes (
+	name        TEXT PRIMARY KEY,
+	payload     TEXT NOT NULL,
+	received_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS traffic_baseline (
 	backend TEXT NOT NULL,
 	metric  TEXT NOT NULL,

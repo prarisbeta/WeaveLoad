@@ -15,6 +15,7 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/fleet"
 	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/web"
@@ -194,7 +195,12 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := ps.UpsertFleetNode("site-b", []byte(`{"node":"site-b","haproxy_up":true,"sessions":7,"backends":[{"name":"https_oms","up":2,"down":0}]}`), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
 	mux := http.NewServeMux()
+	mux.Handle("GET /fleet", &web.FleetPageHandler{Hub: &fleet.Hub{Repo: ps, Token: "t"}, Enabled: true, Templates: realTemplates(t)})
 	mux.Handle("GET /reports/weekly", &web.WeeklyReportHandler{Store: ps, Templates: realTemplates(t)})
 	mux.Handle("GET /ask", &web.CopilotPageHandler{Templates: realTemplates(t), Enabled: true})
 	mux.Handle("POST /api/ai/ask", &web.CopilotAskHandler{
@@ -255,6 +261,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"ask.html", http.MethodGet, "/ask", nil, "Tanya Gateway"},
 		{"ask_result.html", http.MethodPost, "/api/ai/ask", url.Values{"question": {"kenapa lambat?"}}, "Linimasa korelasi"},
 		{"ask_result_recs", http.MethodPost, "/api/ai/ask", url.Values{"question": {"kenapa lambat?"}}, "203.0.113.77"},
+		{"fleet.html", http.MethodGet, "/fleet", nil, "site-b"},
 		{"policy.html", http.MethodGet, "/policy", nil, "Kill switch"},
 		{"policy_pending_action", http.MethodGet, "/policy", nil, "9.9.9.9"},
 		{"policy_modes", http.MethodGet, "/policy", nil, `name="mode_block_ip"`},

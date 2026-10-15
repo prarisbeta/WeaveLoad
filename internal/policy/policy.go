@@ -136,9 +136,14 @@ type Engine struct {
 	Repo  Repo
 	Exec  Executor
 	Audit Auditor
+	// Allow reports whether a licensed feature may run ("auto_remediation",
+	// "canary"); nil allows everything.
+	Allow func(feature string) bool
 	// Now defaults to time.Now; overridable for tests.
 	Now func() time.Time
 }
+
+func (e *Engine) allowed(feature string) bool { return e.Allow == nil || e.Allow(feature) }
 
 const configKey = "policy_config"
 
@@ -182,7 +187,7 @@ func (e *Engine) Config() Config {
 // canary is off (or the kill switch is on).
 func (e *Engine) CanaryWindow() time.Duration {
 	c := e.Config()
-	if c.KillSwitch || c.CanaryMinutes <= 0 {
+	if c.KillSwitch || c.CanaryMinutes <= 0 || !e.allowed("canary") {
 		return 0
 	}
 	return time.Duration(c.CanaryMinutes) * time.Minute
@@ -300,6 +305,9 @@ func (e *Engine) Check(a Action) Decision {
 	}
 	if a.MaxMode != "" && modeRank(mode) > modeRank(a.MaxMode) {
 		mode = a.MaxMode
+	}
+	if mode == ModeAuto && !e.allowed("auto_remediation") {
+		mode = ModePropose // Community edition: a human always decides
 	}
 	if mode == ModeOff {
 		return Decision{Mode: ModeOff, Reasons: []string{"policy mode for " + string(a.Type) + " is off"}}

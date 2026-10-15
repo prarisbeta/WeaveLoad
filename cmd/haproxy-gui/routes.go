@@ -16,6 +16,8 @@ import (
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/errorpages"
+	"haproxy-gui/internal/fleet"
+	"haproxy-gui/internal/license"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/runtime"
@@ -63,6 +65,8 @@ type routeDeps struct {
 	policy    *policy.Engine
 	canary    *canary.Watcher
 	intel     *threatintel.Service // nil unless feeds or an AbuseIPDB key are configured
+	fleetHub  *fleet.Hub
+	gate      *license.Gate // nil allows everything (tests, development)
 }
 
 // chain applies middleware in the order given: chain(h, a, b, c) runs
@@ -80,6 +84,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	// nil unless KONSOLGW_GEMINI_API_KEY or KONSOLGW_ANTHROPIC_API_KEY is set;
 	// the AI handlers then answer from the offline MockProvider.
 	aiProvider := ai.FromEnv(os.Getenv)
+	if !d.gate.Allows("copilot") {
+		aiProvider = nil // the Pro licence includes the live AI providers
+	}
 
 	requireAuth := auth.RequireAuth(d.store)
 	// requireAPI also accepts a "Bearer kgw_..." API token, for third-party and
@@ -262,7 +269,13 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	// --- Policy Engine: the single gate for automated and proposed changes ---
 	requirePolicyView := requireViewSecurity
-	mux.Handle("GET /policy", chain(&web.PolicyHandler{Engine: d.policy, Store: d.store, Templates: d.templates}, requireAuth, requirePolicyView))
+	mux.Handle("GET /policy", chain(&web.PolicyHandler{Engine: d.policy, Store: d.store, Templates: d.templates, Edition: d.gate.Describe()}, requireAuth, requirePolicyView))
+
+	// --- Fleet: nodes push signed-in reports (shared-secret bearer, own auth) ---
+	if d.fleetHub != nil {
+		mux.Handle("POST /api/v1/fleet/report", d.fleetHub)
+		mux.Handle("GET /fleet", chain(&web.FleetPageHandler{Hub: d.fleetHub, Enabled: d.fleetHub.Token != "", Templates: d.templates}, requireAuth, requireViewSecurity))
+	}
 	for _, verb := range []string{"approve", "reject", "revert"} {
 		mux.Handle("POST /api/policy/{id}/"+verb, chain(&web.PolicyDecisionAction{Engine: d.policy, Verb: verb}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
 	}

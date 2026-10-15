@@ -26,8 +26,10 @@ import (
 	"haproxy-gui/internal/canary"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/fleet"
 	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/haproxylog"
+	"haproxy-gui/internal/license"
 	"haproxy-gui/internal/notify"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/policy"
@@ -36,6 +38,7 @@ import (
 	"haproxy-gui/internal/retention"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/security"
+	"haproxy-gui/internal/stats"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
 	"haproxy-gui/internal/threatintel"
@@ -67,6 +70,65 @@ func newIntelService(s *store.Store) *threatintel.Service {
 	limit, _ := strconv.Atoi(os.Getenv("KONSOLGW_ABUSEIPDB_DAILY_LIMIT"))
 	log.Printf("threat intel enabled: %d feed(s), abuseipdb=%v", len(feeds), key != "")
 	return &threatintel.Service{Feeds: feeds, Store: s, AbuseKey: key, AbuseDailyLimit: limit}
+}
+
+// newFleetAgent returns the agent that reports this gateway's state to a hub,
+// or nil unless KONSOLGW_FLEET_HUB_URL, KONSOLGW_FLEET_TOKEN and
+// KONSOLGW_NODE_NAME are all set. The hub URL must be https.
+func newFleetAgent(s *store.Store, rt *runtime.Client, pe *policy.Engine) *fleet.Agent {
+	hub, tok, name := os.Getenv("KONSOLGW_FLEET_HUB_URL"), os.Getenv("KONSOLGW_FLEET_TOKEN"), os.Getenv("KONSOLGW_NODE_NAME")
+	if hub == "" || tok == "" || name == "" {
+		return nil
+	}
+	if !strings.HasPrefix(hub, "https://") {
+		log.Printf("fleet agent disabled: KONSOLGW_FLEET_HUB_URL must start with https://")
+		return nil
+	}
+	log.Printf("fleet agent enabled: reporting as %q", name)
+	return &fleet.Agent{HubURL: hub, Token: tok, Collect: func(ctx context.Context) fleet.Report {
+		rep := fleet.Report{Node: name, Version: version, KillSwitch: pe.Config().KillSwitch}
+		if raw, err := rt.ShowStat(); err == nil {
+			if snap, err := stats.Parse(raw); err == nil {
+				rep.HAProxyUp, rep.Sessions = true, snap.Summary().Sessions
+				for _, be := range snap.Backends {
+					h := fleet.BackendHealth{Name: be.Name}
+					for _, sv := range be.Servers {
+						switch {
+						case sv.Up():
+							h.Up++
+						case sv.Down():
+							h.Down++
+						}
+					}
+					rep.Backends = append(rep.Backends, h)
+				}
+			}
+		}
+		if risks, err := s.ListTopRisk(500); err == nil {
+			for _, r := range risks {
+				if r.State == "high_risk" {
+					rep.HighRiskIPs++
+				}
+			}
+		}
+		_, rep.OpenEvents, _ = s.ListSecurityEvents(store.SecurityFilter{Status: "open", Limit: 1})
+		_, rep.OpenIncident, _ = s.ListIncidents(store.IncidentFilter{Status: "open", Limit: 1})
+		return rep
+	}}
+}
+
+// version and licensePublicKey are stamped at build time with
+// -ldflags "-X main.version=... -X main.licensePublicKey=...".
+var (
+	version          = "dev"
+	licensePublicKey = ""
+)
+
+func getenv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 // newNotifier builds the alert notifier from the environment, or returns nil
@@ -226,7 +288,27 @@ func run() error {
 		Audit: s,
 	}
 
-	intel := newIntelService(s)
+	retentionCtx, stopRetention := context.WithCancel(context.Background())
+	defer stopRetention()
+
+	// Features above Community stay off unless the licence includes them; a
+	// development build (no compiled-in key) enables everything.
+	gate := license.Load(licensePublicKey, getenv("KONSOLGW_LICENSE_FILE", "/etc/haproxy-gui/license.key"), time.Now())
+	log.Printf("edition: %s", gate.Describe())
+	policyEngine.Allow = gate.Allows
+
+	fleetHub := &fleet.Hub{Repo: s}
+	if gate.Allows("fleet") {
+		fleetHub.Token = os.Getenv("KONSOLGW_FLEET_TOKEN")
+		if agent := newFleetAgent(s, rt, policyEngine); agent != nil {
+			go agent.Run(retentionCtx, time.Minute, log.Printf)
+		}
+	}
+
+	var intel *threatintel.Service
+	if gate.Allows("intel_feeds") {
+		intel = newIntelService(s)
+	}
 	intelCtx, stopIntel := context.WithCancel(context.Background())
 	defer stopIntel()
 	if intel != nil {
@@ -234,6 +316,8 @@ func run() error {
 	}
 
 	mux := buildRoutes(routeDeps{
+		gate:      gate,
+		fleetHub:  fleetHub,
 		intel:     intel,
 		policy:    policyEngine,
 		canary:    canaryWatcher,
@@ -255,12 +339,10 @@ func run() error {
 	}
 
 	sweeper := &retention.Sweeper{Store: s, Backups: cf, Policy: retention.DefaultPolicy()}
-	retentionCtx, stopRetention := context.WithCancel(context.Background())
-	defer stopRetention()
 	go sweeper.Run(retentionCtx, time.Hour)
 	go expirePolicyPeriodically(retentionCtx, policyEngine)
 	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
-	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine, intel, notifier); err != nil {
+	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine, intel, notifier, gate.Allows("anomaly")); err != nil {
 		log.Printf("security engine disabled: %v", err)
 	}
 
@@ -343,10 +425,14 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 // reuses whatever Redis connection the Settings page has configured for the
 // rate-limit queue, read fresh on every tick so a later configuration
 // change takes effect without a restart.
-func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine, intel *threatintel.Service, nf *notify.Notifier) error {
+func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine, intel *threatintel.Service, nf *notify.Notifier, withAnomaly bool) error {
 	tailer, err := haproxylog.NewTailerAtEnd(logPath)
 	if err != nil {
 		return err
+	}
+	var tracker *anomaly.Tracker // nil: the licence does not include seasonal anomaly detection
+	if withAnomaly {
+		tracker = anomaly.NewTracker(anomaly.DefaultConfig(), s)
 	}
 	r := &security.Runner{
 		Store:    s,
@@ -355,7 +441,7 @@ func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.En
 		Policy:   pe,
 		Intel:    intelOrNil(intel),
 		Notifier: notifierOrNil(nf),
-		Anomaly:  anomaly.NewTracker(anomaly.DefaultConfig(), s),
+		Anomaly:  tracker,
 		RedisOpts: func() (redisping.Options, bool) {
 			rs, err := s.GetRedisSettings()
 			if err != nil || rs.Host == "" {

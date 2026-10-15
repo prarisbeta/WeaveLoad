@@ -12,7 +12,7 @@ echo "==> building bin/haproxy-gui (linux/amd64, static) at $VER"
 MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD":/src -w /src \
   -v gocache:/root/.cache/go-build -v gomod:/go/pkg/mod \
   -e GOOS=linux -e GOARCH=amd64 -e CGO_ENABLED=0 \
-  "$IMG" sh -c "go build -trimpath -ldflags='-s -w' -o bin/haproxy-gui ./cmd/haproxy-gui && go build -trimpath -ldflags='-s -w' -o bin/konsolgw-mcp ./cmd/konsolgw-mcp"
+  "$IMG" sh -c "go build -trimpath -ldflags='-s -w -X main.version=${VER} -X main.licensePublicKey=${LICENSE_PUBKEY:-}' -o bin/haproxy-gui ./cmd/haproxy-gui && go build -trimpath -ldflags='-s -w' -o bin/konsolgw-mcp ./cmd/konsolgw-mcp"
 
 DIST="dist/haproxy-gui-${VER}"
 rm -rf "dist/haproxy-gui-${VER}" "dist/haproxy-gui-${VER}.tar.gz" "dist/haproxy-gui-${VER}.tar.gz.sha256"

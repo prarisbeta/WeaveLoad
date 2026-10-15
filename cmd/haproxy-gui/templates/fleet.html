@@ -1,0 +1,37 @@
+{{define "fleet.html"}}{{template "chrome_header" .}}{{template "fleet_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "fleet_content"}}
+<h1>Fleet</h1>
+<p class="hint">Satu konsol untuk beberapa gateway. Tiap node mendorong laporan status ke sini lewat HTTPS (node tidak membuka port masuk). Tampilan ini baca-saja: hub tidak mengubah konfigurasi node.</p>
+
+{{if not .Enabled}}
+<div class="panel notice-bad">
+  <strong>Fleet belum aktif di gateway ini.</strong>
+  <p>Hub: isi <code>KONSOLGW_FLEET_TOKEN</code> (rahasia bersama, mis. <code>openssl rand -hex 24</code>) di <code>/etc/haproxy-gui/env</code>. Node: isi <code>KONSOLGW_FLEET_HUB_URL=https://&lt;hub&gt;:9443</code>, <code>KONSOLGW_FLEET_TOKEN</code> yang sama, dan <code>KONSOLGW_NODE_NAME</code>.</p>
+</div>
+{{else}}
+<div class="panel">
+  <strong>{{.Total}}</strong> node &middot; <span class="badge badge-down">{{.Down}} bermasalah</span> <span class="badge badge-warn">{{.Stale}} tidak melapor</span>
+</div>
+<div class="panel">
+  {{if not .Rows}}<p class="muted">Belum ada node yang melapor.</p>{{else}}
+  <div class="table-scroll"><table>
+    <tr><th>Node</th><th>Status</th><th>HAProxy</th><th>Backend</th><th>Sesi</th><th>IP berisiko</th><th>Kejadian terbuka</th><th>Versi</th><th>Laporan terakhir</th></tr>
+    {{range .Rows}}
+    <tr>
+      <td><strong>{{.Node.Node}}</strong>{{if .KillSwitch}} <span class="badge badge-warn">kill switch</span>{{end}}</td>
+      <td>{{if .Stale}}<span class="badge badge-warn">tidak melapor</span>{{else if .Down}}<span class="badge badge-down">bermasalah</span>{{else}}<span class="badge badge-up">sehat</span>{{end}}</td>
+      <td>{{if .HAProxyUp}}aktif{{else}}<span class="badge badge-down">mati</span>{{end}}</td>
+      <td>{{range .Backends}}<div><code>{{.Name}}</code> {{.Up}}&uarr; {{if .Down}}<span class="badge badge-down">{{.Down}}&darr;</span>{{end}}</div>{{end}}</td>
+      <td>{{.Sessions}}</td>
+      <td>{{.HighRiskIPs}}</td>
+      <td>{{.OpenEvents}}</td>
+      <td>{{.Version}}</td>
+      <td class="muted">{{.Age}} lalu</td>
+    </tr>
+    {{end}}
+  </table></div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

@@ -36,6 +36,7 @@ type PolicyHandler struct {
 	Engine    PolicyEngine
 	Store     PolicyStore
 	Templates *template.Template
+	Edition   string // one-line licence summary shown on the page
 }
 
 func (h *PolicyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +64,7 @@ func (h *PolicyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MaxMin       int
 		Protected    string
 		Notice       string
+		Edition      string
 	}{
 		Chrome: NewChrome(r, "policy"), Config: cfg, Types: policy.Types,
 		Pending: pending, History: history,
@@ -71,6 +73,7 @@ func (h *PolicyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		DefaultMin:   int(cfg.DefaultTTL / time.Minute), MaxMin: int(cfg.MaxTTL / time.Minute),
 		Protected: strings.Join(cfg.ProtectedCIDRs, "\n"),
 		Notice:    takeFlash(w, r),
+		Edition:   h.Edition,
 	})
 }
 
