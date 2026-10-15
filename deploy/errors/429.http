@@ -13,7 +13,6 @@ Connection: close
 <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
 <meta name="robots" content="noindex, nofollow" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta http-equiv="refresh" content="5" />
 <style>
   body {
     margin: 0;
@@ -206,7 +205,7 @@ Connection: close
       </div>
     </div>
 
-    <button class="cf-btn" id="btn-manual-reload" onclick="location.reload()">Refresh Now</button>
+    <button class="cf-btn" id="btn-manual-reload" onclick="location.replace(location.href)">Refresh Now</button>
   </div>
 
   <div class="cf-columns">
@@ -220,7 +219,7 @@ Connection: close
     <div class="cf-column">
       <h2>What should I do?</h2>
       <p>
-        Do not close this page or submit rapid repeated requests. The page refreshes itself automatically every 5 seconds until capacity becomes available.
+        Do not close this page or submit rapid repeated requests. The page retries automatically, with a growing random delay, until capacity becomes available.
       </p>
     </div>
   </div>
@@ -242,12 +241,22 @@ Connection: close
     var hash = Array.prototype.map.call(new Uint8Array(8), function(x){return ('00'+((Math.random()*256)|0).toString(16)).slice(-2)}).join('');
     document.getElementById('ray-id').textContent = '8f' + hash;
 
-    var sec = 5;
+    // Retry after a growing, randomised delay (about 5s, 8s, 13s ... up to 30s)
+    // so waiting visitors do not all come back at the same moment.
+    var attempt = 0;
+    try {
+      var saved = JSON.parse(sessionStorage.getItem('kgw_wait') || '{}');
+      if (saved.t && Date.now() - saved.t < 120000) { attempt = saved.n || 0; }
+      sessionStorage.setItem('kgw_wait', JSON.stringify({ n: attempt + 1, t: Date.now() }));
+    } catch (e) {}
+    var base = Math.min(30, 5 * Math.pow(1.6, attempt));
+    var sec = Math.max(3, Math.round(base * (0.7 + Math.random() * 0.6)));
     var el = document.getElementById('countdown-val');
+    if (el) el.textContent = sec;
     setInterval(function(){
       sec--;
       if (el) el.textContent = sec > 0 ? sec : 0;
-      if (sec <= 0) location.reload();
+      if (sec <= 0) location.replace(location.href);
     }, 1000);
   } catch(e){}
 </script>
