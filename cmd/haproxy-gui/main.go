@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -24,7 +23,6 @@ import (
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/haproxylog"
-	"haproxy-gui/internal/i18n"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/ratelimitqueue"
 	"haproxy-gui/internal/redisping"
@@ -32,6 +30,7 @@ import (
 	"haproxy-gui/internal/security"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
+	"haproxy-gui/internal/web"
 )
 
 //go:embed templates/*.html
@@ -49,11 +48,7 @@ func run() error {
 		return err
 	}
 
-	tpl, err := template.New("").Funcs(template.FuncMap{
-		"upper": strings.ToUpper,
-		"bytes": sysinfo.FormatBytes,
-		"t":     i18n.T,
-	}).ParseFS(templatesFS, "templates/*.html")
+	tpl, err := template.New("").Funcs(web.TemplateFuncs()).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return err
 	}

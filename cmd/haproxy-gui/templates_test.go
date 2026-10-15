@@ -14,9 +14,7 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
-	"haproxy-gui/internal/i18n"
 	"haproxy-gui/internal/store"
-	"haproxy-gui/internal/sysinfo"
 	"haproxy-gui/internal/web"
 )
 
@@ -34,7 +32,15 @@ func (f fileConfig) SaveDraft(string, string) (string, error) { return "", nil }
 func (f fileConfig) Apply(string) (cfgfile.ApplyResult, error) {
 	return cfgfile.ApplyResult{OK: true}, nil
 }
-func (f fileConfig) ListBackups() ([]cfgfile.Backup, error)    { return nil, nil }
+
+// Real backups carry an int64 Size (os.FileInfo.Size); the page used to fail
+// as soon as one existed, which an empty fixture never exercised.
+func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) {
+	return []cfgfile.Backup{
+		{Name: "haproxy.cfg.bak-1792045394840025288", Size: 26897, ModTime: time.Now(), IsEncrypted: true},
+		{Name: "haproxy.cfg.bak-1790000000000000000", Size: 0, ModTime: time.Now()},
+	}, nil
+}
 func (f fileConfig) GetBackupPath(name string) (string, error) { return "", nil }
 func (f fileConfig) ReadBackup(name string) (string, error)    { return f.content, nil }
 func (f fileConfig) DeleteBackup(name string) error            { return nil }
@@ -144,11 +150,7 @@ http_oms,BACKEND,UP,,,,9
 
 func realTemplates(t *testing.T) *template.Template {
 	t.Helper()
-	tpl, err := template.New("").Funcs(template.FuncMap{
-		"upper": strings.ToUpper,
-		"bytes": sysinfo.FormatBytes,
-		"t":     i18n.T,
-	}).ParseFS(templatesFS, "templates/*.html")
+	tpl, err := template.New("").Funcs(web.TemplateFuncs()).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,6 +215,8 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"config_settings_tokens", http.MethodGet, "/config", nil, "n8n-prod"},
 		{"config_settings_anchor", http.MethodGet, "/config", nil, `id="settings"`},
 		{"config_still_has_editor", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
+		{"config_lists_backups", http.MethodGet, "/config", nil, "haproxy.cfg.bak-1792045394840025288"},
+		{"config_backup_size", http.MethodGet, "/config", nil, "26.3 KiB"},
 		{"config_settings_mcp_url", http.MethodGet, "/config", nil, "/mcp"},
 		{"api_token_result.html", http.MethodPost, "/api/settings/api-tokens", url.Values{"name": {"claude-code"}}, "kgw_plaintextplaintextplaintext"},
 		{"login.html", http.MethodGet, "/login", nil, `href="/auth/login"`},
