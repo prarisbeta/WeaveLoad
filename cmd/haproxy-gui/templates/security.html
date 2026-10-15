@@ -18,6 +18,7 @@
         <option value="rate_limited" {{if eq .Rule "rate_limited"}}selected{{end}}>Kena Rate Limit</option>
         <option value="threat_intel" {{if eq .Rule "threat_intel"}}selected{{end}}>Threat Intel (CTI)</option>
         <option value="known_bad_ip" {{if eq .Rule "known_bad_ip"}}selected{{end}}>IP Berreputasi Buruk</option>
+        <option value="traffic_anomaly" {{if eq .Rule "traffic_anomaly"}}selected{{end}}>Anomali Traffic Musiman</option>
       </select>
     </label>
     <label>{{t .Language "sec_filter_severity"}}

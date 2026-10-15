@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"haproxy-gui/internal/anomaly"
 	"haproxy-gui/internal/haproxylog"
 	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/redisping"
@@ -48,6 +49,10 @@ type Runner struct {
 	// Policy Engine's decision.
 	Policy Submitter
 
+	// Anomaly, when set, learns each backend's normal traffic per hour of the
+	// week and records deviations.
+	Anomaly *anomaly.Tracker
+
 	// Intel, when set, enriches every IP that trips a detector with feed
 	// and reputation data; a listed IP also gets a known_bad_ip detection.
 	Intel IntelLookup
@@ -81,6 +86,9 @@ func (r *Runner) Tick() error {
 		log.Printf("security: %d new log lines this tick, processing only the first %d; remainder follows next tick", len(lines), maxLinesPerTick)
 		lines = lines[:maxLinesPerTick]
 	}
+	// Even with no new lines the tracker must run: a quiet period is exactly
+	// when the previous 5-minute bucket closes and a traffic collapse shows.
+	r.runAnomaly(lines, t)
 	if len(lines) == 0 {
 		return nil
 	}
@@ -109,6 +117,32 @@ func (r *Runner) Tick() error {
 	}
 	r.proposeBlocks(detections, scores)
 	return nil
+}
+
+// runAnomaly feeds the seasonal-baseline tracker and records what it finds as
+// traffic_anomaly events on the affected backend.
+func (r *Runner) runAnomaly(lines []haproxylog.Line, now time.Time) {
+	if r.Anomaly == nil {
+		return
+	}
+	for _, a := range r.Anomaly.Ingest(lines, now) {
+		sev := SeverityMedium
+		if a.Severity == "high" {
+			sev = SeverityHigh
+		}
+		d := Detection{
+			Rule: RuleTrafficAnomaly, Severity: sev, SubjectType: SubjectBackend, Subject: a.Backend, Pool: a.Backend,
+			FirstSeen: a.Bucket, LastSeen: a.Bucket.Add(anomaly.BucketSize), Count: int(a.Observed),
+			Fingerprint: a.Fingerprint(),
+			Evidence: map[string]any{
+				"metric": string(a.Metric), "direction": a.Direction,
+				"observed": a.Observed, "expected": a.Expected, "z_score": a.Z,
+			},
+		}
+		if _, _, err := r.Store.UpsertSecurityEvent(toStoreEvent(d)); err != nil {
+			log.Printf("security: persist traffic anomaly for %s: %v", a.Backend, err)
+		}
+	}
 }
 
 // IntelLookup is the slice of *threatintel.Service the Runner uses.

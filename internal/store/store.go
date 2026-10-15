@@ -195,6 +195,16 @@ CREATE TABLE IF NOT EXISTS policy_actions (
 CREATE INDEX IF NOT EXISTS idx_policy_status ON policy_actions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_policy_target ON policy_actions(type, target);
 
+CREATE TABLE IF NOT EXISTS traffic_baseline (
+	backend TEXT NOT NULL,
+	metric  TEXT NOT NULL,
+	slot    INTEGER NOT NULL,
+	mean    REAL NOT NULL,
+	var     REAL NOT NULL,
+	n       INTEGER NOT NULL,
+	PRIMARY KEY (backend, metric, slot)
+);
+
 CREATE TABLE IF NOT EXISTS ip_intel (
 	ip          TEXT PRIMARY KEY,
 	abuse_score INTEGER NOT NULL DEFAULT -1,

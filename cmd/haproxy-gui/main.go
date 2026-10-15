@@ -20,6 +20,7 @@ import (
 	"syscall"
 	"time"
 
+	"haproxy-gui/internal/anomaly"
 	"haproxy-gui/internal/appconfig"
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/canary"
@@ -304,11 +305,12 @@ func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.En
 		return err
 	}
 	r := &security.Runner{
-		Store:  s,
-		Engine: security.NewEngine(security.DefaultThresholds()),
-		Tailer: tailer,
-		Policy: pe,
-		Intel:  intelOrNil(intel),
+		Store:   s,
+		Engine:  security.NewEngine(security.DefaultThresholds()),
+		Tailer:  tailer,
+		Policy:  pe,
+		Intel:   intelOrNil(intel),
+		Anomaly: anomaly.NewTracker(anomaly.DefaultConfig(), s),
 		RedisOpts: func() (redisping.Options, bool) {
 			rs, err := s.GetRedisSettings()
 			if err != nil || rs.Host == "" {
