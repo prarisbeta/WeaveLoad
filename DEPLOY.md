@@ -17,7 +17,8 @@ Rilis `bbd75bc-sslfix2`: perbaikan upload SSL (HTTP 500 pada hasil upload), pema
 ### 🚀 Langkah 1: Upload (dari terminal lokal)
 
 ```bash
-scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix2.tar.gz dist/haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/palapacloud.pem
+scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix2.tar.gz dist/haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 programmer@103.31.159.8:/tmp/
+scp -P 2212 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/palapacloud.pem
 ```
 
 ### ⚙️ Langkah 2: Update + uji + snapshot otomatis (satu perintah)
