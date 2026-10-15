@@ -1,6 +1,7 @@
 package cfgfile
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -314,6 +315,40 @@ func TestListBackups_SortedNewestFirst(t *testing.T) {
 	}
 	if backups[0].Path != newer || backups[0].Name != "haproxy.cfg.bak-200" {
 		t.Errorf("newest backup = %+v, want %q", backups[0], newer)
+	}
+}
+
+func TestPruneBackups_KeepsNewestAndUnrelatedFiles(t *testing.T) {
+	s := newTestStore(t)
+	_ = os.MkdirAll(s.BackupDir, 0o750)
+	now := time.Now()
+	for i := 1; i <= 5; i++ {
+		p := filepath.Join(s.BackupDir, fmt.Sprintf("haproxy.cfg.bak-%d", i))
+		if err := os.WriteFile(p, []byte("x"), 0o640); err != nil {
+			t.Fatal(err)
+		}
+		ts := now.Add(-time.Duration(6-i) * time.Hour) // bak-5 is newest
+		os.Chtimes(p, ts, ts)
+	}
+	other := filepath.Join(s.BackupDir, "dhparam.pem")
+	if err := os.WriteFile(other, []byte("x"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := s.PruneBackups(0); err != nil || n != 0 {
+		t.Fatalf("keep=0 removed %d (err %v), want a no-op", n, err)
+	}
+	n, err := s.PruneBackups(2)
+	if err != nil || n != 3 {
+		t.Fatalf("PruneBackups(2) = %d, %v; want 3", n, err)
+	}
+	for _, name := range []string{"haproxy.cfg.bak-4", "haproxy.cfg.bak-5", "dhparam.pem"} {
+		if _, err := os.Stat(filepath.Join(s.BackupDir, name)); err != nil {
+			t.Errorf("%s should have been kept: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(s.BackupDir, "haproxy.cfg.bak-1")); err == nil {
+		t.Error("oldest backup was not removed")
 	}
 }
 

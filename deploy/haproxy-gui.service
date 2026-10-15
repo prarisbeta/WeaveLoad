@@ -34,5 +34,13 @@ ProtectSystem=true
 ProtectHome=true
 PrivateTmp=true
 
+# Resource ceiling: this process shares the host with production HAProxy, so a
+# runaway detector, feed refresh or AI call must never starve the load
+# balancer. CPUQuota works on systemd 219 (CentOS 7). MemoryMax needs
+# systemd 231 + cgroup v2 and is ignored on 219, so MemoryLimit (the older
+# cgroup v1 name, still accepted by newer systemd) is what takes effect here.
+CPUQuota=50%
+MemoryLimit=512M
+
 [Install]
 WantedBy=multi-user.target

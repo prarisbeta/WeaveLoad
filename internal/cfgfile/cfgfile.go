@@ -354,6 +354,55 @@ func (s *Store) CreateBackup(content string) (string, error) {
 	return filename, nil
 }
 
+// PruneBackups deletes the oldest backups so at most keep remain, returning
+// how many it removed. Unlike ListBackups it only looks at file names and
+// times: it never migrates, re-encrypts or reads backup contents. keep <= 0
+// deletes nothing.
+func (s *Store) PruneBackups(keep int) (int, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	entries, err := os.ReadDir(s.BackupDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("read backup dir %s: %w", s.BackupDir, err)
+	}
+	type file struct {
+		name string
+		mod  time.Time
+	}
+	var files []file
+	for _, e := range entries {
+		if e.IsDir() || !strings.Contains(e.Name(), backupSuffix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, file{e.Name(), info.ModTime()})
+	}
+	if len(files) <= keep {
+		return 0, nil
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].mod.After(files[j].mod) })
+
+	removed := 0
+	var firstErr error
+	for _, f := range files[keep:] {
+		if err := os.Remove(filepath.Join(s.BackupDir, f.name)); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("remove backup %s: %w", f.name, err)
+			}
+			continue
+		}
+		removed++
+	}
+	return removed, firstErr
+}
+
 // DeleteBackup removes a backup file from disk by name.
 func (s *Store) DeleteBackup(name string) error {
 	p, err := s.GetBackupPath(name)

@@ -26,6 +26,7 @@ import (
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/ratelimitqueue"
 	"haproxy-gui/internal/redisping"
+	"haproxy-gui/internal/retention"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/security"
 	"haproxy-gui/internal/store"
@@ -109,7 +110,10 @@ func run() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	go pruneSessionsPeriodically(s)
+	sweeper := &retention.Sweeper{Store: s, Backups: cf, Policy: retention.DefaultPolicy()}
+	retentionCtx, stopRetention := context.WithCancel(context.Background())
+	defer stopRetention()
+	go sweeper.Run(retentionCtx, time.Hour)
 	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
 	if err := runSecurityEnginePeriodically(s, cfg.LogPath); err != nil {
 		log.Printf("security engine disabled: %v", err)
@@ -134,23 +138,6 @@ func run() error {
 		return srv.Shutdown(ctx)
 	}
 	return nil
-}
-
-func pruneSessionsPeriodically(s *store.Store) {
-	t := time.NewTicker(1 * time.Hour)
-	defer t.Stop()
-	for range t.C {
-		if n, err := s.PruneExpiredSessions(); err != nil {
-			log.Printf("prune sessions: %v", err)
-		} else if n > 0 {
-			log.Printf("pruned %d expired sessions", n)
-		}
-		if n, err := s.PruneAudit(30 * 24 * time.Hour); err != nil {
-			log.Printf("prune audit log: %v", err)
-		} else if n > 0 {
-			log.Printf("pruned %d old audit entries (>30 days)", n)
-		}
-	}
 }
 
 // rateLimitBlockStatus is the HTTP status haproxycfg.SetRateLimit's block
