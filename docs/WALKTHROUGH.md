@@ -98,7 +98,7 @@ Authorization: Bearer <token>
 
 ### 7 Detektor Real-Time
 
-Setiap 15 detik, Security Engine mengevaluasi baris log baru lewat 7 detektor: `brute_force`, `rate_anomaly`, `path_scan`, `sensitive_probe`, `http_abuse`, `backend_abuse`, dan `rate_limited`.
+Setiap 15 detik, Security Engine mengevaluasi baris log baru lewat 8 detektor: `brute_force`, `rate_anomaly`, `path_scan`, `sensitive_probe`, `http_abuse`, `backend_abuse`, `rate_limited`, dan `threat_intel` (signature serangan CTI di URL: SQLi, XSS, traversal, RFI, command injection, Shellshock, Log4Shell, reverse shell; dipetakan ke MITRE ATT&CK).
 
 Setiap kejadian menambah skor risiko IP (0–100) yang dipetakan ke status: `normal` → `watch` (≥15) → `suspicious` (≥35) → `high_risk` (≥60).
 

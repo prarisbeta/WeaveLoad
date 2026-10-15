@@ -16,6 +16,7 @@
         <option value="http_abuse" {{if eq .Rule "http_abuse"}}selected{{end}}>Penyalahgunaan HTTP</option>
         <option value="backend_abuse" {{if eq .Rule "backend_abuse"}}selected{{end}}>Gangguan Backend</option>
         <option value="rate_limited" {{if eq .Rule "rate_limited"}}selected{{end}}>Kena Rate Limit</option>
+        <option value="threat_intel" {{if eq .Rule "threat_intel"}}selected{{end}}>Threat Intel (CTI)</option>
       </select>
     </label>
     <label>{{t .Language "sec_filter_severity"}}

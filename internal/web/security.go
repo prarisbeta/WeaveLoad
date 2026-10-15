@@ -29,7 +29,7 @@ const securityEventsPageSize = 50
 // 400 rather than silently passed through to SQL.
 var validSecurityRules = map[string]bool{
 	"": true, "brute_force": true, "rate_anomaly": true, "path_scan": true,
-	"sensitive_probe": true, "http_abuse": true, "backend_abuse": true, "rate_limited": true,
+	"sensitive_probe": true, "http_abuse": true, "backend_abuse": true, "rate_limited": true, "threat_intel": true,
 }
 var validSecuritySeverities = map[string]bool{"": true, "low": true, "medium": true, "high": true, "critical": true}
 var validSecurityStatuses = map[string]bool{"": true, "open": true, "acknowledged": true, "dismissed": true, "escalated": true}

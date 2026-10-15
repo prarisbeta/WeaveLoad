@@ -3,9 +3,11 @@ package security
 import (
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"time"
 
+	"haproxy-gui/internal/cti"
 	"haproxy-gui/internal/haproxylog"
 )
 
@@ -119,6 +121,12 @@ func (e *Engine) recordIP(l haproxylog.Line, now time.Time) {
 	if pat := e.matchedSensitivePattern(l.Path); pat != "" {
 		b.patternsHit[pat] = struct{}{}
 	}
+	for _, m := range cti.Detect(l.Target) {
+		if b.threats == nil {
+			b.threats = map[string]int{}
+		}
+		b.threats[m.ID]++
+	}
 	if !now.IsZero() {
 		cutoff := now.Add(-e.thr.HTTPAbuseBurstWindow)
 		kept := b.burst[:0]
@@ -215,7 +223,70 @@ func (e *Engine) detectIP(ip string, now time.Time) []Detection {
 	if d, ok := e.checkRateLimited(ip, w, now); ok {
 		out = appendIfNew(out, e, d)
 	}
+	if d, ok := e.checkThreatIntel(ip, w, now); ok {
+		out = appendIfNew(out, e, d)
+	}
 	return out
+}
+
+// checkThreatIntel turns CTI signature hits (see internal/cti) in the window
+// into one detection per IP. Severity is the worst matched signature's,
+// raised from medium to high once the IP keeps trying.
+func (e *Engine) checkThreatIntel(ip string, w *ipWindow, now time.Time) (Detection, bool) {
+	hitsByID := map[string]int{}
+	total := 0
+	for _, b := range w.since(now, e.thr.CTIWindow) {
+		for id, n := range b.threats {
+			hitsByID[id] += n
+			total += n
+		}
+	}
+	if total == 0 {
+		return Detection{}, false
+	}
+
+	ids := make([]string, 0, len(hitsByID))
+	for id := range hitsByID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var names, mitre []string
+	seenMitre := map[string]bool{}
+	worst := cti.Match{}
+	for _, id := range ids {
+		m, ok := cti.Lookup(id)
+		if !ok {
+			continue
+		}
+		names = append(names, m.Name)
+		for _, t := range m.MITRE {
+			if !seenMitre[t] {
+				seenMitre[t] = true
+				mitre = append(mitre, t)
+			}
+		}
+		if cti.Rank(m.Severity) > cti.Rank(worst.Severity) {
+			worst = m
+		}
+	}
+	if worst.ID == "" {
+		return Detection{}, false
+	}
+	sort.Strings(mitre)
+
+	sev := Severity(worst.Severity)
+	if sev == SeverityMedium && e.thr.CTIEscalateHits > 0 && total >= e.thr.CTIEscalateHits {
+		sev = SeverityHigh
+	}
+	return e.newDetection(RuleThreatIntel, sev, SubjectIP, ip, "", w.firstSeen, now, total,
+		map[string]any{
+			"signatures":         ids,
+			"threats":            names,
+			"mitre":              mitre,
+			"recommended_action": worst.Action,
+			"hits":               total,
+		}, e.thr.CTIWindow, now), true
 }
 
 func (e *Engine) checkBruteForce(ip string, w *ipWindow, now time.Time) (Detection, bool) {

@@ -7,7 +7,9 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"os"
 
+	"haproxy-gui/internal/ai"
 	"haproxy-gui/internal/appconfig"
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
@@ -68,6 +70,10 @@ func chain(h http.Handler, mw ...func(http.Handler) http.Handler) http.Handler {
 
 func buildRoutes(d routeDeps) http.Handler {
 	mux := http.NewServeMux()
+
+	// nil unless KONSOLGW_GEMINI_API_KEY or KONSOLGW_ANTHROPIC_API_KEY is set;
+	// the AI handlers then answer from the offline MockProvider.
+	aiProvider := ai.FromEnv(os.Getenv)
 
 	requireAuth := auth.RequireAuth(d.store)
 	// requireAPI also accepts a "Bearer kgw_..." API token, for third-party and
@@ -146,8 +152,8 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/incidents/{id}/status", chain(&web.IncidentStatusAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 	mux.Handle("POST /api/incidents/{id}/notes", chain(&web.IncidentNoteAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 	mux.Handle("POST /api/incidents/{id}/link", chain(&web.IncidentLinkAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
-	mux.Handle("POST /api/incidents/{id}/ai-analyze", chain(&web.AIIncidentAnalyzeHandler{Store: d.store}, requireAuth, requireViewSecurity, auth.RequireCSRF))
-	mux.Handle("POST /api/security/events/{id}/ai-analyze", chain(&web.AISecurityAnalyzeHandler{Store: d.store}, requireAuth, requireViewSecurity, auth.RequireCSRF))
+	mux.Handle("POST /api/incidents/{id}/ai-analyze", chain(&web.AIIncidentAnalyzeHandler{Store: d.store, Provider: aiProvider}, requireAuth, requireViewSecurity, auth.RequireCSRF))
+	mux.Handle("POST /api/security/events/{id}/ai-analyze", chain(&web.AISecurityAnalyzeHandler{Store: d.store, Provider: aiProvider}, requireAuth, requireViewSecurity, auth.RequireCSRF))
 
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
@@ -199,7 +205,6 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/pools/{name}/toggle-state", chain(&web.PoolToggleStateAction{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/pools/{name}/delete", chain(&web.PoolDeleteAction{PoolService: pools}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
-
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,
 	}, requireAuth, requireManageConfig, auth.RequireCSRF))
@@ -216,7 +221,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/users/update", chain(&web.UserUpdateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageUsers, auth.RequireCSRF))
 	mux.Handle("POST /api/users/create", chain(&web.UserCreateHandler{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageUsers, auth.RequireCSRF))
 	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireManageUsers))
-	
+
 	mux.Handle("POST /api/profile/language", chain(&web.ProfileLanguageHandler{Store: d.store}, requireAuth, auth.RequireCSRF))
 	mux.Handle("POST /api/profile/password", chain(&web.ProfilePasswordHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))
 	mux.Handle("POST /api/profile/totp", chain(&web.ProfileTOTPHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))

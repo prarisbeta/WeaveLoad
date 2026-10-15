@@ -15,6 +15,7 @@ type bucket struct {
 	paths       map[string]struct{} // capped, see maxPathsPerBucket
 	patternsHit map[string]struct{} // sensitive-pattern hits this bucket
 	burst       []time.Time         // request timestamps, for sub-minute bursts
+	threats     map[string]int      // CTI signature ID -> hits this bucket, allocated on first hit
 }
 
 // maxPathsPerBucket bounds memory use for a single IP hammering many random

@@ -80,6 +80,13 @@ type Thresholds struct {
 	// an IP's risk score.
 	RateLimitedWindow    time.Duration
 	RateLimitedThreshold int
+
+	// CTIWindow groups request-target attack signatures (internal/cti: SQL
+	// injection, traversal, Log4Shell, ...) per IP. One hit fires the rule at
+	// the signature's own severity; CTIEscalateHits or more hits raise a
+	// medium finding to high.
+	CTIWindow       time.Duration
+	CTIEscalateHits int
 }
 
 // DefaultThresholds returns reasonable starting values. All are meant to be
@@ -131,5 +138,8 @@ func DefaultThresholds() Thresholds {
 
 		RateLimitedWindow:    5 * time.Minute,
 		RateLimitedThreshold: 20,
+
+		CTIWindow:       10 * time.Minute,
+		CTIEscalateHits: 5,
 	}
 }

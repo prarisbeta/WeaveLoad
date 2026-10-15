@@ -9,6 +9,7 @@ import (
 // relative to a plain severity weight — a scanner probing sensitive paths
 // is worse than the same severity of generic rate anomaly.
 var ruleMultiplier = map[Rule]float64{
+	RuleThreatIntel:    1.5,
 	RuleSensitiveProbe: 1.5,
 	RuleBruteForce:     1.3,
 	RulePathScan:       1.2,

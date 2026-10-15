@@ -14,7 +14,8 @@ import (
 
 // AIIncidentAnalyzeHandler handles POST /api/incidents/{id}/ai-analyze.
 type AIIncidentAnalyzeHandler struct {
-	Store *store.Store
+	Store    *store.Store
+	Provider ai.Provider // nil -> offline MockProvider
 }
 
 func (h *AIIncidentAnalyzeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +40,7 @@ func (h *AIIncidentAnalyzeHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 
 	summaryData := fmt.Sprintf("Title: %s, Summary: %s, Status: %s, Severity: %s", inc.Title, inc.Summary, inc.Status, inc.Severity)
-	res, err := ai.InvestigateData(ctx, nil, "Incident #"+idStr, summaryData)
+	res, err := ai.InvestigateData(ctx, h.Provider, "Incident #"+idStr, summaryData)
 	if err != nil {
 		http.Error(w, "AI analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -51,7 +52,8 @@ func (h *AIIncidentAnalyzeHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 
 // AISecurityAnalyzeHandler handles POST /api/security/events/{id}/ai-analyze.
 type AISecurityAnalyzeHandler struct {
-	Store *store.Store
+	Store    *store.Store
+	Provider ai.Provider // nil -> offline MockProvider
 }
 
 func (h *AISecurityAnalyzeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -76,7 +78,7 @@ func (h *AISecurityAnalyzeHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 	defer cancel()
 
 	dataStr := fmt.Sprintf("Rule: %s, Subject: %s (%s), Severity: %s, Evidence: %s", ev.Rule, ev.Subject, ev.SubjectType, ev.Severity, evidenceJSON(ev.Evidence))
-	res, err := ai.InvestigateData(ctx, nil, "Security Event #"+idStr, dataStr)
+	res, err := ai.InvestigateData(ctx, h.Provider, "Security Event #"+idStr, dataStr)
 	if err != nil {
 		http.Error(w, "AI analysis failed: "+err.Error(), http.StatusInternalServerError)
 		return

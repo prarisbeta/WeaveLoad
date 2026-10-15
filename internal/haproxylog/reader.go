@@ -31,6 +31,7 @@ type Line struct {
 	Server   string
 	Method   string
 	Path     string
+	Target   string // raw request target, query string included (Path has it stripped)
 
 	// Timers, in milliseconds, as HAProxy's httplog reports them:
 	// Tq/Tw/Tc/Tr/Tt. -1 means "not applicable" per HAProxy's own convention.
@@ -114,6 +115,7 @@ func parseLine(raw string) Line {
 		l.Termination = m[12]
 		l.Host = firstHeader(m[13])
 		l.Method = m[14]
+		l.Target = m[15]
 		l.Path = normalizePath(m[15])
 	}
 	return l

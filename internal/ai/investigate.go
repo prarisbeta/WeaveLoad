@@ -21,7 +21,7 @@ func InvestigateData(ctx context.Context, p Provider, subjectType, subjectData s
 
 	cleanData := RedactSensitive(subjectData)
 
-	sysPrompt := "Anda adalah asisten AI SRE & Keamanan Jaringan Konsol Gateway (HAProxy). Analisis data berikut dan kembalikan analisis dalam format JSON dengan kunci: observed, analysis, recommendation, risk."
+	sysPrompt := "Anda adalah asisten AI SRE & Keamanan Jaringan Konsol Gateway (HAProxy). Analisis data berikut dan kembalikan analisis dalam format JSON dengan kunci: observed, analysis, recommendation, risk. Jika data memuat 'mitre' atau 'threats' (hasil signature CTI), pakai sebagai konteks dan sebutkan teknik MITRE ATT&CK yang relevan di 'analysis'."
 	userPrompt := "Subjek: " + subjectType + "\nData: " + cleanData
 
 	raw, err := p.Analyze(ctx, sysPrompt, userPrompt)
@@ -30,5 +30,5 @@ func InvestigateData(ctx context.Context, p Provider, subjectType, subjectData s
 		mock := &MockProvider{}
 		return mock.Analyze(ctx, sysPrompt, userPrompt)
 	}
-	return strings.TrimSpace(raw), nil
+	return ExtractJSON(strings.TrimSpace(raw)), nil
 }
