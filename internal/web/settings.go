@@ -28,6 +28,8 @@ type SettingsStore interface {
 type SettingsHandler struct {
 	Store     SettingsStore
 	Templates *template.Template
+	// Tokens, when set, adds the API token section (third-party / MCP access).
+	Tokens APITokenStore
 }
 
 func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -41,11 +43,22 @@ func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to load settings: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	var tokens []store.APIToken
+	if h.Tokens != nil {
+		if tokens, err = h.Tokens.ListAPITokens(); err != nil {
+			http.Error(w, "failed to load API tokens: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	renderTemplate(w, h.Templates, "settings.html", struct {
 		Chrome
 		Redis         store.RedisSettings
 		QueueTokenSet bool
-	}{Chrome: NewChrome(r, "settings"), Redis: rs, QueueTokenSet: token != ""})
+		ShowAPITokens bool
+		APITokens     []store.APIToken
+		MCPURL        string
+		APIURL        string
+	}{Chrome: NewChrome(r, "settings"), Redis: rs, QueueTokenSet: token != "", ShowAPITokens: h.Tokens != nil, APITokens: tokens, MCPURL: publicURL(r) + "/mcp", APIURL: publicURL(r) + "/api/v1"})
 }
 
 func redisSettingsFromForm(r *http.Request) store.RedisSettings {

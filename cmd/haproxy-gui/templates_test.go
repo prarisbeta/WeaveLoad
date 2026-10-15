@@ -46,6 +46,23 @@ func (f fixedSettings) SetRedisSettings(store.RedisSettings) error     { return 
 func (f fixedSettings) GetQueueAPIToken() (string, error)              { return "", nil }
 func (f fixedSettings) SetQueueAPIToken(string) error                  { return nil }
 
+// fixedTokens serves one active and one revoked API token so the Settings
+// section and the one-time result partial render with the real templates.
+type fixedTokens struct{}
+
+func (fixedTokens) ListAPITokens() ([]store.APIToken, error) {
+	return []store.APIToken{
+		{ID: 2, Name: "n8n-prod", Prefix: "kgw_abcd", CreatedBy: "admin@cni.net.id", CreatedAt: time.Now()},
+		{ID: 1, Name: "old-test", Prefix: "kgw_zzzz", CreatedAt: time.Now(), Revoked: true},
+	}, nil
+}
+
+func (fixedTokens) CreateAPIToken(name, by string) (string, store.APIToken, error) {
+	return "kgw_plaintextplaintextplaintext", store.APIToken{ID: 3, Name: name, Prefix: "kgw_plai"}, nil
+}
+
+func (fixedTokens) RevokeAPIToken(int64) error { return nil }
+
 type noopAudit struct{}
 
 func (noopAudit) Record(store.AuditEntry) error { return nil }
@@ -159,7 +176,8 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("POST /api/pools/{name}/members/edit/preview", &web.PoolMemberEditPreview{PoolService: svc})
 	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
 	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
-	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t)})
+	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t), Tokens: fixedTokens{}})
+	mux.Handle("POST /api/settings/api-tokens", &web.APITokenCreateAction{Store: fixedTokens{}, Audit: noopAudit{}, Templates: realTemplates(t)})
 	mux.Handle("GET /login", &auth.LoginHandler{Templates: realTemplates(t)})
 	mux.Handle("GET /certs", &web.CertsHandler{Certs: fixedCerts{}, Templates: realTemplates(t)})
 	mux.Handle("POST /api/certs/remove", &web.CertRemoveHandler{Remover: fixedCerts{}, Audit: noopAudit{}, Templates: realTemplates(t)})
@@ -193,6 +211,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 			"weight 50"},
 		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
 		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
+		{"settings_tokens", http.MethodGet, "/settings", nil, "n8n-prod"},
+		{"settings_tokens_mcp_url", http.MethodGet, "/settings", nil, "/mcp"},
+		{"api_token_result.html", http.MethodPost, "/api/settings/api-tokens", url.Values{"name": {"claude-code"}}, "kgw_plaintextplaintextplaintext"},
 		{"login.html", http.MethodGet, "/login", nil, `href="/auth/login"`},
 		{"certs.html", http.MethodGet, "/certs", nil, "palapacloud.id.pem"},
 		{"certs_remove_live", http.MethodGet, "/certs", nil, "/api/certs/remove"},

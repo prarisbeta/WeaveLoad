@@ -109,6 +109,9 @@ func TestMCPServer_ToolCalls(t *testing.T) {
 		case r.URL.Path == "/api/v1/incidents":
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"success":true,"data":[{"id":101,"title":"Brute Force"}]}`))
+		case r.URL.Path == "/api/v1/proposals" && r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"success":true,"data":{"id":5}}`))
 		case r.URL.Path == "/api/v1/incidents/101":
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"success":true,"data":{"incident":{"id":101,"title":"Brute Force"}}}`))
@@ -174,7 +177,8 @@ func TestMCPServer_ToolCalls(t *testing.T) {
 		{
 			name:        "propose_action tool call",
 			reqJSON:     `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"propose_action","arguments":{"reason":"High 5xx error rate","evidence":"Tail log 100 500s"}}}`,
-			wantContent: "Action proposed successfully based on reason: High 5xx error rate [Evidence: Tail log 100 500s]",
+			wantContent: "Action proposed for operator review (not executed). Reason: High 5xx error rate [Evidence: Tail log 100 500s]",
+			wantPath:    "/api/v1/proposals",
 		},
 		{
 			name:         "propose_action missing reason returns RPC error",

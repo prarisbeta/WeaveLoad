@@ -141,6 +141,12 @@ func RequireCSRF(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		// An API token is a bearer credential the browser never attaches on
+		// its own, so there is no ambient authority for CSRF to abuse.
+		if _, viaToken := APITokenFromContext(r.Context()); viaToken {
+			next.ServeHTTP(w, r)
+			return
+		}
 		sess, ok := SessionFromContext(r.Context())
 		if !ok {
 			http.Error(w, "authentication required", http.StatusUnauthorized)

@@ -55,7 +55,7 @@
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
     <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
       <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">{{t .Language "mcp_endpoint_label"}}</label>
-      <input type="text" id="mcp-base-url" style="width:100%; font-family:monospace; font-size:12px;" value="http://127.0.0.1:8080/api/v1">
+      <input type="text" id="mcp-base-url" style="width:100%; font-family:monospace; font-size:12px;" value="http://127.0.0.1:9900/api/v1">
     </div>
     <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
       <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">{{t .Language "mcp_token_label"}}</label>
@@ -68,6 +68,7 @@
       <button type="button" class="btn active-tab-btn" data-mcp-tab="antigravity" style="font-size:12px; padding:4px 10px;">Antigravity / Claude Code / Cursor</button>
       <button type="button" class="btn" data-mcp-tab="claude" style="font-size:12px; padding:4px 10px;">Claude Desktop</button>
       <button type="button" class="btn" data-mcp-tab="cli" style="font-size:12px; padding:4px 10px;">Direct Stdio CLI</button>
+      <button type="button" class="btn" data-mcp-tab="remote" style="font-size:12px; padding:4px 10px;">Remote (HTTP) - n8n, Cursor, Claude Code</button>
     </div>
 
     <div style="position:relative;">

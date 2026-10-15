@@ -70,6 +70,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux := http.NewServeMux()
 
 	requireAuth := auth.RequireAuth(d.store)
+	// requireAPI also accepts a "Bearer kgw_..." API token, for third-party and
+	// MCP callers of /api/v1; browser pages keep requireAuth (session only).
+	requireAPI := auth.RequireAuthOrToken(d.store, d.store)
 	requireRuntimeControl := auth.RequireCapability(store.CapRuntimeControl)
 	requireViewLogs := auth.RequireCapability(store.CapViewLogs)
 	requireViewQueue := auth.RequireCapability(store.CapViewQueue)
@@ -222,18 +225,29 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /alerts", chain(&web.AlertsHandler{Store: d.store, Templates: d.templates}, requireAuth))
 	mux.Handle("POST /api/alerts/{id}/ack", chain(&web.AlertAckHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))
 
-	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireManageSettings))
+	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates, Tokens: d.store}, requireAuth, requireManageSettings))
+	mux.Handle("POST /api/settings/api-tokens", chain(&web.APITokenCreateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
+	mux.Handle("POST /api/settings/api-tokens/revoke", chain(&web.APITokenRevokeAction{Store: d.store, Audit: d.store}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 
 	// --- HTTP API /api/v1 (C1-4) ---
-	mux.Handle("GET /api/v1/status", chain(&web.APIV1StatusHandler{Stats: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths}, requireAuth))
-	mux.Handle("GET /api/v1/backends", chain(&web.APIV1BackendsHandler{Stats: d.runtime, Config: d.cfgfile}, requireAuth))
-	mux.Handle("GET /api/v1/servers", chain(&web.APIV1ServersHandler{Stats: d.runtime}, requireAuth))
-	mux.Handle("GET /api/v1/nodes", chain(&web.APIV1NodesHandler{Config: d.cfgfile, Stats: d.runtime}, requireAuth))
-	mux.Handle("GET /api/v1/incidents", chain(&web.APIV1IncidentsHandler{Store: d.store}, requireAuth, requireViewSecurity))
-	mux.Handle("GET /api/v1/incidents/{id}", chain(&web.APIV1IncidentDetailHandler{Store: d.store}, requireAuth, requireViewSecurity))
+	mux.Handle("GET /api/v1/status", chain(&web.APIV1StatusHandler{Stats: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths}, requireAPI))
+	mux.Handle("GET /api/v1/backends", chain(&web.APIV1BackendsHandler{Stats: d.runtime, Config: d.cfgfile}, requireAPI))
+	mux.Handle("GET /api/v1/servers", chain(&web.APIV1ServersHandler{Stats: d.runtime}, requireAPI))
+	mux.Handle("GET /api/v1/nodes", chain(&web.APIV1NodesHandler{Config: d.cfgfile, Stats: d.runtime}, requireAPI))
+	mux.Handle("GET /api/v1/incidents", chain(&web.APIV1IncidentsHandler{Store: d.store}, requireAPI, requireViewSecurity))
+	mux.Handle("GET /api/v1/incidents/{id}", chain(&web.APIV1IncidentDetailHandler{Store: d.store}, requireAPI, requireViewSecurity))
+
+	mux.Handle("POST /api/v1/proposals", chain(&web.APIV1ProposalHandler{Store: d.store, Audit: d.store}, requireAPI, requireViewSecurity, auth.RequireCSRF))
+
+	// --- MCP over HTTP: remote MCP clients (Claude Code, Cursor, n8n, ...) that
+	// take a URL + Authorization header instead of launching konsolgw-mcp. Token
+	// only; each tool call re-enters mux so /api/v1 checks apply unchanged. ---
+	mcpHandler := web.NewMCPHandler(mux)
+	mux.Handle("OPTIONS /mcp", http.HandlerFunc(mcpHandler.Preflight))
+	mux.Handle("/mcp", chain(mcpHandler, auth.RequireAPIToken(d.store)))
 
 	// --- external API (own bearer-token auth, not the browser session/CSRF
 	// flow above — callers here are the Incident Management module or an

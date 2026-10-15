@@ -679,12 +679,12 @@
     var activeMcpTab = "antigravity";
 
     if (mcpBaseUrlInput && mcpSnippetArea) {
-      if (mcpBaseUrlInput.value === "http://127.0.0.1:8080/api/v1" && window.location.origin) {
+      if (mcpBaseUrlInput.value === "http://127.0.0.1:9900/api/v1" && window.location.origin) {
         mcpBaseUrlInput.value = window.location.origin + "/api/v1";
       }
 
       function updateMcpSnippet() {
-        var url = mcpBaseUrlInput ? mcpBaseUrlInput.value.trim() : "http://127.0.0.1:8080/api/v1";
+        var url = mcpBaseUrlInput ? mcpBaseUrlInput.value.trim() : "http://127.0.0.1:9900/api/v1";
         var token = mcpApiTokenInput ? mcpApiTokenInput.value.trim() : "";
 
         if (activeMcpTab === "antigravity") {
@@ -718,9 +718,43 @@
           if (mcpTabHint) mcpTabHint.innerHTML = 'Tambahkan ke file <code>claude_desktop_config.json</code> (di <code>%APPDATA%\\Claude\\</code> atau <code>~/.config/Claude/</code>).';
         } else if (activeMcpTab === "cli") {
           var tokenParam = token ? 'export KONSOLGW_API_TOKEN="' + token + '"\n' : '';
-          mcpSnippetArea.value = 'export KONSOLGW_API_URL="' + url + '"\n' + tokenParam + '# Jalankan MCP server secara interaktif via stdio:\nkonsolgw-mcp';
+          mcpSnippetArea.value = 'export KONSOLGW_API_URL="' + url + '"\n' + tokenParam + '# Sertifikat self-signed (akses lewat IP)? Aktifkan baris ini:\n# export KONSOLGW_INSECURE=1\n# Jalankan MCP server secara interaktif via stdio:\nkonsolgw-mcp';
           if (mcpTabHint) mcpTabHint.innerHTML = 'Gunakan perintah di atas di terminal untuk menguji komunikasi JSON-RPC 2.0 stdio langsung.';
+        } else if (activeMcpTab === "remote") {
+          var mcpUrl = mcpEndpointFromBase(url);
+          var tok = token || "<API_TOKEN>";
+          var plainHdr = "Authorization: Bearer " + tok;
+          var mcpJson = {
+            mcpServers: {
+              "konsol-gateway": { url: mcpUrl, headers: { Authorization: "Bearer " + tok } }
+            }
+          };
+          var viaProxy = {
+            mcpServers: {
+              "konsol-gateway": {
+                command: "npx",
+                args: ["-y", "mcp-remote", mcpUrl, "--header", plainHdr],
+                env: { NODE_TLS_REJECT_UNAUTHORIZED: "0" }
+              }
+            }
+          };
+          mcpSnippetArea.value =
+            "# 1) Claude Code (CLI)\n" +
+            'claude mcp add --transport http konsol-gateway ' + mcpUrl + ' --header "' + plainHdr + '"\n\n' +
+            "# 2) Cursor / VS Code / n8n / klien MCP HTTP lain (mcp.json)\n" +
+            JSON.stringify(mcpJson, null, 2) + "\n\n" +
+            "# 3) Claude Desktop (lewat mcp-remote, butuh Node.js)\n" +
+            JSON.stringify(viaProxy, null, 2) + "\n\n" +
+            "# 4) Uji cepat dari terminal\n" +
+            "curl -sk " + mcpUrl + ' -H "' + plainHdr + '" -H "Content-Type: application/json" -d \'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\'';
+          if (mcpTabHint) mcpTabHint.innerHTML = 'Endpoint MCP HTTP: <code>' + mcpUrl + '</code>. Butuh token dari <a href="/settings">Pengaturan → Token API</a>. Alamat ini hanya bisa dijangkau dari IP yang diizinkan (VPN); sertifikat self-signed perlu dipercaya klien (di Node: <code>NODE_EXTRA_CA_CERTS</code>, atau <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> hanya untuk uji).';
         }
+        mcpSnippetArea.style.height = activeMcpTab === "remote" ? "300px" : "130px";
+      }
+
+      // The MCP endpoint lives next to the REST API: <origin>/mcp.
+      function mcpEndpointFromBase(base) {
+        return base.replace(/\/+$/, "").replace(/\/api\/v1$/, "") + "/mcp";
       }
 
       updateMcpSnippet();
@@ -776,14 +810,33 @@
             headers["Authorization"] = "Bearer " + token;
           }
 
-          fetch(statusEndpoint, { headers: headers })
+          // credentials "omit": a third-party app has no browser session, so the
+          // test must pass or fail on the token alone, not on being logged in here.
+          var restLine = "";
+          fetch(statusEndpoint, { headers: headers, credentials: "omit", redirect: "manual" })
             .then(function (res) {
+              if (res.type === "opaqueredirect" || res.status === 0) throw new Error("ditolak (butuh token API yang valid)");
+              if (res.status === 401) throw new Error("token API tidak valid atau kosong (HTTP 401)");
               if (!res.ok) throw new Error("HTTP Status " + res.status);
               return res.json();
             })
             .then(function (data) {
+              restLine = 'REST: Live ' + (data.data && data.data.live ? 'Online' : 'Offline') + ', Total Backends: ' + (data.data ? data.data.backends_total : '?');
+              var mcpHeaders = { "Content-Type": "application/json" };
+              if (token) mcpHeaders["Authorization"] = "Bearer " + token;
+              return fetch(mcpEndpointFromBase(url), {
+                method: "POST", headers: mcpHeaders, credentials: "omit",
+                body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } })
+              });
+            })
+            .then(function (res) {
+              if (!res.ok) throw new Error("REST OK, tetapi endpoint MCP HTTP " + res.status);
+              return res.json();
+            })
+            .then(function (rpc) {
               if (mcpTestStatus) {
-                mcpTestStatus.innerHTML = '<div class="panel notice-ok" style="padding:8px 12px; margin:0;"><strong style="color:var(--ok)">✓ Endpoint API Berhasil Diakses</strong> — Live: ' + (data.data && data.data.live ? 'Online' : 'Offline') + ', Total Backends: ' + (data.data ? data.data.backends_total : '?') + '</div>';
+                var srv = rpc.result && rpc.result.serverInfo ? rpc.result.serverInfo.name + " " + rpc.result.serverInfo.version : "?";
+                mcpTestStatus.innerHTML = '<div class="panel notice-ok" style="padding:8px 12px; margin:0;"><strong style="color:var(--ok)">✓ Endpoint API dan MCP berhasil diakses</strong> — ' + restLine + ' · MCP: ' + srv + ' (protokol ' + (rpc.result ? rpc.result.protocolVersion : '?') + ')</div>';
               }
             })
             .catch(function (err) {

@@ -1,129 +1,38 @@
+// konsolgw-mcp is the stdio transport of Konsol Gateway's MCP server, for
+// clients that launch a local command (Claude Desktop, Cursor, Claude Code,
+// Antigravity). Clients that take a URL instead can use the gateway's own
+// POST /mcp endpoint; both run the same tools (internal/mcp).
+//
+// Configuration, from the environment:
+//
+//	KONSOLGW_API_URL    gateway API base, default http://127.0.0.1:9900/api/v1
+//	KONSOLGW_API_TOKEN  API token created under Settings > API tokens
+//	KONSOLGW_INSECURE   "1" to accept the gateway's self-signed TLS certificate
 package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
+	"time"
+
+	"haproxy-gui/internal/mcp"
 )
 
-type JSONRPCRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
+// DefaultAPIURL is where the gateway listens when it is not behind HAProxy.
+const DefaultAPIURL = "http://127.0.0.1:9900/api/v1"
 
-type JSONRPCResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id"`
-	Result  any    `json:"result,omitempty"`
-	Error   *Error `json:"error,omitempty"`
-}
+// JSONRPCResponse is kept as an alias so tests can decode replies.
+type JSONRPCResponse = mcp.Response
 
-type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type CallToolParams struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments,omitempty"`
-}
-
-type Tool struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	InputSchema Schema `json:"inputSchema"`
-}
-
-type Schema struct {
-	Type       string         `json:"type"`
-	Properties map[string]any `json:"properties"`
-	Required   []string       `json:"required,omitempty"`
-}
-
-var defaultTools = []Tool{
-	{
-		Name:        "get_status",
-		Description: "Get overall status of the HAProxy server.",
-		InputSchema: Schema{Type: "object", Properties: map[string]any{}},
-	},
-	{
-		Name:        "list_nodes",
-		Description: "List all HAProxy nodes (hosts) and their pools.",
-		InputSchema: Schema{Type: "object", Properties: map[string]any{}},
-	},
-	{
-		Name:        "list_backends",
-		Description: "List all backends and their status.",
-		InputSchema: Schema{Type: "object", Properties: map[string]any{}},
-	},
-	{
-		Name:        "list_servers",
-		Description: "List all individual servers across backends.",
-		InputSchema: Schema{Type: "object", Properties: map[string]any{}},
-	},
-	{
-		Name:        "list_incidents",
-		Description: "List security incidents with optional filters (status, severity, search query).",
-		InputSchema: Schema{
-			Type: "object",
-			Properties: map[string]any{
-				"status": map[string]any{
-					"type":        "string",
-					"description": "Filter by status: open, investigating, mitigated, resolved, false_positive",
-				},
-				"severity": map[string]any{
-					"type":        "string",
-					"description": "Filter by severity: critical, high, medium, low",
-				},
-				"q": map[string]any{
-					"type":        "string",
-					"description": "Search term across title, subject, and summary",
-				},
-			},
-		},
-	},
-	{
-		Name:        "get_incident",
-		Description: "Get complete details, linked events, and investigation notes of a security incident.",
-		InputSchema: Schema{
-			Type: "object",
-			Properties: map[string]any{
-				"id": map[string]any{
-					"type":        "integer",
-					"description": "Incident ID",
-				},
-			},
-			Required: []string{"id"},
-		},
-	},
-	{
-		Name:        "propose_action",
-		Description: "Propose an action for a human operator or approval workflow to review.",
-		InputSchema: Schema{
-			Type: "object",
-			Properties: map[string]any{
-				"reason": map[string]any{
-					"type":        "string",
-					"description": "Reason for this action",
-				},
-				"evidence": map[string]any{
-					"type":        "string",
-					"description": "Evidence supporting the action",
-				},
-			},
-			Required: []string{"reason", "evidence"},
-		},
-	},
-}
-
-// MCPServer handles MCP JSON-RPC requests over an io.Reader and io.Writer.
+// MCPServer reads JSON-RPC lines from In and writes replies to Out, calling
+// the gateway API over HTTP.
 type MCPServer struct {
 	APIURL     string
 	APIToken   string
@@ -134,7 +43,7 @@ type MCPServer struct {
 
 func NewMCPServer(apiURL, apiToken string, in io.Reader, out io.Writer) *MCPServer {
 	if apiURL == "" {
-		apiURL = "http://localhost:8080/api/v1"
+		apiURL = DefaultAPIURL
 	}
 	if in == nil {
 		in = os.Stdin
@@ -142,199 +51,72 @@ func NewMCPServer(apiURL, apiToken string, in io.Reader, out io.Writer) *MCPServ
 	if out == nil {
 		out = os.Stdout
 	}
-	return &MCPServer{
-		APIURL:     apiURL,
-		APIToken:   apiToken,
-		HTTPClient: http.DefaultClient,
-		In:         in,
-		Out:        out,
+	return &MCPServer{APIURL: apiURL, APIToken: apiToken, HTTPClient: http.DefaultClient, In: in, Out: out}
+}
+
+// Do implements mcp.Backend.
+func (s *MCPServer) Do(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+	client := s.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
 	}
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, s.APIURL+path, rd)
+	if err != nil {
+		return 0, nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if s.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+s.APIToken)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	return resp.StatusCode, b, err
 }
 
 func (s *MCPServer) Run() error {
+	core := &mcp.Server{Backend: s}
 	scanner := bufio.NewScanner(s.In)
+	scanner.Buffer(make([]byte, 64*1024), mcp.MaxBodyBytes)
 	for scanner.Scan() {
-		line := scanner.Text()
+		line := bytes.TrimSpace(scanner.Bytes())
 		if len(line) == 0 {
 			continue
 		}
-		var req JSONRPCRequest
-		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			s.sendError(nil, -32700, "Parse error")
+		var req mcp.Request
+		if err := json.Unmarshal(line, &req); err != nil {
+			s.write(mcp.ParseErrorResponse())
 			continue
 		}
-
-		switch req.Method {
-		case "initialize":
-			s.sendResult(req.ID, map[string]any{
-				"protocolVersion": "2024-11-05",
-				"serverInfo": map[string]any{
-					"name":    "konsolgw-mcp",
-					"version": "1.0.0",
-				},
-				"capabilities": map[string]any{
-					"tools": map[string]any{},
-				},
-			})
-		case "notifications/initialized":
-			// No response needed for notification
-		case "tools/list":
-			s.sendResult(req.ID, map[string]any{
-				"tools": defaultTools,
-			})
-		case "tools/call":
-			var params CallToolParams
-			if err := json.Unmarshal(req.Params, &params); err != nil {
-				s.sendError(req.ID, -32602, "Invalid params")
-				continue
-			}
-			s.handleToolCall(req.ID, params)
-		default:
-			s.sendError(req.ID, -32601, "Method not found: "+req.Method)
+		if resp := core.Handle(context.Background(), req); resp != nil {
+			s.write(resp)
 		}
 	}
 	return scanner.Err()
 }
 
-func (s *MCPServer) handleToolCall(id any, params CallToolParams) {
-	var result string
-	var err error
-
-	switch params.Name {
-	case "get_status":
-		result, err = s.callAPI("GET", "/status", nil)
-	case "list_nodes":
-		result, err = s.callAPI("GET", "/nodes", nil)
-	case "list_backends":
-		result, err = s.callAPI("GET", "/backends", nil)
-	case "list_servers":
-		result, err = s.callAPI("GET", "/servers", nil)
-	case "list_incidents":
-		query := url.Values{}
-		if val, ok := params.Arguments["status"].(string); ok && val != "" {
-			query.Set("status", val)
-		}
-		if val, ok := params.Arguments["severity"].(string); ok && val != "" {
-			query.Set("severity", val)
-		}
-		if val, ok := params.Arguments["q"].(string); ok && val != "" {
-			query.Set("q", val)
-		}
-		path := "/incidents"
-		if len(query) > 0 {
-			path += "?" + query.Encode()
-		}
-		result, err = s.callAPI("GET", path, nil)
-	case "get_incident":
-		var incID int64
-		if rawID, ok := params.Arguments["id"]; ok {
-			switch v := rawID.(type) {
-			case float64:
-				incID = int64(v)
-			case int:
-				incID = int64(v)
-			case int64:
-				incID = v
-			case string:
-				incID, _ = strconv.ParseInt(v, 10, 64)
-			}
-		}
-		if incID <= 0 {
-			s.sendError(id, -32602, "Valid incident ID is required")
-			return
-		}
-		result, err = s.callAPI("GET", fmt.Sprintf("/incidents/%d", incID), nil)
-	case "propose_action":
-		reason, _ := params.Arguments["reason"].(string)
-		evidence, _ := params.Arguments["evidence"].(string)
-		if reason == "" || evidence == "" {
-			s.sendError(id, -32602, "Both reason and evidence are required")
-			return
-		}
-		result = fmt.Sprintf("Action proposed successfully based on reason: %s [Evidence: %s]", reason, evidence)
-	default:
-		s.sendError(id, -32601, "Tool not found: "+params.Name)
-		return
-	}
-
-	if err != nil {
-		s.sendResult(id, map[string]any{
-			"content": []map[string]any{
-				{
-					"type": "text",
-					"text": "Error calling API: " + err.Error(),
-				},
-			},
-			"isError": true,
-		})
-		return
-	}
-
-	s.sendResult(id, map[string]any{
-		"content": []map[string]any{
-			{
-				"type": "text",
-				"text": result,
-			},
-		},
-	})
-}
-
-func (s *MCPServer) callAPI(method, endpoint string, body io.Reader) (string, error) {
-	client := s.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-
-	req, err := http.NewRequest(method, s.APIURL+endpoint, body)
-	if err != nil {
-		return "", err
-	}
-	if s.APIToken != "" {
-		req.Header.Set("Authorization", "Bearer "+s.APIToken)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(respBody), nil
-}
-
-func (s *MCPServer) sendResult(id any, result any) {
-	resp := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Result:  result,
-	}
-	b, _ := json.Marshal(resp)
-	fmt.Fprintln(s.Out, string(b))
-}
-
-func (s *MCPServer) sendError(id any, code int, msg string) {
-	resp := JSONRPCResponse{
-		JSONRPC: "2.0",
-		ID:      id,
-		Error: &Error{
-			Code:    code,
-			Message: msg,
-		},
-	}
+func (s *MCPServer) write(resp *mcp.Response) {
 	b, _ := json.Marshal(resp)
 	fmt.Fprintln(s.Out, string(b))
 }
 
 func main() {
-	apiURL := os.Getenv("KONSOLGW_API_URL")
-	apiToken := os.Getenv("KONSOLGW_API_TOKEN")
-	server := NewMCPServer(apiURL, apiToken, os.Stdin, os.Stdout)
-	if err := server.Run(); err != nil {
+	srv := NewMCPServer(os.Getenv("KONSOLGW_API_URL"), os.Getenv("KONSOLGW_API_TOKEN"), os.Stdin, os.Stdout)
+	srv.HTTPClient = &http.Client{Timeout: 30 * time.Second}
+	if os.Getenv("KONSOLGW_INSECURE") == "1" {
+		// The gateway is usually reached by IP with a self-signed certificate.
+		srv.HTTPClient.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+	}
+	if err := srv.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "MCP server error: %v\n", err)
 		os.Exit(1)
 	}

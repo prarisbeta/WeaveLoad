@@ -163,6 +163,17 @@ CREATE TABLE IF NOT EXISTS alerts (
 	acked_by    TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS api_tokens (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	name         TEXT NOT NULL,
+	prefix       TEXT NOT NULL,
+	token_hash   TEXT NOT NULL UNIQUE,
+	created_by   TEXT NOT NULL DEFAULT '',
+	created_at   TEXT NOT NULL,
+	last_used_at TEXT,
+	revoked      INTEGER NOT NULL DEFAULT 0
+);
 `
 
 func (s *Store) migrate() error {
