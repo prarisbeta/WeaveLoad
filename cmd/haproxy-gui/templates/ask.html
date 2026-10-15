@@ -1,28 +1,49 @@
 {{define "ask.html"}}{{template "chrome_header" .}}{{template "ask_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "ask_content"}}
+<div class="ask-page">
 <h1>Tanya Gateway</h1>
-<p class="hint">Tanyakan dalam bahasa biasa, mis. <em>"kenapa OMS lambat?"</em> atau <em>"IP mana yang paling berbahaya hari ini?"</em>. AI mengambil data lewat tool baca-saja, menyusun linimasa, lalu mengusulkan tindakan. AI <strong>tidak pernah menjalankan</strong> apa pun: usulan masuk Policy Engine dan menunggu persetujuan manusia.</p>
+<p class="ask-lead">Tanyakan kondisi gateway dalam bahasa biasa. AI membaca data lewat tool baca-saja, menyusun linimasa kejadian, lalu mengusulkan tindakan.</p>
 
 {{if not .Enabled}}
-<div class="panel notice-bad"><strong>Provider AI belum dikonfigurasi.</strong> Isi <code>KONSOLGW_GEMINI_API_KEY</code> atau <code>KONSOLGW_ANTHROPIC_API_KEY</code> di <code>/etc/haproxy-gui/env</code>, lalu restart layanan. Ringkasan insiden dikirim ke penyedia AI tanpa password/token; alamat IP klien ikut terkirim.</div>
+<div class="panel ask-setup">
+  <strong>Fitur ini belum aktif: provider AI belum diatur.</strong>
+  <ol>
+    <li>Buka file <code>/etc/haproxy-gui/env</code> di server.</li>
+    <li>Isi salah satu: <code>KONSOLGW_GEMINI_API_KEY</code> atau <code>KONSOLGW_ANTHROPIC_API_KEY</code>.</li>
+    <li>Restart layanan: <code>sudo systemctl restart haproxy-gui</code>.</li>
+  </ol>
+  <p class="hint" style="margin:10px 0 0;">Ringkasan insiden dikirim ke penyedia AI tanpa password/token, tetapi alamat IP klien ikut terkirim.</p>
+</div>
 {{end}}
 
-<div class="panel">
-  <form id="ask-form" class="member-form">
-    <label>Pertanyaan<textarea name="question" rows="3" maxlength="500" required placeholder="Kenapa backend OMS lambat sejak jam 09.00?"></textarea></label>
-    <div class="row-actions">
-      <button type="button" class="primary" {{if not .Enabled}}disabled{{end}} hx-post="/api/ai/ask" hx-include="#ask-form" hx-target="#ask-out" hx-indicator="#ask-spin" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Tanya</button>
-      <span id="ask-spin" class="htmx-indicator muted">Menganalisis&hellip;</span>
+<div class="panel ask-card">
+  <form id="ask-form">
+    <label class="ask-label" for="ask-question">Pertanyaan Anda</label>
+    <textarea id="ask-question" name="question" rows="3" maxlength="500" required placeholder="Contoh: Kenapa backend OMS lambat sejak jam 09.00?"></textarea>
+    <div class="ask-chips" aria-label="Contoh pertanyaan">
+      <button type="button" class="ask-chip" data-ask-example="Kenapa backend OMS lambat sejak jam 09.00?">Kenapa OMS lambat?</button>
+      <button type="button" class="ask-chip" data-ask-example="IP mana yang paling berbahaya hari ini?">IP paling berbahaya</button>
+      <button type="button" class="ask-chip" data-ask-example="Apakah ada lonjakan error 5xx dalam satu jam terakhir?">Lonjakan error 5xx</button>
+      <button type="button" class="ask-chip" data-ask-example="Server backend mana yang sering down?">Server sering down</button>
+    </div>
+    <div class="ask-bar">
+      <button type="button" class="primary" {{if not .Enabled}}disabled title="Atur provider AI dulu"{{end}} hx-post="/api/ai/ask" hx-include="#ask-form" hx-target="#ask-out" hx-indicator="#ask-spin" hx-disabled-elt="this" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Tanya</button>
+      <span id="ask-spin" class="htmx-indicator muted">Menganalisis, mohon tunggu&hellip;</span>
+      <span class="ask-keys">Ctrl + Enter untuk mengirim</span>
     </div>
   </form>
 </div>
-<div id="ask-out"></div>
+
+<p class="ask-safe"><span aria-hidden="true">&#128274;</span><span>AI <strong>tidak pernah menjalankan</strong> tindakan sendiri. Usulan masuk ke <a href="/policy">Policy Engine</a> dan menunggu persetujuan manusia.</span></p>
+
+<div id="ask-out" aria-live="polite"></div>
+</div>
 {{end}}
 
 {{define "ask_result.html"}}
 {{if .Error}}
-<div class="panel notice-bad"><strong>{{.Error}}</strong></div>
+<div class="panel notice-bad" role="alert"><strong>{{.Error}}</strong></div>
 {{else if .Answer}}
 <div class="panel">
   <h3 style="margin-top:0">Jawaban</h3>

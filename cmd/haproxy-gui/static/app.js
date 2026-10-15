@@ -862,3 +862,18 @@
 })();
 
 
+// "Tanya Gateway": example chips fill the question; Ctrl/Cmd+Enter submits.
+(function () {
+  document.addEventListener("click", function (e) {
+    var chip = e.target.closest("[data-ask-example]");
+    if (!chip) return;
+    var box = document.querySelector("#ask-form textarea");
+    if (box) { box.value = chip.getAttribute("data-ask-example"); box.focus(); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
+    if (!e.target.matches || !e.target.matches("#ask-form textarea")) return;
+    var btn = document.querySelector("#ask-form button.primary");
+    if (btn && !btn.disabled) btn.click();
+  });
+})();
