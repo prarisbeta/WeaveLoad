@@ -132,6 +132,9 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | KONSOLGW_API_TOKEN=kgw_.
 | `list_nodes` | baca | Node (host) dan pool yang memakainya | — |
 | `list_backends` | baca | Backend, status, server UP/DOWN, sesi | — |
 | `list_servers` | baca | Semua server di semua backend | — |
+| `get_traffic_summary` | baca | Analisis trafik dari access log: total request, 5xx dan rasionya, latensi rata-rata, IP, path, host teratas, backend terlambat | `lines` 100-5000 (opsional, default 1000) |
+| `get_waiting_room` | baca | Jumlah pengunjung di ruang tunggu (HTTP 429): sedang menunggu, sudah diloloskan, menyerah, per pool. Perkiraan dari log; dihitung per IP klien | `minutes` 1-60 (opsional, default 10) |
+| `get_active_sessions` | baca | Sesi aktif langsung per node (host backend), dengan rincian pool/server, node tersibuk lebih dulu | — |
 | `list_incidents` | baca | Daftar insiden | `status`, `severity`, `q` (opsional) |
 | `get_incident` | baca | Detail insiden + catatan + event terkait | `id` (wajib) |
 | `propose_action` | usulan | Mencatat usulan untuk operator (tidak mengeksekusi) | `reason`, `evidence` (wajib, maks 2000 karakter) |

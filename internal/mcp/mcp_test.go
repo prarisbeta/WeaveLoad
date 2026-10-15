@@ -105,8 +105,8 @@ func TestToolsListMarksReadToolsReadOnlyAndNotPropose(t *testing.T) {
 	if err := json.Unmarshal(b, &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Tools) != 8 {
-		t.Fatalf("got %d tools, want 8", len(out.Tools))
+	if len(out.Tools) != 11 {
+		t.Fatalf("got %d tools, want 11", len(out.Tools))
 	}
 	for _, tl := range out.Tools {
 		ro := tl.Annotations["readOnlyHint"] == true
@@ -121,10 +121,15 @@ func TestToolsListMarksReadToolsReadOnlyAndNotPropose(t *testing.T) {
 
 func TestToolCall_ReadToolsHitTheRightPaths(t *testing.T) {
 	cases := map[string]string{
-		`{"name":"get_status"}`:    "/status",
-		`{"name":"list_nodes"}`:    "/nodes",
-		`{"name":"list_backends"}`: "/backends",
-		`{"name":"list_servers"}`:  "/servers",
+		`{"name":"get_status"}`:                                           "/status",
+		`{"name":"get_traffic_summary"}`:                                  "/traffic",
+		`{"name":"get_waiting_room"}`:                                     "/waiting-room",
+		`{"name":"get_active_sessions"}`:                                  "/sessions",
+		`{"name":"get_waiting_room","arguments":{"minutes":30}}`:          "/waiting-room?minutes=30",
+		`{"name":"get_traffic_summary","arguments":{"lines":2500}}`:       "/traffic?lines=2500",
+		`{"name":"list_nodes"}`:                                           "/nodes",
+		`{"name":"list_backends"}`:                                        "/backends",
+		`{"name":"list_servers"}`:                                         "/servers",
 		`{"name":"list_incidents","arguments":{"status":"open","q":"a"}}`: "/incidents?q=a&status=open",
 		`{"name":"get_incident","arguments":{"id":101}}`:                  "/incidents/101",
 		`{"name":"get_incident","arguments":{"id":"7"}}`:                  "/incidents/7",

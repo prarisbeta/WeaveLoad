@@ -61,13 +61,16 @@ func TestMCPServer_ToolsList(t *testing.T) {
 	}
 
 	expectedTools := map[string]bool{
-		"get_status":     false,
-		"list_nodes":     false,
-		"list_backends":  false,
-		"list_servers":   false,
-		"list_incidents": false,
-		"get_incident":   false,
-		"propose_action": false,
+		"get_status":          false,
+		"get_traffic_summary": false,
+		"get_waiting_room":    false,
+		"get_active_sessions": false,
+		"list_nodes":          false,
+		"list_backends":       false,
+		"list_servers":        false,
+		"list_incidents":      false,
+		"get_incident":        false,
+		"propose_action":      false,
 	}
 
 	for _, toolItem := range rawTools {

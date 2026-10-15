@@ -31,6 +31,16 @@ func Tools() []Tool {
 			InputSchema: Schema{Type: "object", Properties: map[string]any{}}, Annotations: readOnly},
 		{Name: "list_servers", Description: "List every server across all backends (status, weight, drain/maintenance).",
 			InputSchema: Schema{Type: "object", Properties: map[string]any{}}, Annotations: readOnly},
+		{Name: "get_traffic_summary", Description: "Analyze recent HTTP traffic from the access log: total requests, 5xx errors and error ratio, average latency, top client IPs, top paths, top hosts and the slowest backends.",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{
+				"lines": map[string]any{"type": "integer", "description": "How many of the newest log lines to analyze (100-5000, default 1000)"},
+			}}, Annotations: readOnly},
+		{Name: "get_waiting_room", Description: "Show how many visitors are held on the waiting page (HTTP 429) right now: visitors waiting, admitted and abandoned in the look-back window, 429 responses, longest wait, per-pool counts and the longest-waiting client IPs. Estimated from the access log, so counts are distinct client IPs.",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{
+				"minutes": map[string]any{"type": "integer", "description": "Look-back window in minutes (1-60, default 10)"},
+			}}, Annotations: readOnly},
+		{Name: "get_active_sessions", Description: "Show live active sessions per node (backend host): the total for each node and the pool/server rows behind it, busiest node first. Use it to see where load sits and which node is saturated.",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{}}, Annotations: readOnly},
 		{Name: "list_incidents", Description: "List security incidents with optional filters (status, severity, search query).",
 			InputSchema: Schema{Type: "object", Properties: map[string]any{
 				"status":   str("Filter by status: open, investigating, mitigated, resolved, false_positive"),

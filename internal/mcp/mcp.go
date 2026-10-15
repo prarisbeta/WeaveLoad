@@ -171,6 +171,20 @@ func (s *Server) callTool(ctx context.Context, p CallToolParams) (map[string]any
 		return get("/backends")
 	case "list_servers":
 		return get("/servers")
+	case "get_traffic_summary":
+		path := "/traffic"
+		if n := intArg(p.Arguments["lines"]); n > 0 {
+			path += "?lines=" + strconv.FormatInt(n, 10)
+		}
+		return get(path)
+	case "get_waiting_room":
+		path := "/waiting-room"
+		if n := intArg(p.Arguments["minutes"]); n > 0 {
+			path += "?minutes=" + strconv.FormatInt(n, 10)
+		}
+		return get(path)
+	case "get_active_sessions":
+		return get("/sessions")
 	case "list_incidents":
 		q := url.Values{}
 		for _, k := range []string{"status", "severity", "q"} {
