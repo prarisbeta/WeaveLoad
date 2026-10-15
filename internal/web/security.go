@@ -9,6 +9,7 @@ import (
 
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/store"
+	"haproxy-gui/internal/threatintel"
 )
 
 // SecurityStore is the subset of *store.Store the security pages need.
@@ -29,7 +30,7 @@ const securityEventsPageSize = 50
 // 400 rather than silently passed through to SQL.
 var validSecurityRules = map[string]bool{
 	"": true, "brute_force": true, "rate_anomaly": true, "path_scan": true,
-	"sensitive_probe": true, "http_abuse": true, "backend_abuse": true, "rate_limited": true, "threat_intel": true,
+	"sensitive_probe": true, "http_abuse": true, "backend_abuse": true, "rate_limited": true, "threat_intel": true, "known_bad_ip": true,
 }
 var validSecuritySeverities = map[string]bool{"": true, "low": true, "medium": true, "high": true, "critical": true}
 var validSecurityStatuses = map[string]bool{"": true, "open": true, "acknowledged": true, "dismissed": true, "escalated": true}
@@ -150,6 +151,14 @@ func (h *SecurityEventDetail) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 type SecurityIPHandler struct {
 	Store     SecurityStore
 	Templates *template.Template
+	// Intel, when set, adds feed and reputation data to the page. It never
+	// makes a network call from here.
+	Intel IntelPeeker
+}
+
+// IntelPeeker looks an IP up in already-loaded threat intelligence.
+type IntelPeeker interface {
+	Peek(ip string) threatintel.Result
 }
 
 func (h *SecurityIPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -169,13 +178,19 @@ func (h *SecurityIPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var intel threatintel.Result
+	if h.Intel != nil {
+		intel = h.Intel.Peek(ip)
+	}
 	renderTemplate(w, h.Templates, "security_ip.html", struct {
 		Chrome
-		IP     string
-		Risk   store.IPRisk
-		Events []store.SecurityEvent
-		Total  int
-	}{Chrome: NewChrome(r, "security"), IP: ip, Risk: risk, Events: events, Total: total})
+		IP       string
+		Risk     store.IPRisk
+		Events   []store.SecurityEvent
+		Total    int
+		Intel    threatintel.Result
+		HasIntel bool
+	}{Chrome: NewChrome(r, "security"), IP: ip, Risk: risk, Events: events, Total: total, Intel: intel, HasIntel: h.Intel != nil})
 }
 
 // securityStatusActions are the only transitions the API accepts.

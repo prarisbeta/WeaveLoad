@@ -10,6 +10,7 @@ import (
 // is worse than the same severity of generic rate anomaly.
 var ruleMultiplier = map[Rule]float64{
 	RuleThreatIntel:    1.5,
+	RuleKnownBadIP:     1.2,
 	RuleSensitiveProbe: 1.5,
 	RuleBruteForce:     1.3,
 	RulePathScan:       1.2,

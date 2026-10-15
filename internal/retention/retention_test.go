@@ -47,6 +47,10 @@ func (f *fakeStore) PrunePolicyActions(time.Time) (int64, error) {
 	f.mark("policy_actions")
 	return 6, nil
 }
+func (f *fakeStore) PruneIPIntel(time.Time) (int64, error) {
+	f.mark("ip_intel")
+	return 7, nil
+}
 func (f *fakeStore) PruneAlerts(t time.Time) (int64, error) {
 	f.mark("alerts")
 	f.alerts = t

@@ -21,6 +21,7 @@ import (
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
+	"haproxy-gui/internal/threatintel"
 	"haproxy-gui/internal/web"
 )
 
@@ -61,6 +62,7 @@ type routeDeps struct {
 	cfg       appconfig.Config
 	policy    *policy.Engine
 	canary    *canary.Watcher
+	intel     *threatintel.Service // nil unless feeds or an AbuseIPDB key are configured
 }
 
 // chain applies middleware in the order given: chain(h, a, b, c) runs
@@ -144,7 +146,11 @@ func buildRoutes(d routeDeps) http.Handler {
 	securityHandler := &web.SecurityHandler{Store: d.store, Templates: d.templates}
 	mux.Handle("GET /security", chain(securityHandler, requireAuth, requireViewSecurity))
 	mux.Handle("GET /security/events/{id}", chain(&web.SecurityEventDetail{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
-	mux.Handle("GET /security/ip/{ip}", chain(&web.SecurityIPHandler{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
+	ipHandler := &web.SecurityIPHandler{Store: d.store, Templates: d.templates}
+	if d.intel != nil { // assigning a nil *Service would make the interface non-nil
+		ipHandler.Intel = d.intel
+	}
+	mux.Handle("GET /security/ip/{ip}", chain(ipHandler, requireAuth, requireViewSecurity))
 	mux.Handle("POST /api/security/events/{id}/status", chain(&web.SecurityEventStatusAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 
 	// --- incident management & evidence bundle (P7) ---

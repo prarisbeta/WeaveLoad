@@ -194,6 +194,15 @@ CREATE TABLE IF NOT EXISTS policy_actions (
 );
 CREATE INDEX IF NOT EXISTS idx_policy_status ON policy_actions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_policy_target ON policy_actions(type, target);
+
+CREATE TABLE IF NOT EXISTS ip_intel (
+	ip          TEXT PRIMARY KEY,
+	abuse_score INTEGER NOT NULL DEFAULT -1,
+	reports     INTEGER NOT NULL DEFAULT 0,
+	country     TEXT NOT NULL DEFAULT '',
+	isp         TEXT NOT NULL DEFAULT '',
+	checked_at  TEXT NOT NULL
+);
 `
 
 func (s *Store) migrate() error {

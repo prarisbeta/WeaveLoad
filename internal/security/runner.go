@@ -1,6 +1,7 @@
 package security
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/redisping"
 	"haproxy-gui/internal/store"
+	"haproxy-gui/internal/threatintel"
 )
 
 // Store is the persistence the Runner needs — satisfied by *store.Store,
@@ -45,6 +47,10 @@ type Runner struct {
 	// detections. The detector only observes; whether anything happens is the
 	// Policy Engine's decision.
 	Policy Submitter
+
+	// Intel, when set, enriches every IP that trips a detector with feed
+	// and reputation data; a listed IP also gets a known_bad_ip detection.
+	Intel IntelLookup
 
 	// Now defaults to time.Now; overridable for tests.
 	Now func() time.Time
@@ -93,10 +99,68 @@ func (r *Runner) Tick() error {
 
 	scores := map[string]float64{}
 	for ip := range touchedIPs {
+		r.checkIntel(ip, t, false)
 		scores[ip] = r.updateRisk(ip, t)
+		// The live reputation lookup spends a rate-limited API quota, so it
+		// is reserved for IPs the local detectors already distrust.
+		if scores[ip] >= liveLookupScore && r.checkIntel(ip, t, true) {
+			scores[ip] = r.updateRisk(ip, t)
+		}
 	}
 	r.proposeBlocks(detections, scores)
 	return nil
+}
+
+// IntelLookup is the slice of *threatintel.Service the Runner uses.
+type IntelLookup interface {
+	Lookup(ctx context.Context, ip string, live bool) threatintel.Result
+}
+
+const (
+	// liveLookupScore is the risk score at which an IP is worth a live
+	// reputation lookup.
+	liveLookupScore = 35
+	// abuseDetectionScore is the AbuseIPDB confidence at which an IP counts
+	// as a known-bad source.
+	abuseDetectionScore = 75
+)
+
+// checkIntel looks ip up in the threat-intelligence feeds (or, when live,
+// at AbuseIPDB) and records a known_bad_ip detection if it is listed. It
+// reports whether it recorded one.
+func (r *Runner) checkIntel(ip string, now time.Time, live bool) bool {
+	if r.Intel == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	res := r.Intel.Lookup(ctx, ip, live)
+
+	evidence := map[string]any{}
+	switch {
+	case res.Listed():
+		evidence["feeds"] = res.Feeds
+	case res.AbuseScore >= abuseDetectionScore:
+		evidence["abuse_confidence"], evidence["reports"] = res.AbuseScore, res.Reports
+	default:
+		return false
+	}
+	if res.Country != "" {
+		evidence["country"] = res.Country
+	}
+	if res.ISP != "" {
+		evidence["isp"] = res.ISP
+	}
+	d := Detection{
+		Rule: RuleKnownBadIP, Severity: SeverityHigh, SubjectType: SubjectIP, Subject: ip,
+		FirstSeen: now, LastSeen: now, Count: 1, Evidence: evidence,
+		Fingerprint: fmt.Sprintf("%s|%s|%s", RuleKnownBadIP, ip, now.UTC().Format("20060102")),
+	}
+	if _, _, err := r.Store.UpsertSecurityEvent(toStoreEvent(d)); err != nil {
+		log.Printf("security: persist known_bad_ip for %s: %v", ip, err)
+		return false
+	}
+	return true
 }
 
 // autoBlockScore is the risk score an IP must reach before a critical CTI

@@ -18,6 +18,7 @@ const (
 	RuleBackendAbuse   Rule = "backend_abuse"
 	RuleRateLimited    Rule = "rate_limited"
 	RuleThreatIntel    Rule = "threat_intel"
+	RuleKnownBadIP     Rule = "known_bad_ip"
 )
 
 // Severity ranks how serious a Detection is. Higher severities contribute

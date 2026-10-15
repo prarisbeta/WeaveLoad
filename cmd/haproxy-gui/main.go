@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,6 +36,7 @@ import (
 	"haproxy-gui/internal/security"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
+	"haproxy-gui/internal/threatintel"
 	"haproxy-gui/internal/web"
 )
 
@@ -43,6 +46,34 @@ var templatesFS embed.FS
 // blocklistPath is the HAProxy map file the Policy Engine adds blocked IPs to
 // (the same "Blocklist IP" list the ACL page manages).
 const blocklistPath = "/etc/haproxy/maps/blocklist_ip.lst"
+
+// newIntelService builds the threat-intelligence service from the environment,
+// or returns nil when neither blocklist feeds nor an AbuseIPDB key are set, so
+// a default install makes no outbound calls.
+//
+//	KONSOLGW_INTEL_FEEDS=spamhaus_drop,tor_exit,et_compromised
+//	KONSOLGW_ABUSEIPDB_KEY=...   KONSOLGW_ABUSEIPDB_DAILY_LIMIT=900
+func newIntelService(s *store.Store) *threatintel.Service {
+	feeds, unknown := threatintel.FeedsFromNames(strings.Split(os.Getenv("KONSOLGW_INTEL_FEEDS"), ","))
+	for _, u := range unknown {
+		log.Printf("threat intel: ignoring unknown feed %q (known: spamhaus_drop, tor_exit, et_compromised)", u)
+	}
+	key := os.Getenv("KONSOLGW_ABUSEIPDB_KEY")
+	if len(feeds) == 0 && key == "" {
+		return nil
+	}
+	limit, _ := strconv.Atoi(os.Getenv("KONSOLGW_ABUSEIPDB_DAILY_LIMIT"))
+	log.Printf("threat intel enabled: %d feed(s), abuseipdb=%v", len(feeds), key != "")
+	return &threatintel.Service{Feeds: feeds, Store: s, AbuseKey: key, AbuseDailyLimit: limit}
+}
+
+// intelOrNil avoids handing the Runner an interface that wraps a nil pointer.
+func intelOrNil(s *threatintel.Service) security.IntelLookup {
+	if s == nil {
+		return nil
+	}
+	return s
+}
 
 // expirePolicyPeriodically undoes policy actions whose TTL has ended.
 func expirePolicyPeriodically(ctx context.Context, e *policy.Engine) {
@@ -150,7 +181,15 @@ func run() error {
 		Audit: s,
 	}
 
+	intel := newIntelService(s)
+	intelCtx, stopIntel := context.WithCancel(context.Background())
+	defer stopIntel()
+	if intel != nil {
+		go intel.Run(intelCtx, 6*time.Hour)
+	}
+
 	mux := buildRoutes(routeDeps{
+		intel:     intel,
 		policy:    policyEngine,
 		canary:    canaryWatcher,
 		templates: tpl,
@@ -176,7 +215,7 @@ func run() error {
 	go sweeper.Run(retentionCtx, time.Hour)
 	go expirePolicyPeriodically(retentionCtx, policyEngine)
 	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
-	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine); err != nil {
+	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine, intel); err != nil {
 		log.Printf("security engine disabled: %v", err)
 	}
 
@@ -259,7 +298,7 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 // reuses whatever Redis connection the Settings page has configured for the
 // rate-limit queue, read fresh on every tick so a later configuration
 // change takes effect without a restart.
-func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine) error {
+func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine, intel *threatintel.Service) error {
 	tailer, err := haproxylog.NewTailerAtEnd(logPath)
 	if err != nil {
 		return err
@@ -269,6 +308,7 @@ func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.En
 		Engine: security.NewEngine(security.DefaultThresholds()),
 		Tailer: tailer,
 		Policy: pe,
+		Intel:  intelOrNil(intel),
 		RedisOpts: func() (redisping.Options, bool) {
 			rs, err := s.GetRedisSettings()
 			if err != nil || rs.Host == "" {

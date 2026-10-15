@@ -18,6 +18,19 @@
   {{end}}
 </div>
 
+{{if .HasIntel}}
+<div class="panel" style="margin-bottom:16px">
+  <h3 style="margin-top:0">Threat Intelligence</h3>
+  <table>
+    <tr><th>Daftar blokir publik</th><td>{{if .Intel.Feeds}}{{range .Intel.Feeds}}<span class="badge badge-down">{{.}}</span> {{end}}{{else}}<span class="muted">tidak terdaftar</span>{{end}}</td></tr>
+    {{if ge .Intel.AbuseScore 0}}
+    <tr><th>AbuseIPDB</th><td>Confidence <strong>{{.Intel.AbuseScore}}</strong>/100, {{.Intel.Reports}} laporan</td></tr>
+    <tr><th>Negara / ISP</th><td>{{.Intel.Country}} {{.Intel.ISP}}</td></tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
 <div class="panel">
   <h3 style="margin-top:0">Riwayat Kejadian ({{.Total}})</h3>
   {{if not .Events}}
