@@ -4,46 +4,46 @@
 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
   <div>
     <h1 style="margin:0">{{t .Language "nav_incidents"}}</h1>
-    <p class="hint" style="margin:4px 0 0 0">Pelacakan dan investigasi insiden keamanan/operasional lintas kejadian deteksi HAProxy.</p>
+    <p class="hint" style="margin:4px 0 0 0">{{t .Language "inc_desc"}}</p>
   </div>
   {{if .CanManage}}
   <a href="/incidents/new" class="btn primary" style="font-weight:600; padding:8px 16px; border-radius:6px; text-decoration:none; box-shadow:0 1px 2px rgba(0,0,0,0.15);">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-    Buat Insiden Baru
+    {{t .Language "inc_btn_new"}}
   </a>
   {{end}}
 </div>
 
 <div class="panel" style="margin-bottom:16px">
   <div style="display:flex; gap:8px; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:10px; flex-wrap:wrap;">
-    <a href="/incidents" class="button {{if and (eq .Status "") (eq .Severity "") (eq .Search "")}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">Semua ({{.Total}})</a>
-    <a href="/incidents?status=open" class="button {{if eq .Status "open"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">Terbuka ({{.OpenCount}})</a>
-    <a href="/incidents?status=investigating" class="button {{if eq .Status "investigating"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">Investigasi ({{.InvestigatingCount}})</a>
-    <a href="/incidents?status=mitigated" class="button {{if eq .Status "mitigated"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">Dimitigasi ({{.MitigatedCount}})</a>
-    <a href="/incidents?status=resolved" class="button {{if eq .Status "resolved"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">Selesai ({{.ResolvedCount}})</a>
+    <a href="/incidents" class="button {{if and (eq .Status "") (eq .Severity "") (eq .Search "")}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">{{t .Language "all"}} ({{.Total}})</a>
+    <a href="/incidents?status=open" class="button {{if eq .Status "open"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">{{t .Language "inc_status_open"}} ({{.OpenCount}})</a>
+    <a href="/incidents?status=investigating" class="button {{if eq .Status "investigating"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">{{t .Language "inc_status_investigating"}} ({{.InvestigatingCount}})</a>
+    <a href="/incidents?status=mitigated" class="button {{if eq .Status "mitigated"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">{{t .Language "inc_status_mitigated"}} ({{.MitigatedCount}})</a>
+    <a href="/incidents?status=resolved" class="button {{if eq .Status "resolved"}}primary{{end}}" style="font-size:12px; padding:4px 10px; text-decoration:none;">{{t .Language "inc_status_resolved"}} ({{.ResolvedCount}})</a>
   </div>
 
   <form method="get" action="/incidents" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end">
-    <label>Tingkat
+    <label>{{t .Language "sec_filter_severity"}}
       <select name="severity">
-        <option value="">Semua</option>
+        <option value="">{{t .Language "all"}}</option>
         <option value="low" {{if eq .Severity "low"}}selected{{end}}>Rendah (Low)</option>
         <option value="medium" {{if eq .Severity "medium"}}selected{{end}}>Sedang (Medium)</option>
         <option value="high" {{if eq .Severity "high"}}selected{{end}}>Tinggi (High)</option>
         <option value="critical" {{if eq .Severity "critical"}}selected{{end}}>Kritis (Critical)</option>
       </select>
     </label>
-    <label>Status
+    <label>{{t .Language "status"}}
       <select name="status">
-        <option value="">Semua</option>
-        <option value="open" {{if eq .Status "open"}}selected{{end}}>Terbuka (Open)</option>
-        <option value="investigating" {{if eq .Status "investigating"}}selected{{end}}>Investigasi</option>
-        <option value="mitigated" {{if eq .Status "mitigated"}}selected{{end}}>Dimitigasi</option>
-        <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>Selesai (Resolved)</option>
+        <option value="">{{t .Language "all"}}</option>
+        <option value="open" {{if eq .Status "open"}}selected{{end}}>{{t .Language "inc_status_open"}} (Open)</option>
+        <option value="investigating" {{if eq .Status "investigating"}}selected{{end}}>{{t .Language "inc_status_investigating"}}</option>
+        <option value="mitigated" {{if eq .Status "mitigated"}}selected{{end}}>{{t .Language "inc_status_mitigated"}}</option>
+        <option value="resolved" {{if eq .Status "resolved"}}selected{{end}}>{{t .Language "inc_status_resolved"}} (Resolved)</option>
       </select>
     </label>
-    <label>Pencarian <input type="text" name="q" value="{{.Search}}" placeholder="Judul atau ringkasan..."></label>
-    <button type="submit">Filter</button>
+    <label>{{t .Language "search"}} <input type="text" name="q" value="{{.Search}}" placeholder="{{t .Language "inc_search_ph"}}"></label>
+    <button type="submit">{{t .Language "filter"}}</button>
     {{if or .Status .Severity .Search}}
     <a href="/incidents" class="button" style="text-decoration:none">Reset</a>
     {{end}}
@@ -52,19 +52,19 @@
 
 <div class="panel">
   {{if not .Incidents}}
-  <p class="muted" style="padding:24px 0; text-align:center;">Tidak ada insiden yang cocok dengan kriteria filter.</p>
+  <p class="muted" style="padding:24px 0; text-align:center;">{{t .Language "inc_empty_msg"}}</p>
   {{else}}
   <table>
     <thead>
       <tr>
         <th style="width:60px">ID</th>
-        <th>Judul Insiden</th>
-        <th style="width:100px">Tingkat</th>
-        <th style="width:120px">Status</th>
-        <th style="width:140px">Penanggung Jawab</th>
-        <th style="width:80px; text-align:center">Kejadian</th>
-        <th style="width:160px">Diperbarui</th>
-        <th style="width:120px">Aksi</th>
+        <th>{{t .Language "inc_col_title"}}</th>
+        <th style="width:100px">{{t .Language "sec_filter_severity"}}</th>
+        <th style="width:120px">{{t .Language "status"}}</th>
+        <th style="width:140px">{{t .Language "inc_col_owner"}}</th>
+        <th style="width:80px; text-align:center">{{t .Language "inc_col_events"}}</th>
+        <th style="width:160px">{{t .Language "inc_col_updated"}}</th>
+        <th style="width:120px">{{t .Language "actions"}}</th>
       </tr>
     </thead>
     <tbody>
@@ -91,7 +91,7 @@
         <td style="text-align:center"><span class="badge badge-nocheck">{{.EventCount}}</span></td>
         <td><span style="font-size:12px; color:var(--ink-muted);">{{.UpdatedAt.Format "02 Jan 15:04"}}</span></td>
         <td>
-          <a href="/incidents/{{.ID}}" class="button" style="font-size:12px; padding:3px 8px; text-decoration:none;">Buka &rarr;</a>
+          <a href="/incidents/{{.ID}}" class="button" style="font-size:12px; padding:3px 8px; text-decoration:none;">{{t $.Language "details"}} &rarr;</a>
         </td>
       </tr>
       {{end}}
@@ -100,3 +100,4 @@
   {{end}}
 </div>
 {{end}}
+

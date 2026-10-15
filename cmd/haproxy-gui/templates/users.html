@@ -76,6 +76,16 @@
       {{else}}
       <button hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"enable"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "btn_activate"}}</button>
       {{end}}
+      <details style="display:inline-block">
+        <summary style="cursor:pointer; font-size:12px; padding:4px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface);">{{t $.Language "users_btn_reset_pw"}}</summary>
+        <form hx-post="/api/users/update" hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' style="display:flex; gap:4px; margin-top:4px;">
+          <input type="hidden" name="user_id" value="{{.ID}}">
+          <input type="hidden" name="action" value="reset_password">
+          <input type="password" name="new_password" placeholder="{{t $.Language "password_new_ph"}}" required style="padding:4px 6px; font-size:12px; width:120px;">
+          <button type="submit" style="padding:4px 8px; font-size:12px;">{{t $.Language "save"}}</button>
+        </form>
+      </details>
+      <button class="danger" hx-post="/api/users/update" hx-vals='{"user_id":"{{.ID}}","action":"delete"}' hx-target="#users-panel" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}' hx-confirm="{{t $.Language "users_confirm_delete"}} {{.Email}}?">{{t $.Language "btn_delete"}}</button>
       </div>
       {{end}}
     </td>

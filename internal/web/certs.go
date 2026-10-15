@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -15,6 +16,12 @@ import (
 // CertLister is the subset of *certs.Store the SSL page needs.
 type CertLister interface {
 	List() ([]certs.Info, error)
+	ListStaged() ([]certs.Info, error)
+}
+
+// CertInstaller is the subset of *certs.Store the install action needs.
+type CertInstaller interface {
+	Install(fileName string) (certs.InstallResult, error)
 }
 
 // CertStager is the subset of *certs.Store the upload action needs.
@@ -34,20 +41,24 @@ func (h *CertsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to list certificates: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	staged, err := h.Certs.ListStaged()
+	if err != nil {
+		http.Error(w, "failed to list staged certificates: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	u, _ := auth.UserFromContext(r.Context())
 	renderTemplate(w, h.Templates, "certs.html", struct {
 		Chrome
 		Certs     []certs.Info
+		Staged    []certs.Info
 		Now       time.Time
 		CanUpload bool
-	}{Chrome: NewChrome(r, "certs"), Certs: list, Now: time.Now(), CanUpload: u.Role.Can(store.CapManageConfig)})
+	}{Chrome: NewChrome(r, "certs"), Certs: list, Staged: staged, Now: time.Now(), CanUpload: u.Role.Can(store.CapManageConfig)})
 }
 
-// CertUploadStagingDir is where uploaded bundles land pending review; an
-// admin still has to move them into the live ssl/ directory (via the
-// deploy runbook) since HAProxy's "crt" list is static per-frontend and
-// wiring a brand new file in requires a config change anyway, which goes
-// through the normal validate-then-apply config flow.
+// CertUploadHandler stages an uploaded bundle for review. Activating it is a
+// separate step (CertInstallHandler), since that touches the live ssl/
+// directory and reloads HAProxy.
 type CertUploadHandler struct {
 	Stager     CertStager
 	StagingDir string
@@ -104,8 +115,48 @@ func (h *CertUploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderTemplate(w, h.Templates, "apply_result.html", struct {
-		OK     bool
-		Output string
-	}{OK: true, Output: fmt.Sprintf("Staged at %s (CN=%s, expires %s). Wire it into a bind line via the Config editor to activate.", path, info.CommonName, info.NotAfter.Format("2006-01-02"))})
+	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, true,
+		fmt.Sprintf("Staged at %s (CN=%s, expires %s). Reload this page and use the Ready to install list to activate it.", path, info.CommonName, info.NotAfter.Format("2006-01-02"))))
+}
+
+// CertInstallHandler moves a staged bundle into the live ssl directory and
+// reloads HAProxy through the root helper. Every attempt is audit-logged,
+// success or failure.
+type CertInstallHandler struct {
+	Installer CertInstaller
+	Audit     AuditRecorder
+	Templates *template.Template
+}
+
+func (h *CertInstallHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	filename := r.FormValue("filename")
+	u, _ := auth.UserFromContext(r.Context())
+
+	res, err := h.Installer.Install(filename)
+	if errors.Is(err, certs.ErrInvalidFileName) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, "failed to run install helper: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	detail := "installed and reloaded"
+	if !res.OK {
+		detail = "install failed (auto rollback expected): " + res.Output
+	}
+	if err := h.Audit.Record(store.AuditEntry{
+		UserEmail: u.Email, RemoteIP: clientIP(r),
+		Action: "cert.install", Target: filename, Detail: detail,
+	}); err != nil {
+		http.Error(w, "install outcome could not be audit-logged: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !res.OK {
+		http.Error(w, "Pemasangan gagal, sertifikat lama dipulihkan otomatis: "+res.Output, http.StatusBadGateway)
+		return
+	}
+	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, true, res.Output))
 }

@@ -51,6 +51,7 @@ install -o root -g root -m 755 "$HERE/../bin/haproxy-gui" /usr/local/bin/haproxy
 echo "==> installing root helpers + sudoers"
 install -o root -g root -m 750 "$HERE/haproxy-gui-apply.sh" /usr/local/sbin/haproxy-gui-apply
 install -o root -g root -m 750 "$HERE/haproxy-gui-restart.sh" /usr/local/sbin/haproxy-gui-restart
+install -o root -g root -m 750 "$HERE/haproxy-gui-install-cert.sh" /usr/local/sbin/haproxy-gui-install-cert
 visudo -cf "$HERE/sudoers.haproxy-gui" || { echo "sudoers file failed validation, aborting"; exit 1; }
 install -o root -g root -m 440 "$HERE/sudoers.haproxy-gui" /etc/sudoers.d/haproxy-gui
 

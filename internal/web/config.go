@@ -81,7 +81,7 @@ func (h *ValidateAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to run validator: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	renderTemplate(w, h.Templates, "validate_result.html", res)
+	renderTemplate(w, h.Templates, "validate_result.html", newResultView(r, res.OK, res.Output))
 }
 
 // SaveApplyAction handles "Save & Apply": validates, stages, and — only if
@@ -117,7 +117,7 @@ func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			UserEmail: u.Email, RemoteIP: ip,
 			Action: "config.apply", Detail: "rejected: failed haproxy -c: " + validation.Output,
 		})
-		renderTemplate(w, h.Templates, "validate_result.html", validation)
+		renderTemplate(w, h.Templates, "validate_result.html", newResultView(r, validation.OK, validation.Output))
 		return
 	}
 
@@ -152,7 +152,7 @@ func (h *SaveApplyAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Penerapan gagal, konfigurasi dikembalikan otomatis ke versi sebelumnya: "+res.Output, http.StatusBadGateway)
 		return
 	}
-	renderTemplate(w, h.Templates, "apply_result.html", res)
+	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, res.OK, res.Output))
 }
 
 // RollbackAction restores one of the timestamped backups cfgfile.Store
@@ -213,7 +213,7 @@ func (h *RollbackAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, res.Output, http.StatusBadGateway)
 		return
 	}
-	renderTemplate(w, h.Templates, "apply_result.html", res)
+	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, res.OK, res.Output))
 }
 
 // BackupDownloadAction streams a decrypted backup file as an attachment download.
@@ -331,5 +331,5 @@ func (h *RestartServiceAction) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		http.Error(w, res.Output, http.StatusBadGateway)
 		return
 	}
-	renderTemplate(w, h.Templates, "apply_result.html", res)
+	renderTemplate(w, h.Templates, "apply_result.html", newResultView(r, res.OK, res.Output))
 }

@@ -9,8 +9,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -47,6 +49,15 @@ func (i Info) ExpiresWithin30(now time.Time) bool {
 // Store manages the directory HAProxy's "bind ... crt" options point at.
 type Store struct {
 	Dir string
+
+	// StagingDir is where StagePEM-written bundles wait for Install.
+	StagingDir string
+	// InstallScript is the root helper (deploy/haproxy-gui-install-cert.sh)
+	// that moves a staged bundle into Dir and reloads HAProxy. SudoBin, when
+	// set, is prepended as "<SudoBin> -n <script> <path>" (see
+	// deploy/sudoers.haproxy-gui); tests leave it empty.
+	InstallScript string
+	SudoBin       string
 }
 
 func New(dir string) *Store { return &Store{Dir: dir} }
@@ -55,8 +66,20 @@ func New(dir string) *Store { return &Store{Dir: dir} }
 // leaf certificate. Files that aren't valid PEM bundles are skipped rather
 // than failing the whole listing, since ssl/ may contain standalone .crt/
 // .key files alongside the combined .pem HAProxy actually loads.
-func (s *Store) List() ([]Info, error) {
-	entries, err := os.ReadDir(s.Dir)
+func (s *Store) List() ([]Info, error) { return listDir(s.Dir) }
+
+// ListStaged is List for StagingDir: uploaded bundles not yet installed. A
+// staging dir that doesn't exist yet (nothing uploaded) is an empty list.
+func (s *Store) ListStaged() ([]Info, error) {
+	list, err := listDir(s.StagingDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return list, err
+}
+
+func listDir(dir string) ([]Info, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read cert dir: %w", err)
 	}
@@ -65,7 +88,7 @@ func (s *Store) List() ([]Info, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".pem") {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(s.Dir, e.Name()))
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
 			continue
 		}
@@ -147,6 +170,43 @@ func (s *Store) StagePEM(stagingDir, targetFileName string, content []byte) (str
 		return "", Info{}, fmt.Errorf("write staged cert: %w", err)
 	}
 	return path, info, nil
+}
+
+// ErrInvalidFileName is returned for a certificate file name that is empty,
+// has a path separator, or does not end in .pem.
+var ErrInvalidFileName = errors.New("invalid certificate file name")
+
+// InstallResult is the outcome of running InstallScript.
+type InstallResult struct {
+	OK     bool
+	Output string
+}
+
+// Install hands the staged bundle fileName to the root helper, which
+// validates it again, backs up any cert it replaces, installs it into the
+// live ssl directory, checks the HAProxy config and reloads — rolling back on
+// failure. The helper's own failure is reported in the result, not as an
+// error, so callers can show its output; an error means the helper never ran.
+func (s *Store) Install(fileName string) (InstallResult, error) {
+	if !validPEMFileName(fileName) {
+		return InstallResult{}, fmt.Errorf("%w: %q", ErrInvalidFileName, fileName)
+	}
+	args := []string{filepath.Join(s.StagingDir, fileName)}
+	var cmd *exec.Cmd
+	if s.SudoBin != "" {
+		cmd = exec.Command(s.SudoBin, append([]string{"-n", s.InstallScript}, args...)...)
+	} else {
+		cmd = exec.Command(s.InstallScript, args...)
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return InstallResult{OK: false, Output: string(out)}, nil
+		}
+		return InstallResult{}, fmt.Errorf("run install helper: %w", err)
+	}
+	return InstallResult{OK: true, Output: string(out)}, nil
 }
 
 func validPEMFileName(name string) bool {

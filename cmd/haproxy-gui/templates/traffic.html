@@ -1,0 +1,86 @@
+{{define "traffic.html"}}{{template "chrome_header" .}}{{template "traffic_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "traffic_content"}}
+<h1>{{t .Language "nav_traffic"}}</h1>
+<p class="hint">Analisis tren lalu lintas data, grafik performa, dan statistik sumber utama.</p>
+
+<div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 20px;">
+  <div class="kpi-card">
+    <span class="label">Total Permintaan (Sampel Log)</span>
+    <span class="value">{{.Summary.TotalRequests}}</span>
+  </div>
+  <div class="kpi-card">
+    <span class="label">Total Kesalahan 5xx</span>
+    <span class="value" style="color: {{if gt .Summary.Total5xx 0}}var(--bad){{else}}var(--ink){{end}}">{{.Summary.Total5xx}}</span>
+  </div>
+  <div class="kpi-card">
+    <span class="label">Rata-rata Latensi</span>
+    <span class="value">{{printf "%.2f" .Summary.AvgLatencyMs}} ms</span>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+  <div>{{.ChartReqSVG}}</div>
+  <div>{{.ChartErrSVG}}</div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+  <div class="panel">
+    <h3>IP Asal Terbanyak</h3>
+    {{if not .Summary.TopSources}}
+    <p class="muted">Belum ada data</p>
+    {{else}}
+    <table>
+      <tr><th>IP</th><th style="text-align:right">Permintaan</th></tr>
+      {{range .Summary.TopSources}}
+      <tr><td><a href="/security/ip/{{.Name}}">{{.Name}}</a></td><td style="text-align:right">{{.Count}}</td></tr>
+      {{end}}
+    </table>
+    {{end}}
+  </div>
+
+  <div class="panel">
+    <h3>Path / URL Terbanyak</h3>
+    {{if not .Summary.TopPaths}}
+    <p class="muted">Belum ada data</p>
+    {{else}}
+    <table>
+      <tr><th>Path</th><th style="text-align:right">Permintaan</th></tr>
+      {{range .Summary.TopPaths}}
+      <tr><td style="font-family:monospace; font-size:12px;">{{.Name}}</td><td style="text-align:right">{{.Count}}</td></tr>
+      {{end}}
+    </table>
+    {{end}}
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+  <div class="panel">
+    <h3>Host Domain Terbanyak</h3>
+    {{if not .Summary.TopHosts}}
+    <p class="muted">Belum ada data</p>
+    {{else}}
+    <table>
+      <tr><th>Host</th><th style="text-align:right">Permintaan</th></tr>
+      {{range .Summary.TopHosts}}
+      <tr><td>{{.Name}}</td><td style="text-align:right">{{.Count}}</td></tr>
+      {{end}}
+    </table>
+    {{end}}
+  </div>
+
+  <div class="panel">
+    <h3>Backend Lambat</h3>
+    {{if not .Summary.SlowerBackends}}
+    <p class="muted">Belum ada data</p>
+    {{else}}
+    <table>
+      <tr><th>Backend</th><th style="text-align:right">Rata-rata Latensi</th><th style="text-align:right">Permintaan</th></tr>
+      {{range .Summary.SlowerBackends}}
+      <tr><td><a href="/pools/{{.Name}}">{{.Name}}</a></td><td style="text-align:right">{{printf "%.1f" .AvgMs}} ms</td><td style="text-align:right">{{.Requests}}</td></tr>
+      {{end}}
+    </table>
+    {{end}}
+  </div>
+</div>
+{{end}}

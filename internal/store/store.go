@@ -6,6 +6,8 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -31,6 +33,16 @@ func Open(path string) (*Store, error) {
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	generated, err := s.EnsureBootstrapAdmin(os.Getenv("KONSOLGW_BOOTSTRAP_PASSWORD"))
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ensure bootstrap admin: %w", err)
+	}
+	if generated != "" {
+		// Shown once: it is not stored anywhere in plain text. Set
+		// KONSOLGW_BOOTSTRAP_PASSWORD to choose it instead.
+		log.Printf("created local admin %q with generated password %s - change it after the first login", bootstrapEmail, generated)
 	}
 	return s, nil
 }
@@ -138,6 +150,19 @@ CREATE TABLE IF NOT EXISTS incident_notes (
 	created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_incident_notes_inc ON incident_notes(incident_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS alerts (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	rule        TEXT NOT NULL,
+	severity    TEXT NOT NULL DEFAULT 'medium',
+	subject     TEXT NOT NULL,
+	message     TEXT NOT NULL,
+	status      TEXT NOT NULL DEFAULT 'active',
+	created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+	acked_at    TEXT,
+	acked_by    TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status, created_at DESC);
 `
 
 func (s *Store) migrate() error {
@@ -147,7 +172,49 @@ func (s *Store) migrate() error {
 	if err := s.migrateRoles(); err != nil {
 		return err
 	}
-	return s.migrateLanguage()
+	if err := s.migrateLanguage(); err != nil {
+		return err
+	}
+	return s.migrateTOTP()
+}
+
+func (s *Store) migrateTOTP() error {
+	var hasTOTP bool
+	rows, err := s.db.Query(`PRAGMA table_info(users)`)
+	if err != nil {
+		return fmt.Errorf("inspect users columns for totp: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull int
+		var dfltValue interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		if name == "totp_secret" {
+			hasTOTP = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if !hasTOTP {
+		if _, err := s.db.Exec(`ALTER TABLE users ADD COLUMN totp_secret TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add totp_secret column: %w", err)
+		}
+		if _, err := s.db.Exec(`ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add totp_enabled column: %w", err)
+		}
+		if _, err := s.db.Exec(`ALTER TABLE users ADD COLUMN totp_recovery_codes TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add totp_recovery_codes column: %w", err)
+		}
+	}
+	return nil
 }
 
 // migrateRoles upgrades a users table created before the 8-role RBAC model

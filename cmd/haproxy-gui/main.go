@@ -76,6 +76,9 @@ func run() error {
 	cfgfile.EnsureDefaultMapFiles()
 
 	certStore := certs.New(cfg.SSLDir)
+	certStore.StagingDir = cfg.StagingDir
+	certStore.InstallScript = cfg.CertScript
+	certStore.SudoBin = cfg.SudoBin
 	dirClient := omsdir.New(cfg.OMSDirBaseURL, cfg.OMSDirClientID, cfg.OMSDirClientSecret)
 	sysSampler := sysinfo.NewSampler()
 

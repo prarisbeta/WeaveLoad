@@ -1,12 +1,11 @@
-# Walkthrough — RBAC, Antrean, dan Keamanan
+# Walkthrough — RBAC, Autentikasi, Antrean, Trafik, Alert, dan Keamanan
 
-Panduan pakai untuk tiga fitur yang ditambahkan ke `haproxy-gui` pada 26 September 2026:
-RBAC 8-role, Antrean rate-limit + API konsumsi, dan Security Engine. Untuk konteks perencanaan
-dan status tiap task, lihat [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
+Panduan pakai untuk fitur-fitur utama yang telah dibangun di `haproxy-gui` (Konsol Gateway):
+RBAC 8-role, Autentikasi Username/Password & 2FA TOTP, Pengelolaan Pengguna, Antrean Rate-Limit, Analisis Trafik, Peringatan Sistem, Security Engine, dan Analisis AI. Untuk konteks perencanaan dan status tiap task, lihat [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
 
 ---
 
-## 1. RBAC 8-role
+## 1. RBAC 8-role & Autentikasi Pengguna
 
 ### Peran yang tersedia
 
@@ -20,130 +19,86 @@ dan status tiap task, lihat [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
 | **Auditor** | Lihat log, antrean, audit, keamanan (read-only). |
 | **Pengamat (Viewer)** | Tidak ada kapabilitas tambahan — hanya melihat dashboard dasar. |
 
-Peran menentukan menu apa yang muncul di sidebar dan endpoint apa yang bisa diakses — bukan
-hierarki peringkat, tapi daftar kapabilitas eksplisit per peran (`internal/store/users.go`,
-`rolePermissions`). Ini sengaja dipilih karena kebutuhan seperti "Analis SOC boleh lihat data
-keamanan/insiden, tapi tidak boleh menyentuh config HAProxy" tidak bisa dinyatakan sebagai
-perbandingan peringkat linier.
+Peran menentukan menu apa yang muncul di sidebar dan endpoint apa yang bisa diakses — bukan hierarki peringkat, tapi daftar kapabilitas eksplisit per peran (`internal/store/users.go`, `rolePermissions`).
 
-### Mengelola pengguna
+### Mengelola pengguna & Akun Default
 
-1. Buka **Pengguna** (butuh kapabilitas `manage_users` — Admin Platform/Super Admin secara
-   default).
-2. Tombol **Tambah Pengguna** untuk mendaftarkan akun baru (login tetap lewat SSO OMS; entri di
-   sini hanya menentukan peran awal).
-3. Di baris tiap pengguna, dropdown peran bisa diganti langsung. Sistem menolak jika Anda mencoba
-   menurunkan peran akun Anda sendiri ke peran tanpa `manage_users` — supaya Anda tidak
-   mengunci diri sendiri.
+1. Buka **Pengguna** (butuh kapabilitas `manage_users` — Admin Platform/Super Admin secara default).
+2. Akun admin awal dibuat otomatis hanya jika belum ada (tidak pernah ditimpa saat restart):
+   - **Username**: `konsolgw`
+   - **Password**: dari `KONSOLGW_BOOTSTRAP_PASSWORD` di `/etc/haproxy-gui/env`; jika kosong, dibuat acak dan dicatat sekali di log (`journalctl -u haproxy-gui | grep "created local admin"`). Ganti setelah login pertama.
+   - **Role**: `super_admin`
+3. **Tambah Pengguna**: Pendaftaran akun baru dengan kredensial username/password atau integrasi SSO.
+4. **Hapus Pengguna**: Admin dapat menghapus pengguna dari daftar pengguna. Sistem mencegah penghapusan akun Anda sendiri untuk keamanan.
+5. **Reset Password Admin**: Admin dapat mengatur ulang password pengguna lain langsung dari panel manajemen pengguna.
+6. **Ubah Password Mandiri**: Pengguna dapat mengubah password akun mereka sendiri melalui `/api/profile/password`.
 
-### Upgrade dari skema lama
+### Autentikasi 2FA TOTP
 
-Jika Anda meng-upgrade dari versi sebelum RBAC 8-role (peran `admin`/`operator`/`viewer`), migrasi
-berjalan otomatis saat aplikasi start pertama kali: `admin → platform_admin`,
-`operator → noc_operator`, `viewer` tetap `viewer`. Tidak ada akses yang berubah untuk akun yang
-sudah ada. **Sebelum meng-upgrade ke rilis ini di server produksi, backup dulu**
-`/var/lib/haproxy-gui/app.db` — migrasi ini menulis ulang tabel `users` sekali saja
-(idempoten, aman dijalankan ulang, tapi backup tetap prasyarat sebelum aksi tak-rutin di database
-produksi).
+1. Pengguna dapat mengaktifkan **2-Factor Authentication (TOTP)** standar RFC 6238 via `/api/profile/totp`.
+2. Saat diaktifkan, QR Code / Secret Key disajikan bersama 8 kode pemulihan (*recovery codes* 8 karakter).
+3. Pada halaman Login (`/auth/login-password`), setelah username dan password valid, langkah verifikasi kode TOTP 6-digit atau kode pemulihan akan diminta.
+4. **Integrasi Security Engine**: Setiap percobaan login yang gagal menghasilkan respons HTTP 401/403 yang dibaca langsung oleh HAProxy Security Engine untuk deteksi otomatis serangan *brute force*.
 
 ---
 
-## 2. Antrean (Queue) rate-limit
+## 2. Analisis Trafik (`/traffic`)
+
+### Fitur Utama
+
+Halaman **Analisis Trafik** (`/traffic`, butuh kapabilitas `view_logs`) menyajikan visualisasi real-time performa gateway:
+1. **Grafik SVG Murni (Pure Go)**: Menampilkan tren *Requests per Second* (req/s) dan persentase *5xx Error Rate* tanpa dependensi JavaScript eksternal.
+2. **Top Source IPs**: 10 IP pengirim trafik terbanyak.
+3. **Top Request Paths**: Path URL yang paling sering diakses.
+4. **Top Hostnames**: Domain / Virtual Host terpopuler.
+5. **Backend Paling Lambat**: Daftar backend dengan waktu respons (latency) tertinggi.
+
+---
+
+## 3. Peringatan Sistem (`/alerts`)
+
+### Cara Kerja & Pengelolaan
+
+Halaman **Peringatan Sistem** (`/alerts`) mencatat dan mengawasi kesehatan infrastruktur:
+1. **Kategori Alert**: Server DOWN, backend degraded, rasio 5xx melonjak, sertifikat SSL mendekati kedaluwarsa, serta penggunaan disk/memori.
+2. **Status Filter**: Pengguna dapat memfilter berdasarkan status `semua`, `belum ditinjau` (unacknowledged), dan `ditinjau` (acknowledged).
+3. **Konfirmasi (Acknowledge)**: Tombol konfirmasi mengirimkan `POST /api/alerts/{id}/ack` untuk menandai peringatan telah ditangani.
+
+---
+
+## 4. Analisis AI untuk Insiden & Keamanan
+
+### Fitur AI Assistant
+
+Sistem menyediakan integrasi AI (Anthropic LLM / Mock Provider) untuk membantu investigasi:
+1. **Analisis Insiden** (`POST /api/incidents/{id}/ai-analyze`): AI menganalisis linimasa kejadian, dampak service, dan merekomendasikan langkah mitigasi.
+2. **Analisis Keamanan** (`POST /api/security/events/{id}/ai-analyze`): Menganalisis pola serangan per IP/Rule dan memberikan wawasan ancaman.
+3. **Redaksi Data Sensitif**: Sebelum data dikirim ke LLM, filter sanitasi otomatis menyamarkan token API, kata sandi, dan kunci rahasia untuk menjaga privasi.
+
+---
+
+## 5. Antrean (Queue) rate-limit
 
 ### Apa isinya
 
-Setiap kali HAProxy menolak permintaan karena kena rate limit (status 429) pada pool yang punya
-aturan rate limit, `haproxy-gui` menulis kejadian itu ke sebuah list Redis
-(`haproxy:ratelimit:events`). Halaman **Antrean** (`/queue`, butuh kapabilitas `view_queue`) hanya
-mengintip isi list ini — tidak menghapusnya.
-
-### Prasyarat
-
-Simpan koneksi Redis di **Pengaturan** (`manage_settings`) terlebih dahulu. Tanpa itu, halaman
-Antrean menampilkan status "belum dikonfigurasi".
+Setiap kali HAProxy menolak permintaan karena kena rate limit (status 429) pada pool yang punya aturan rate limit, `haproxy-gui` menulis kejadian itu ke sebuah list Redis (`haproxy:ratelimit:events`). Halaman **Antrean** (`/queue`, butuh kapabilitas `view_queue`) mengintip isi list ini.
 
 ### API konsumsi eksternal
 
-Sistem lain (mis. modul Incident Management yang akan datang, atau SIEM eksternal) mengambil
-event dari antrean ini secara destruktif — sekali diambil, event itu hilang dari list — lewat:
+Sistem eksternal dapat mengambil event dari antrean ini secara destruktif via:
 
 ```
 POST /api/queue/ratelimit-events/consume?limit=50
 Authorization: Bearer <token>
 ```
 
-Token dibuat dari halaman **Pengaturan** → panel "Token API Konsumsi Antrean" → tombol
-**Buat Token** (atau **Buat Ulang Token** untuk mengganti yang lama). Token hanya ditampilkan
-sekali saat dibuat — salin dan simpan di tempat aman saat itu juga, aplikasi tidak
-menyimpannya dalam bentuk yang bisa ditampilkan ulang.
-
-`limit` opsional (default 50, maksimum 500). Respons:
-
-```json
-{"count": 2, "events": [{"time": "...", "pool": "https_oms", "status": "429", "raw": "..."}]}
-```
-
 ---
 
-## 3. Keamanan (Security Engine)
+## 6. Keamanan (Security Engine)
 
-### Cara kerja singkat
+### 7 Detektor Real-Time
 
-Setiap 15 detik, `haproxy-gui` membaca baris baru dari log akses HAProxy (mulai dari akhir log
-saat proses start — tidak memutar ulang riwayat lama), lalu mengevaluasinya lewat 7 detektor.
-**Ini murni observasi — tidak ada trafik yang diblokir otomatis.**
+Setiap 15 detik, Security Engine mengevaluasi baris log baru lewat 7 detektor: `brute_force`, `rate_anomaly`, `path_scan`, `sensitive_probe`, `http_abuse`, `backend_abuse`, dan `rate_limited`.
 
-| Rule | Yang dideteksi |
-|---|---|
-| `brute_force` | Login gagal (401/403 pada path login) beruntun dari satu IP dalam 5 menit. |
-| `rate_anomaly` | Laju permintaan satu IP jauh di atas kebiasaannya (atau di atas ambang mutlak untuk IP baru). |
-| `path_scan` | Banyak path unik + rasio 404 tinggi dari satu IP — ciri pemindaian direktori. |
-| `sensitive_probe` | Permintaan ke path yang menandakan probing (`/.env`, `/.git`, `wp-admin`, `/vendor/`, dll.). |
-| `http_abuse` | Banjir POST, rasio 4xx/5xx tinggi, atau burst permintaan dalam 10 detik. |
-| `backend_abuse` | Satu backend mengalami rasio 5xx tinggi, timeout, atau waktu antrean jauh di atas kebiasaannya. |
-| `rate_limited` | IP terkena rate limit (429) berulang kali dalam 5 menit — sinyal tambahan untuk skor risiko. |
+Setiap kejadian menambah skor risiko IP (0–100) yang dipetakan ke status: `normal` → `watch` (≥15) → `suspicious` (≥35) → `high_risk` (≥60).
 
-Setiap kejadian juga menambah **skor risiko** (0–100) untuk subjeknya (biasanya sebuah IP), yang
-meluruh seiring waktu (paruh 2 jam) dan naik jika IP itu memicu beberapa rule berbeda sekaligus.
-Skor ini dipetakan ke status: `normal` → `watch` (≥15) → `suspicious` (≥35) → `high_risk` (≥60).
-Status `blocked` **tidak pernah** diberikan otomatis oleh sistem — itu keputusan manual atau,
-nanti, keputusan Policy Engine (belum dikerjakan).
-
-### Halaman Keamanan
-
-1. Buka **Keamanan** di sidebar (`view_security` — Analis SOC, Admin Keamanan, Auditor, Admin
-   Platform, Super Admin).
-2. Filter di atas: **Rule**, **Tingkat** (low/medium/high/critical), **Status**
-   (terbuka/ditinjau/diabaikan/dieskalasi), **IP**, dan **Periode** (1 jam/24 jam/7 hari).
-   Mengubah filter memuat ulang tabel lewat htmx tanpa reload halaman penuh.
-3. Panel kanan **"IP Berisiko Tinggi"** menampilkan 10 IP dengan skor tertinggi saat ini,
-   dengan tautan ke profil masing-masing.
-4. Klik **Status** pada baris kejadian untuk membuka detailnya: bukti (jumlah, ambang yang
-   terlampaui, sampel), profil risiko subjek (jika IP), dan tombol aksi.
-5. Klik alamat IP di mana pun (tabel, panel risiko, detail kejadian) untuk membuka
-   `/security/ip/{ip}` — skor, status, dan seluruh riwayat kejadian untuk IP itu.
-
-### Menindaklanjuti kejadian
-
-Di halaman detail kejadian, tiga tombol aksi (butuh kapabilitas `manage_incidents` — Analis SOC,
-Admin Keamanan, Admin Platform, Super Admin):
-
-- **Tandai Ditinjau** — menandai `acknowledged`, tercatat siapa yang meninjau.
-- **Abaikan** — menandai `dismissed` (kejadian lama yang sudah diabaikan akan dibersihkan
-  otomatis dari database setelah beberapa waktu; kejadian yang masih terbuka/ditinjau tidak
-  pernah dihapus otomatis).
-- **Eskalasi** — menandai `escalated`, untuk kejadian yang perlu tindak lanjut lebih serius
-  (mis. calon insiden, begitu modul Incident Management ada).
-
-Setiap perubahan status tercatat di **Riwayat Aktivitas** (audit log) dengan email peninjau,
-IP asal, dan aksi persisnya.
-
-### Yang belum ada (lihat rencana implementasi)
-
-- Ambang deteksi (mis. berapa kali gagal login sebelum dianggap brute force) masih tetap di kode,
-  belum bisa diubah dari halaman Pengaturan.
-- Belum ada korelasi otomatis kejadian → insiden (modul Incident Management terpisah, belum
-  dikerjakan — lihat P7 di `IMPLEMENTATION_PLAN.md`).
-- Snapshot risiko per IP dipublikasikan ke Redis (`security:{ip}`) untuk dikonsumsi sistem lain,
-  memakai koneksi Redis yang sama dengan fitur Antrean — pastikan itu sudah dikonfigurasi di
-  Pengaturan jika Anda ingin sistem eksternal membaca profil risiko ini.

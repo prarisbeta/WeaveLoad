@@ -2,22 +2,26 @@
 
 Versi 0.4 · 27 September 2026 · Acuan: *HAIProxy Enterprise AI SRE Platform — Product Knowledge v0.1*
 
-> **Catatan status (27 Sep 2026):** implementasi fitur-fitur utama telah dibangun dan siap digunakan
+> **Catatan status (29 Sep 2026):** implementasi fitur-fitur utama telah dibangun dan siap digunakan
 > langsung di `haproxy-gui` / Konsol Gateway. Ringkasan dan pemetaannya ke ID task roadmap:
 >
 > | Dibangun | Memenuhi / Bagian Roadmap | Keterangan & Status |
 > |---|---|---|
-> | **RBAC 8-role** (`super_admin`…`viewer`, `Role.Can(Cap)`) | C6-1 (RBAC dasar) + P4-7 (role tambahan) | **Selesai**. 8 role kapabilitas terintegrasi di seluruh route dan UI, migrasi skema otomatis. |
+> | **RBAC 8-role & Pengelolaan Pengguna** | C6-1 (RBAC dasar) + P4-7 (role tambahan) | **Selesai**. 8 role kapabilitas terintegrasi, fitur delete user, admin password reset, & profil password. |
+> | **Autentikasi Username/Password & 2FA TOTP** | C0-3 (Login lokal + 2FA) | **Selesai**. Akun admin `konsolgw` dibuat sekali (password dari `KONSOLGW_BOOTSTRAP_PASSWORD` atau acak, tidak pernah ditimpa saat restart), 2FA TOTP (RFC 6238), recovery codes, & HTTP 401/403 brute-force feed. |
+> | **Analisis Trafik (`/traffic`)** | C3-6 & C3-7 (Grafik tren & UI Trafik) | **Selesai**. Visualisasi SVG murni (req/s, 5xx rate), top IP/path/host, & backend lambat. |
+> | **Peringatan Sistem (`/alerts`)** | C5-1 & C5-2 (Alerting system & UI) | **Selesai**. Pengawasan kesehatan server/backend/SSL/disk, status filter, & workflow acknowledge. |
+> | **Analisis AI (LLM Assistant)** | P8-4 & AI Analysis | **Selesai**. Redaksi data sensitif, endpoint analisis AI untuk insiden (`/api/incidents/{id}/ai-analyze`) & event keamanan. |
 > | **Pool & Node ala F5** (`/pools`, `/nodes`, wizard) | C8-1 s/d C8-6 (Manajemen pool & node) | **Selesai**. Parser `internal/haproxycfg`, UI live state, inline member edit, batch node actions. |
 > | **Antrean Rate-Limit & API Konsumsi** | C4 / Bridge P7 | **Selesai**. Antrean Redis di `/queue` dan endpoint bertoken `/api/queue/ratelimit-events/consume`. |
 > | **Security Engine** (7 detektor, skor risiko IP, `/security`) | P6 (Security analytics) | **Selesai (Observational)**. 7 rule deteksi real-time, sliding window, IP risk scoring, event deduplication. |
 > | **Incident Management** (`/incidents`, evidence bundle) | P7-1 & P7-2 (Incident Management) | **Selesai**. Status workflow, linimasa investigasi, korelasi security events, ekspor JSON & CSV. |
 > | **Error Pages Management** (`/error-pages`, template HTTP) | Fitur Enterprise / Reliability | **Selesai**. Template HTTP kustom (400..504) di `deploy/errors/`, handler & editor visual terintegrasi. |
-> | **i18n Localization** (Bahasa Indonesia & English) | C0-5 (i18n ID/EN) | **Selesai**. Paket `internal/i18n`, fungsi template `t`, selector bahasa dinamis. |
+> | **i18n Localization** (Bahasa Indonesia, EN, ZH, JA) | C0-5 (i18n ID/EN/ZH/JA) | **Selesai**. Paket `internal/i18n`, 4 katalog bahasa, fungsi template `t`, selector bahasa dinamis. |
 > | **REST API v1** (`/api/v1/*`) | C1-4 (HTTP API) + P8-1 (API baca) | **Selesai**. Endpoint terstandarisasi untuk status, nodes, backends, servers, incidents. |
 > | **Konsol Gateway MCP Server** (`cmd/konsolgw-mcp`) | P8-2 & P8-3 (MCP Server & Tools) | **Selesai**. JSON-RPC 2.0 stdio server, 7 tools terintegrasi, unit test `main_test.go`, panduan `docs/MCP_INTEGRATION.md`. |
 >
-> Detail teknis dapat dilihat di riwayat commit branch `feature/pool-node-management`, [`docs/MCP_INTEGRATION.md`](MCP_INTEGRATION.md), dan [`WALKTHROUGH.md`](WALKTHROUGH.md).
+> Detail teknis dapat dilihat di [`docs/WALKTHROUGH.md`](WALKTHROUGH.md) dan [`docs/MCP_INTEGRATION.md`](MCP_INTEGRATION.md).
 
 Konsol Gateway (nama kerja) adalah control plane untuk HAProxy dengan loop **Observe → Context →
 Decide → Act → Verify → Audit**. Produk ini dijual dalam 3 edisi dari satu codebase tertutup:

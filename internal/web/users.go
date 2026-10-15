@@ -1,7 +1,9 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -21,6 +23,8 @@ type UserAdmin interface {
 	SetRole(userID int64, role store.Role) error
 	SetEnabled(userID int64, enabled bool) error
 	CreateUser(email, name string, role store.Role) (store.User, error)
+	DeleteUser(userID int64) error
+	ResetPassword(userID int64, newPassword string) error
 }
 
 // UsersHandler lists accounts and lets an admin change roles / enable-
@@ -89,6 +93,21 @@ func (h *UserUpdateHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		actionErr = h.Store.SetEnabled(id, false)
 		auditAction = "user.disable"
+	case "delete":
+		if actor.ID == id {
+			http.Error(w, "Anda tidak bisa menghapus akun sendiri.", http.StatusForbidden)
+			return
+		}
+		actionErr = h.Store.DeleteUser(id)
+		auditAction = "user.delete"
+	case "reset_password":
+		newPassword := r.FormValue("new_password")
+		if strings.TrimSpace(newPassword) == "" {
+			http.Error(w, "Kata sandi baru tidak boleh kosong", http.StatusBadRequest)
+			return
+		}
+		actionErr = h.Store.ResetPassword(id, newPassword)
+		auditAction = "user.reset_password"
 	default:
 		http.Error(w, "unknown action: "+action, http.StatusBadRequest)
 		return
@@ -273,3 +292,139 @@ func (h *ProfileLanguageHandler) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	http.Redirect(w, r, ref, http.StatusSeeOther)
 }
+
+// ProfilePasswordStore is the subset of store needed for a user to change their password.
+type ProfilePasswordStore interface {
+	ChangePassword(userID int64, oldPassword, newPassword string) error
+}
+
+// ProfilePasswordHandler handles user password changes (POST /api/profile/password).
+type ProfilePasswordHandler struct {
+	Store ProfilePasswordStore
+	Audit AuditRecorder
+}
+
+func (h *ProfilePasswordHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form body", http.StatusBadRequest)
+		return
+	}
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok || u.ID == 0 {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	oldPass := r.FormValue("old_password")
+	newPass := r.FormValue("new_password")
+
+	if strings.TrimSpace(newPass) == "" {
+		http.Error(w, "Kata sandi baru tidak boleh kosong", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Store.ChangePassword(u.ID, oldPass, newPass); err != nil {
+		http.Error(w, "Gagal mengubah kata sandi: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if h.Audit != nil {
+		_ = h.Audit.Record(store.AuditEntry{
+			UserEmail: u.Email, RemoteIP: clientIP(r),
+			Action: "user.change_password", Target: strconv.FormatInt(u.ID, 10),
+			Detail: "result=ok",
+		})
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Kata sandi berhasil diperbarui"))
+}
+
+// ProfileTOTPStore is the subset of store needed for 2FA TOTP setup.
+type ProfileTOTPStore interface {
+	SetTOTP(userID int64, secret string, recoveryCodes []string) error
+	SetTOTPEnabled(userID int64, enabled bool) error
+}
+
+// ProfileTOTPHandler handles 2FA TOTP setup, enable, and disable actions (POST /api/profile/totp).
+type ProfileTOTPHandler struct {
+	Store ProfileTOTPStore
+	Audit AuditRecorder
+}
+
+func (h *ProfileTOTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok || u.ID == 0 {
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	action := r.FormValue("action")
+	switch action {
+	case "setup":
+		secret, err := auth.GenerateTOTPSecret()
+		if err != nil {
+			http.Error(w, "failed to generate TOTP secret", http.StatusInternalServerError)
+			return
+		}
+		codes, err := auth.GenerateRecoveryCodes()
+		if err != nil {
+			http.Error(w, "failed to generate recovery codes", http.StatusInternalServerError)
+			return
+		}
+		if err := h.Store.SetTOTP(u.ID, secret, codes); err != nil {
+			http.Error(w, "failed to save TOTP setup: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"secret":         secret,
+			"recovery_codes": codes,
+			"otpauth_url":    fmt.Sprintf("otpauth://totp/KonsolGateway:%s?secret=%s&issuer=KonsolGateway", u.Email, secret),
+		})
+	case "enable":
+		code := strings.TrimSpace(r.FormValue("code"))
+		if !auth.VerifyTOTPCode(u.TOTPSecret, code, time.Now()) {
+			http.Error(w, "Kode 2FA tidak valid. Pastikan waktu di perangkat Anda sesuai.", http.StatusBadRequest)
+			return
+		}
+		if err := h.Store.SetTOTPEnabled(u.ID, true); err != nil {
+			http.Error(w, "Gagal mengaktifkan 2FA: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if h.Audit != nil {
+			_ = h.Audit.Record(store.AuditEntry{
+				UserEmail: u.Email, RemoteIP: clientIP(r),
+				Action: "user.totp_enable", Target: strconv.FormatInt(u.ID, 10),
+				Detail: "result=ok",
+			})
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Autentikasi 2FA berhasil diaktifkan"))
+	case "disable":
+		if err := h.Store.SetTOTPEnabled(u.ID, false); err != nil {
+			http.Error(w, "Gagal menonaktifkan 2FA: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if h.Audit != nil {
+			_ = h.Audit.Record(store.AuditEntry{
+				UserEmail: u.Email, RemoteIP: clientIP(r),
+				Action: "user.totp_disable", Target: strconv.FormatInt(u.ID, 10),
+				Detail: "result=ok",
+			})
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Autentikasi 2FA dinonaktifkan"))
+	default:
+		http.Error(w, "unknown action", http.StatusBadRequest)
+	}
+}
+

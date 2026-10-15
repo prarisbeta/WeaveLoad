@@ -50,6 +50,9 @@ func TestMigrateRoles_UpgradesOldSchemaAndRemapsRoles(t *testing.T) {
 	if err := s.migrateRoles(); err != nil {
 		t.Fatalf("migrateRoles: %v", err)
 	}
+	if err := s.migrateTOTP(); err != nil {
+		t.Fatalf("migrateTOTP: %v", err)
+	}
 
 	cases := []struct {
 		email string
@@ -361,4 +364,173 @@ func TestRecordAndPruneAudit(t *testing.T) {
 	if len(remaining) != 1 || remaining[0].UserEmail != "alice@example.com" {
 		t.Errorf("remaining = %+v, want only alice's recent audit", remaining)
 	}
+}
+
+func TestEnsureDefaultUser_And_AuthenticateUser(t *testing.T) {
+	t.Setenv("KONSOLGW_BOOTSTRAP_PASSWORD", "gwkonsol")
+	s := newTestDB(t)
+
+	// konsolgw user is seeded by Open automatically
+	u, err := s.AuthenticateUser("konsolgw", "gwkonsol")
+	if err != nil {
+		t.Fatalf("AuthenticateUser konsolgw failed: %v", err)
+	}
+	if u.Email != "konsolgw" || u.Role != RoleSuperAdmin {
+		t.Errorf("u = %+v, want email=konsolgw role=super_admin", u)
+	}
+
+	// Wrong password fails
+	if _, err := s.AuthenticateUser("konsolgw", "wrongpass"); err == nil {
+		t.Error("expected error for wrong password")
+	}
+
+	// Unknown user fails
+	if _, err := s.AuthenticateUser("nonexistent", "gwkonsol"); err == nil {
+		t.Error("expected error for non-existent user")
+	}
+}
+
+func TestDeleteUser(t *testing.T) {
+	s := newTestDB(t)
+
+	u, err := s.CreateUser("todelete@example.com", "To Delete", RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	sess, err := s.CreateSession(u.ID, time.Hour)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	if err := s.DeleteUser(u.ID); err != nil {
+		t.Fatalf("DeleteUser: %v", err)
+	}
+
+	// User should no longer exist
+	if _, err := s.UserByID(u.ID); err != ErrNotFound {
+		t.Errorf("UserByID after delete = %v, want ErrNotFound", err)
+	}
+
+	// Session should be deleted as well
+	if _, err := s.Session(sess.ID); err != ErrNotFound {
+		t.Errorf("Session after user delete = %v, want ErrNotFound", err)
+	}
+}
+
+func TestResetPassword_And_ChangePassword(t *testing.T) {
+	s := newTestDB(t)
+
+	u, err := s.CreateUser("userpw@example.com", "User PW", RoleViewer)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	// ResetPassword sets new password without checking old
+	if err := s.ResetPassword(u.ID, "newsecret123"); err != nil {
+		t.Fatalf("ResetPassword: %v", err)
+	}
+
+	// Login with new secret succeeds
+	if _, err := s.AuthenticateUser("userpw@example.com", "newsecret123"); err != nil {
+		t.Fatalf("AuthenticateUser after ResetPassword: %v", err)
+	}
+
+	// ChangePassword with correct old password succeeds
+	if err := s.ChangePassword(u.ID, "newsecret123", "updatedsecret456"); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	// Old password no longer works
+	if _, err := s.AuthenticateUser("userpw@example.com", "newsecret123"); err == nil {
+		t.Error("expected authentication failure for old password")
+	}
+
+	// New updated password works
+	if _, err := s.AuthenticateUser("userpw@example.com", "updatedsecret456"); err != nil {
+		t.Fatalf("AuthenticateUser with updated password: %v", err)
+	}
+
+	// ChangePassword with wrong old password fails
+	if err := s.ChangePassword(u.ID, "wrongold", "anotherpw"); err == nil {
+		t.Error("expected error for wrong old password")
+	}
+}
+
+func TestEnsureBootstrapAdmin_UsesGivenPassword(t *testing.T) {
+	t.Setenv("KONSOLGW_BOOTSTRAP_PASSWORD", "from-env-123")
+	s := newTestDB(t)
+
+	u, err := s.AuthenticateUser("konsolgw", "from-env-123")
+	if err != nil {
+		t.Fatalf("login with env password: %v", err)
+	}
+	if u.Role != RoleSuperAdmin {
+		t.Errorf("role = %q, want super_admin", u.Role)
+	}
+	if _, err := s.AuthenticateUser("konsolgw", "gwkonsol"); err == nil {
+		t.Error("the old hardcoded password must not work")
+	}
+}
+
+func TestEnsureBootstrapAdmin_GeneratesPasswordWhenUnset(t *testing.T) {
+	t.Setenv("KONSOLGW_BOOTSTRAP_PASSWORD", "")
+	s := newTestDB(t)
+
+	// Already created by Open with a random password nobody was told; a
+	// second call must report nothing generated and leave it alone.
+	gen, err := s.EnsureBootstrapAdmin("")
+	if err != nil || gen != "" {
+		t.Fatalf("second call = %q, %v; want no new password", gen, err)
+	}
+	if _, err := s.AuthenticateUser("konsolgw", "gwkonsol"); err == nil {
+		t.Error("the old hardcoded password must not work")
+	}
+}
+
+func TestEnsureBootstrapAdmin_NeverOverwritesExistingPassword(t *testing.T) {
+	t.Setenv("KONSOLGW_BOOTSTRAP_PASSWORD", "first-password-1")
+	s := newTestDB(t)
+	if err := s.ResetPassword(mustUserID(t, s, "konsolgw"), "changed-by-admin-9"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.EnsureBootstrapAdmin("first-password-1"); err != nil {
+		t.Fatalf("EnsureBootstrapAdmin: %v", err)
+	}
+	if _, err := s.AuthenticateUser("konsolgw", "changed-by-admin-9"); err != nil {
+		t.Errorf("restart reset the admin's password: %v", err)
+	}
+}
+
+func TestEnsureBootstrapAdmin_GeneratedPasswordWorks(t *testing.T) {
+	t.Setenv("KONSOLGW_BOOTSTRAP_PASSWORD", "")
+	s := &Store{}
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
+	s.db = db
+	if err := s.migrate(); err != nil {
+		t.Fatal(err)
+	}
+
+	gen, err := s.EnsureBootstrapAdmin("")
+	if err != nil || len(gen) < 16 {
+		t.Fatalf("generated = %q, %v; want a password of at least 16 chars", gen, err)
+	}
+	if _, err := s.AuthenticateUser("konsolgw", gen); err != nil {
+		t.Errorf("login with the generated password: %v", err)
+	}
+}
+
+func mustUserID(t *testing.T, s *Store, email string) int64 {
+	t.Helper()
+	u, err := s.UserByEmail(email)
+	if err != nil {
+		t.Fatalf("UserByEmail(%q): %v", email, err)
+	}
+	return u.ID
 }

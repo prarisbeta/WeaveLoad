@@ -1,32 +1,32 @@
 {{define "settings.html"}}{{template "chrome_header" .}}{{template "settings_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "settings_content"}}
-<h1>Pengaturan</h1>
-<p class="hint">Pengaturan tingkat aplikasi ini terpisah dari konfigurasi HAProxy. Perubahan di sini tidak memuat ulang HAProxy.</p>
+<h1>{{t .Language "settings_title"}}</h1>
+<p class="hint">{{t .Language "settings_desc"}}</p>
 
 <div class="panel">
-  <h3>Koneksi Redis (untuk antrean/queue)</h3>
-  <p class="hint">Setiap kali suatu alamat IP melebihi Batas Laju (Rate Limit) sebuah pool, kejadiannya dikirim sebagai satu baris JSON ke antrean Redis (list <code>haproxy:ratelimit:events</code>), siap diproses sistem lain seperti pencatatan insiden atau notifikasi. Selalu tekan "Uji Koneksi" terlebih dahulu. Kalau berhasil, baru tekan "Simpan". Kosongkan Host untuk menonaktifkan fitur ini.</p>
+  <h3>{{t .Language "settings_redis_title"}}</h3>
+  <p class="hint">{{t .Language "settings_redis_desc"}}</p>
   <form id="redis-form" class="member-form">
     <label>Host<input type="text" name="host" value="{{.Redis.Host}}" required placeholder="127.0.0.1"></label>
     <label>Port<input type="text" name="port" value="{{if .Redis.Port}}{{.Redis.Port}}{{else}}6379{{end}}" required size="6" inputmode="numeric"></label>
-    <label>Password <span class="muted">(kosongkan jika tidak ada)</span><input type="password" name="password" value="{{.Redis.Password}}" autocomplete="new-password"></label>
-    <label>Nomor database <span class="muted">(0-15, biasanya 0)</span><input type="text" name="db" value="{{.Redis.DB}}" size="4" inputmode="numeric"></label>
-    <label class="check"><input type="checkbox" name="tls" value="1" {{if .Redis.TLS}}checked{{end}}> Gunakan TLS</label>
+    <label>Password <span class="muted">{{t .Language "settings_redis_pw_hint"}}</span><input type="password" name="password" value="{{.Redis.Password}}" autocomplete="new-password"></label>
+    <label>{{t .Language "settings_redis_db"}} <span class="muted">{{t .Language "settings_redis_db_hint"}}</span><input type="text" name="db" value="{{.Redis.DB}}" size="4" inputmode="numeric"></label>
+    <label class="check"><input type="checkbox" name="tls" value="1" {{if .Redis.TLS}}checked{{end}}> {{t .Language "settings_redis_tls"}}</label>
     <div class="row-actions">
-      <button type="button" hx-post="/api/settings/redis/test" hx-include="#redis-form" hx-target="#redis-test-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Uji Koneksi</button>
-      <button type="button" class="primary" hx-post="/api/settings/redis" hx-include="#redis-form" hx-target="#redis-test-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Simpan pengaturan Redis ini?">Simpan</button>
+      <button type="button" hx-post="/api/settings/redis/test" hx-include="#redis-form" hx-target="#redis-test-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>{{t .Language "settings_btn_test"}}</button>
+      <button type="button" class="primary" hx-post="/api/settings/redis" hx-include="#redis-form" hx-target="#redis-test-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Simpan pengaturan Redis ini?">{{t .Language "save"}}</button>
     </div>
   </form>
   <div id="redis-test-out"></div>
 </div>
 
 <div class="panel">
-  <h3>Token API Konsumsi Antrean</h3>
-  <p class="hint">Sistem eksternal atau modul Incident Management mengonsumsi antrean lewat <code>POST /api/queue/ratelimit-events/consume</code> dengan header <code>Authorization: Bearer &lt;token&gt;</code>. Setiap panggilan mengambil dan menghapus kejadian dari antrean (bukan sekadar melihat; lihat halaman <a href="/queue">Antrean</a> untuk itu). Buat token baru untuk menonaktifkan token lama.</p>
-  <p>Status: {{if .QueueTokenSet}}<span class="badge badge-up">Token aktif</span>{{else}}<span class="badge badge-nocheck">Belum dibuat</span>{{end}}</p>
+  <h3>{{t .Language "settings_token_title"}}</h3>
+  <p class="hint">{{t .Language "settings_token_desc"}}</p>
+  <p>{{t .Language "status"}}: {{if .QueueTokenSet}}<span class="badge badge-up">{{t .Language "settings_token_active"}}</span>{{else}}<span class="badge badge-nocheck">{{t .Language "settings_token_uncreated"}}</span>{{end}}</p>
   <div class="row-actions">
-    <button type="button" hx-post="/api/settings/queue-token/generate" hx-target="#queue-token-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="{{if .QueueTokenSet}}Token lama akan langsung tidak berlaku. Buat token baru?{{else}}Buat token baru?{{end}}">{{if .QueueTokenSet}}Buat Ulang Token{{else}}Buat Token{{end}}</button>
+    <button type="button" hx-post="/api/settings/queue-token/generate" hx-target="#queue-token-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="{{if .QueueTokenSet}}Token lama akan langsung tidak berlaku. Buat token baru?{{else}}Buat token baru?{{end}}">{{if .QueueTokenSet}}{{t .Language "settings_btn_regen_token"}}{{else}}{{t .Language "settings_btn_gen_token"}}{{end}}</button>
   </div>
   <div id="queue-token-out"></div>
 </div>
@@ -40,7 +40,8 @@
 
 {{define "queue_token_result.html"}}
 <div class="panel notice-ok">
-  <strong>Token baru dibuat. Salin sekarang, tidak akan ditampilkan lagi:</strong>
+  <strong>{{t .Language "settings_token_created_msg"}}</strong>
   <pre>{{.Token}}</pre>
 </div>
 {{end}}
+

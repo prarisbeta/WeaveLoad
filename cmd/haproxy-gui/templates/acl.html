@@ -103,7 +103,7 @@
     <form class="member-form" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;" hx-post="/api/acl/add" hx-target="#acl-root" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
       <input type="hidden" name="path" value="{{.Path}}">
       <div style="flex:1; min-width:200px;">
-        <input type="text" name="key" placeholder="{{if .HasValue}}Domain (misal: app.cni.net.id){{else}}Alamat IP / Subnet (misal: 192.168.1.50){{end}}" required style="width:100%;">
+        <input type="text" name="key" placeholder="{{if .HasValue}}{{t $.Language "acl_ph_domain"}}{{else}}{{t $.Language "acl_ph_ip"}}{{end}}" required style="width:100%;">
       </div>
       {{if .HasValue}}
         <div style="flex:1; min-width:200px;">

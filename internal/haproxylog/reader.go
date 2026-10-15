@@ -25,6 +25,7 @@ type Line struct {
 	StatusCode int
 
 	ClientIP string
+	Host     string // first captured request header ("{host|...}"), if any
 	Frontend string
 	Backend  string
 	Server   string
@@ -81,7 +82,7 @@ var httplogRE = regexp.MustCompile(
 		`(-?\d+)/(-?\d+)/(-?\d+)/(-?\d+)/(-?\d+)\s+` +
 		`(\d{3})\s+\d+\s+\S+\s+\S+\s+(\S{4})\s+` +
 		`\d+/\d+/\d+/\d+/\d+\s+\d+/\d+\s+` +
-		`(?:\{[^}]*\}\s+)?"(\S+)(?:\s+(\S+))?[^"]*"`,
+		`(?:\{([^}]*)\}\s+)?"(\S+)(?:\s+(\S+))?[^"]*"`,
 )
 
 func parseLine(raw string) Line {
@@ -111,10 +112,20 @@ func parseLine(raw string) Line {
 		l.Tr, _ = strconv.Atoi(m[9])
 		l.Tt, _ = strconv.Atoi(m[10])
 		l.Termination = m[12]
-		l.Method = m[13]
-		l.Path = normalizePath(m[14])
+		l.Host = firstHeader(m[13])
+		l.Method = m[14]
+		l.Path = normalizePath(m[15])
 	}
 	return l
+}
+
+// firstHeader returns the first "|"-separated value of a captured-header
+// block, which in this deployment is the Host header.
+func firstHeader(block string) string {
+	if i := strings.IndexByte(block, '|'); i >= 0 {
+		block = block[:i]
+	}
+	return strings.TrimSpace(block)
 }
 
 // normalizePath reduces a request-line target to just its path, stripping
@@ -186,4 +197,22 @@ func reverse(lines []Line) {
 	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
 		lines[i], lines[j] = lines[j], lines[i]
 	}
+}
+
+// TailRecent returns the HTTP request lines among the last n lines of path,
+// oldest first, for dashboards that aggregate recent traffic. Non-request
+// lines (startup or admin messages) are dropped, since they carry no client,
+// status or timers.
+func TailRecent(path string, n int) ([]Line, error) {
+	newestFirst, err := Read(path, Filter{Limit: n})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Line, 0, len(newestFirst))
+	for i := len(newestFirst) - 1; i >= 0; i-- {
+		if newestFirst[i].ClientIP != "" {
+			out = append(out, newestFirst[i])
+		}
+	}
+	return out, nil
 }

@@ -31,8 +31,13 @@ type fakeUserAdmin struct {
 	roleErr   error
 	enErr     error
 	createErr error
+	delErr    error
+	resetErr  error
 	lastRole  store.Role
 	lastID    int64
+	deletedID int64
+	resetID   int64
+	resetPW   string
 	lastEn    *bool
 	created   *store.User // last CreateUser call's (email, name, role), for assertions
 }
@@ -54,6 +59,14 @@ func (f *fakeUserAdmin) CreateUser(email, name string, role store.Role) (store.U
 	f.created = &u
 	f.users = append(f.users, u)
 	return u, nil
+}
+func (f *fakeUserAdmin) DeleteUser(id int64) error {
+	f.deletedID = id
+	return f.delErr
+}
+func (f *fakeUserAdmin) ResetPassword(id int64, newPW string) error {
+	f.resetID, f.resetPW = id, newPW
+	return f.resetErr
 }
 
 func usersTemplates(t *testing.T) *template.Template {
@@ -151,6 +164,46 @@ func TestUserUpdateHandler_DisableOtherUser_OK(t *testing.T) {
 	}
 	if ua.lastEn == nil || *ua.lastEn != false {
 		t.Errorf("SetEnabled call = %+v", ua.lastEn)
+	}
+}
+
+func TestUserUpdateHandler_CannotDeleteSelf(t *testing.T) {
+	ua := &fakeUserAdmin{}
+	h := &UserUpdateHandler{Store: ua, Audit: &fakeAudit{}, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/update", strings.NewReader("user_id=1&action=delete"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 (an admin must not be able to delete themselves)", rec.Code)
+	}
+	if ua.deletedID != 0 {
+		t.Error("DeleteUser should never have been called")
+	}
+}
+
+func TestUserUpdateHandler_DeleteOtherUser_OK(t *testing.T) {
+	ua := &fakeUserAdmin{}
+	au := &fakeAudit{}
+	h := &UserUpdateHandler{Store: ua, Audit: au, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/update", strings.NewReader("user_id=2&action=delete"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if ua.deletedID != 2 {
+		t.Errorf("deletedID = %d, want 2", ua.deletedID)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "user.delete" {
+		t.Errorf("audit entries = %+v", au.entries)
 	}
 }
 
@@ -390,5 +443,64 @@ func TestProfileLanguageHandler(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	if ls.lastLang != "ja" {
 		t.Errorf("store got lang=%s, want ja", ls.lastLang)
+	}
+}
+
+func TestUserUpdateHandler_ResetPassword(t *testing.T) {
+	ua := &fakeUserAdmin{}
+	au := &fakeAudit{}
+	h := &UserUpdateHandler{Store: ua, Audit: au, Templates: usersTemplates(t)}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/users/update", strings.NewReader("user_id=2&action=reset_password&new_password=secret123"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUser(req, store.User{ID: 1, Email: "admin@x.id"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if ua.resetID != 2 || ua.resetPW != "secret123" {
+		t.Errorf("ResetPassword called with id=%d pw=%s", ua.resetID, ua.resetPW)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "user.reset_password" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+type fakePWStore struct {
+	lastID int64
+	oldPW  string
+	newPW  string
+	err    error
+}
+
+func (f *fakePWStore) ChangePassword(userID int64, oldPassword, newPassword string) error {
+	f.lastID, f.oldPW, f.newPW = userID, oldPassword, newPassword
+	return f.err
+}
+
+func TestProfilePasswordHandler(t *testing.T) {
+	ps := &fakePWStore{}
+	au := &fakeAudit{}
+	h := &ProfilePasswordHandler{Store: ps, Audit: au}
+
+	u := store.User{ID: 10, Email: "user@example.com"}
+	req := httptest.NewRequest(http.MethodPost, "/api/profile/password", strings.NewReader("old_password=old&new_password=new"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ctx := auth.WithUser(req.Context(), u, store.Session{})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if ps.lastID != 10 || ps.oldPW != "old" || ps.newPW != "new" {
+		t.Errorf("store received id=%d old=%s new=%s", ps.lastID, ps.oldPW, ps.newPW)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "user.change_password" {
+		t.Errorf("audit entries = %+v", au.entries)
 	}
 }

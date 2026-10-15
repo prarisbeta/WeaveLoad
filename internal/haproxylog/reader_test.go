@@ -165,3 +165,47 @@ func contains(s, substr string) bool {
 		return false
 	})()
 }
+
+func TestParseLine_CapturesHostHeader(t *testing.T) {
+	raw := `Sep 26 08:21:10 haproxy-programmer haproxy[28813]: ::ffff:3.111.138.44:39516 [26/Sep/2026:08:21:10.602] https_in~ https_oms/node02 0/0/3/13/16 200 1045 - - --NI 3/2/0/0/0 0/0 {oms.cni.net.id|curl/8} "HEAD / HTTP/1.1"`
+	l := parseLine(raw)
+	if l.Host != "oms.cni.net.id" || l.Method != "HEAD" || l.Path != "/" {
+		t.Errorf("Host=%q Method=%q Path=%q", l.Host, l.Method, l.Path)
+	}
+	if noHost := parseLine(`x haproxy[1]: 10.0.0.1:1 [24/Sep/2026:10:00:00.000] a b/c 0/0/0/1/1 200 1 - - ---- 1/1/0/0/0 0/0 "GET /x HTTP/1.1"`); noHost.Host != "" || noHost.Path != "/x" {
+		t.Errorf("no header block: Host=%q Path=%q", noHost.Host, noHost.Path)
+	}
+}
+
+func TestTailRecent_OldestFirstHTTPLinesOnly(t *testing.T) {
+	path := writeFixture(t, fixture)
+	lines, err := TailRecent(path, 10)
+	if err != nil {
+		t.Fatalf("TailRecent: %v", err)
+	}
+	if len(lines) != 3 {
+		t.Fatalf("got %d lines, want the 3 httplog lines (startup message skipped)", len(lines))
+	}
+	if lines[0].ClientIP != "10.0.0.1" || lines[2].ClientIP != "10.0.0.3" {
+		t.Errorf("order = %s ... %s, want oldest first", lines[0].ClientIP, lines[2].ClientIP)
+	}
+}
+
+func TestTailRecent_LimitKeepsNewest(t *testing.T) {
+	path := writeFixture(t, fixture)
+	lines, err := TailRecent(path, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The newest 2 raw lines are the 10.0.0.3 request and the startup
+	// message; only the former is an httplog line.
+	if len(lines) != 1 || lines[0].ClientIP != "10.0.0.3" {
+		t.Errorf("lines = %+v", lines)
+	}
+}
+
+func TestTailRecent_MissingFileIsError(t *testing.T) {
+	if _, err := TailRecent(filepath.Join(t.TempDir(), "nope.log"), 5); err == nil {
+		t.Error("want error for missing log file")
+	}
+}

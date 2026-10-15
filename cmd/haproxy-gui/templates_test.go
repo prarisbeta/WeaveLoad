@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"haproxy-gui/internal/auth"
+	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/i18n"
 	"haproxy-gui/internal/store"
@@ -32,7 +34,7 @@ func (f fileConfig) SaveDraft(string, string) (string, error) { return "", nil }
 func (f fileConfig) Apply(string) (cfgfile.ApplyResult, error) {
 	return cfgfile.ApplyResult{OK: true}, nil
 }
-func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) { return nil, nil }
+func (f fileConfig) ListBackups() ([]cfgfile.Backup, error)    { return nil, nil }
 func (f fileConfig) GetBackupPath(name string) (string, error) { return "", nil }
 func (f fileConfig) ReadBackup(name string) (string, error)    { return f.content, nil }
 func (f fileConfig) DeleteBackup(name string) error            { return nil }
@@ -43,6 +45,26 @@ func (f fixedSettings) GetRedisSettings() (store.RedisSettings, error) { return 
 func (f fixedSettings) SetRedisSettings(store.RedisSettings) error     { return nil }
 func (f fixedSettings) GetQueueAPIToken() (string, error)              { return "", nil }
 func (f fixedSettings) SetQueueAPIToken(string) error                  { return nil }
+
+type noopAudit struct{}
+
+func (noopAudit) Record(store.AuditEntry) error { return nil }
+
+// fixedCerts serves one installed and one staged certificate, and a canned
+// install outcome, so the SSL page and its result partial render for real.
+type fixedCerts struct{}
+
+func (fixedCerts) List() ([]certs.Info, error) {
+	return []certs.Info{{FileName: "live.pem", CommonName: "live.cni.net.id", NotAfter: time.Now().Add(90 * 24 * time.Hour)}}, nil
+}
+
+func (fixedCerts) ListStaged() ([]certs.Info, error) {
+	return []certs.Info{{FileName: "palapacloud.id.pem", CommonName: "*.palapacloud.id", NotAfter: time.Now().Add(90 * 24 * time.Hour)}}, nil
+}
+
+func (fixedCerts) Install(string) (certs.InstallResult, error) {
+	return certs.InstallResult{OK: true, Output: "installed"}, nil
+}
 
 type fixedSecurity struct{}
 
@@ -76,9 +98,9 @@ func (fixedSecurity) ListIncidents(store.IncidentFilter) ([]store.Incident, int,
 	return []store.Incident{{ID: 1, Title: "Serangan Brute Force", Severity: "high", Status: "open", Owner: "admin@cni.net.id"}}, 1, nil
 }
 func (fixedSecurity) UpdateIncidentStatus(int64, string, string, string, string) error { return nil }
-func (fixedSecurity) AddIncidentNote(int64, string, string) (int64, error) { return 1, nil }
-func (fixedSecurity) LinkEventsToIncident(int64, []int64) error { return nil }
-func (fixedSecurity) UnlinkEventFromIncident(int64) error { return nil }
+func (fixedSecurity) AddIncidentNote(int64, string, string) (int64, error)             { return 1, nil }
+func (fixedSecurity) LinkEventsToIncident(int64, []int64) error                        { return nil }
+func (fixedSecurity) UnlinkEventFromIncident(int64) error                              { return nil }
 func (fixedSecurity) CorrelateCandidateEvents(string, string, int) ([]store.SecurityEvent, error) {
 	return nil, nil
 }
@@ -132,6 +154,8 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
 	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
 	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t)})
+	mux.Handle("GET /certs", &web.CertsHandler{Certs: fixedCerts{}, Templates: realTemplates(t)})
+	mux.Handle("POST /api/certs/install", &web.CertInstallHandler{Installer: fixedCerts{}, Audit: noopAudit{}, Templates: realTemplates(t)})
 	mux.Handle("GET /queue", &web.QueueHandler{Store: fixedSettings{}, Templates: realTemplates(t)})
 	mux.Handle("GET /security", &web.SecurityHandler{Store: fixedSecurity{}, Templates: realTemplates(t)})
 	mux.Handle("GET /security/events/{id}", &web.SecurityEventDetail{Store: fixedSecurity{}, Templates: realTemplates(t)})
@@ -161,6 +185,8 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 			"weight 50"},
 		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
 		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
+		{"certs.html", http.MethodGet, "/certs", nil, "palapacloud.id.pem"},
+		{"cert_install_result.html", http.MethodPost, "/api/certs/install", url.Values{"filename": {"palapacloud.id.pem"}}, "Berhasil diterapkan."},
 		{"queue.html", http.MethodGet, "/queue", nil, "belum dikonfigurasi"},
 		{"security.html", http.MethodGet, "/security", nil, "10.0.0.9"},
 		{"security_event.html", http.MethodGet, "/security/events/1", nil, "brute_force"},

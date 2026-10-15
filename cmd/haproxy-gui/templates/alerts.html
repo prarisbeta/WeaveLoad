@@ -1,0 +1,58 @@
+{{define "alerts.html"}}{{template "chrome_header" .}}{{template "alerts_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "alerts_content"}}
+<h1>Peringatan Sistem</h1>
+<p class="hint">Aturan pemantauan otomatis untuk kegagalan server, kesalahan HTTP 5xx, sertifikat SSL, dan penggunaan memori/disk.</p>
+
+{{if not .Alerts}}
+<div class="panel">
+  <div class="empty-state">
+    <h3>Tidak Ada Peringatan Aktif</h3>
+    <p class="muted">Seluruh layanan dan indikator pemantauan sistem dalam kondisi sehat.</p>
+  </div>
+</div>
+{{else}}
+<div class="panel">
+  <div class="table-scroll">
+    <table>
+      <tr>
+        <th>Waktu</th>
+        <th>Aturan</th>
+        <th>Tingkat</th>
+        <th>Subjek</th>
+        <th>Pesan</th>
+        <th>Status</th>
+        <th>Aksi</th>
+      </tr>
+      {{range .Alerts}}
+      <tr>
+        <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+        <td><strong>{{.Rule}}</strong></td>
+        <td>
+          {{if eq .Severity "critical"}}<span class="badge badge-down">CRITICAL</span>
+          {{else if eq .Severity "high"}}<span class="badge badge-down">HIGH</span>
+          {{else}}<span class="badge badge-warn">MEDIUM</span>{{end}}
+        </td>
+        <td>{{.Subject}}</td>
+        <td>{{.Message}}</td>
+        <td>
+          {{if eq .Status "active"}}<span class="badge badge-warn">Aktif</span>
+          {{else}}<span class="badge badge-up">Ditangani oleh {{.AckedBy}}</span>{{end}}
+        </td>
+        <td>
+          {{if eq .Status "active"}}
+          <form action="/api/alerts/{{.ID}}/ack" method="POST" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <button type="submit" style="padding:4px 8px; font-size:12px;">Tandai Ditangani</button>
+          </form>
+          {{else}}
+          <span class="muted">-</span>
+          {{end}}
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </div>
+</div>
+{{end}}
+{{end}}

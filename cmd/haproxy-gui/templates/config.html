@@ -3,8 +3,8 @@
 {{define "config_content"}}
 <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
   <div>
-    <h1>Konfigurasi Gateway</h1>
-    <p class="hint" style="margin:0;">Pengaturan file konfigurasi utama HAProxy, layanan daemon, integrasi AI/MCP, dan template respon halaman error pengunjung.</p>
+    <h1>{{t .Language "cfg_gateway_title"}}</h1>
+    <p class="hint" style="margin:0;">{{t .Language "cfg_gateway_desc"}}</p>
   </div>
   <div style="display:flex; gap:8px;">
     <a href="#mcp-setup-panel" class="btn" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
@@ -12,18 +12,18 @@
       Setup MCP / AI
     </a>
     <a href="/config/error-pages" class="btn primary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
-      Halaman Error Kustom &amp; Ruang Tunggu
+      {{t .Language "cfg_error_pages_btn"}}
     </a>
   </div>
 </div>
 <div class="panel">
-  <h3>Editor</h3>
+  <h3>{{t .Language "cfg_editor"}}</h3>
   <form id="cfg-form">
     <textarea name="content" id="cfg-content" aria-label="Isi konfigurasi">{{.Active}}</textarea>
     <div style="margin-top:10px; display:flex; gap:8px;">
-      <button type="button" hx-post="/api/config/validate" hx-include="#cfg-content" hx-target="#validate-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Periksa</button>
+      <button type="button" hx-post="/api/config/validate" hx-include="#cfg-content" hx-target="#validate-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>{{t .Language "config_btn_validate"}}</button>
       <button type="button" class="primary" hx-post="/api/config/apply" hx-include="#cfg-content" hx-target="#apply-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'
-        hx-confirm="Terapkan konfigurasi ini sekarang? Pastikan sudah diperiksa dan hasilnya valid.">Simpan &amp; terapkan</button>
+        hx-confirm="Terapkan konfigurasi ini sekarang? Pastikan sudah diperiksa dan hasilnya valid.">{{t .Language "config_btn_save_apply"}}</button>
     </div>
   </form>
   <div id="validate-out"></div>
@@ -31,9 +31,9 @@
 </div>
 
 <div class="panel">
-  <h3>Layanan HAProxy</h3>
-  <p class="hint">"Simpan &amp; terapkan" di atas sudah memuat ulang HAProxy secara otomatis tanpa memutus koneksi. Gunakan tombol ini hanya jika layanan tampak macet/tidak merespons dan memuat ulang saja tidak membantu. Proses HAProxy akan berhenti sesaat lalu menyala kembali, sehingga koneksi yang sedang berjalan akan terputus.</p>
-  <button class="danger" id="btn-restart-haproxy" data-restart-action="true" hx-post="/api/haproxy/restart" hx-target="#restart-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Restart layanan HAProxy sekarang? Semua koneksi yang sedang berjalan akan terputus sesaat.">Restart layanan HAProxy</button>
+  <h3>{{t .Language "cfg_service_title"}}</h3>
+  <p class="hint">{{t .Language "cfg_service_desc"}}</p>
+  <button class="danger" id="btn-restart-haproxy" data-restart-action="true" hx-post="/api/haproxy/restart" hx-target="#restart-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}' hx-confirm="Restart layanan HAProxy sekarang? Semua koneksi yang sedang berjalan akan terputus sesaat.">{{t .Language "config_btn_restart"}}</button>
   <div id="restart-out"></div>
 </div>
 
@@ -41,25 +41,25 @@
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
     <div>
       <div style="display:flex; align-items:center; gap:8px;">
-        <h3 style="margin:0; color:var(--accent);">🤖 Setup Integrasi MCP (Model Context Protocol) &amp; AI</h3>
+        <h3 style="margin:0; color:var(--accent);">{{t .Language "mcp_setup_title"}}</h3>
         <span class="badge" style="background:var(--ok); color:#fff; font-size:11px; padding:2px 8px; border-radius:12px;">v1 REST API Ready</span>
       </div>
-      <p class="hint" style="margin:4px 0 0 0;">Hubungkan asisten AI (Google Antigravity, Claude Desktop, Cursor, Claude Code) ke Konsol Gateway untuk pemantauan live health, investigasi insiden, dan mitigasi dengan prinsip <em>Human-in-the-Loop</em>.</p>
+      <p class="hint" style="margin:4px 0 0 0;">{{t .Language "mcp_setup_desc"}}</p>
     </div>
     <button type="button" class="btn" id="btn-test-mcp-api" style="font-size:12px; display:inline-flex; align-items:center; gap:4px; padding:4px 10px;">
-      ⚡ Uji Endpoint API
+      {{t .Language "mcp_test_api_btn"}}
     </button>
   </div>
   <div id="mcp-test-status" style="margin-bottom:12px;"></div>
 
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
     <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
-      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Endpoint Base URL API</label>
+      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">{{t .Language "mcp_endpoint_label"}}</label>
       <input type="text" id="mcp-base-url" style="width:100%; font-family:monospace; font-size:12px;" value="http://127.0.0.1:8080/api/v1">
     </div>
     <div style="background:rgba(255,255,255,0.02); border:1px solid var(--border); padding:10px; border-radius:6px;">
-      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Bearer Token (Opsional)</label>
-      <input type="text" id="mcp-api-token" placeholder="Biarkan kosong jika tanpa token API" style="width:100%; font-family:monospace; font-size:12px;">
+      <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">{{t .Language "mcp_token_label"}}</label>
+      <input type="text" id="mcp-api-token" placeholder="{{t .Language "mcp_token_ph"}}" style="width:100%; font-family:monospace; font-size:12px;">
     </div>
   </div>
 
@@ -73,14 +73,14 @@
     <div style="position:relative;">
       <textarea id="mcp-snippet" readonly style="width:100%; height:130px; font-family:monospace; font-size:12px; background:rgba(0,0,0,0.25); color:var(--text-main); border:1px solid var(--border); border-radius:4px; padding:10px; resize:none;"></textarea>
       <button type="button" class="btn primary" id="btn-copy-mcp" style="position:absolute; top:8px; right:8px; font-size:11px; padding:4px 10px;">
-        📋 Salin Konfigurasi
+        {{t .Language "mcp_copy_btn"}}
       </button>
     </div>
-    <p class="hint" id="mcp-tab-hint" style="margin:6px 0 0 0; font-size:11px;">Simpan konfigurasi di atas ke file <code>.agents/mcp_config.json</code> pada root workspace project Anda.</p>
+    <p class="hint" id="mcp-tab-hint" style="margin:6px 0 0 0; font-size:11px;">{{t .Language "mcp_tab_hint_antigravity"}}</p>
   </div>
 
   <details style="margin-top:12px; background:rgba(255,255,255,0.01); border:1px solid var(--border); border-radius:6px; padding:8px 12px;">
-    <summary style="font-size:12px; font-weight:600; cursor:pointer; color:var(--text-main);">Lihat 7 MCP Tools yang Didukung</summary>
+    <summary style="font-size:12px; font-weight:600; cursor:pointer; color:var(--text-main);">{{t .Language "mcp_tools_summary"}}</summary>
     <div class="table-scroll" style="margin-top:8px;">
       <table style="font-size:12px;">
         <thead>
@@ -88,14 +88,14 @@
             <th>Tool Name</th>
             <th>Kategori</th>
             <th>Deskripsi</th>
-            <th>Otoritas</th>
+            <th>{{t .Language "mcp_col_authority"}}</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><code>get_status</code></td>
             <td><span class="badge" style="background:#0284c7; color:#fff;">READ</span></td>
-            <td>Status kesehatan live, total sesi aktif, dan metrik sistem.</td>
+            <td>{{t .Language "mcp_tool_get_status_desc"}}</td>
             <td>Otomatis</td>
           </tr>
           <tr>
@@ -132,7 +132,7 @@
             <td><code>propose_action</code></td>
             <td><span class="badge" style="background:#dc2626; color:#fff;">PROPOSE</span></td>
             <td>Mengajukan proposal mitigasi trafik (wajib reason + evidence).</td>
-            <td><strong>Wajib Persetujuan Manusia</strong></td>
+            <td><strong>{{t .Language "mcp_human_approval_required"}}</strong></td>
           </tr>
         </tbody>
       </table>
@@ -141,8 +141,8 @@
 </div>
 
 <div class="panel">
-  <h3>Cadangan sebelumnya</h3>
-  <p class="hint">Kembalikan ke salah satu versi berikut jika perubahan terbaru bermasalah.</p>
+  <h3>{{t .Language "config_backups_title"}}</h3>
+  <p class="hint">{{t .Language "config_backups_hint"}}</p>
   <div id="backups-container">
     {{template "config_backups.html" .}}
   </div>
@@ -151,16 +151,16 @@
 
 {{define "config_backups.html"}}
 {{if not .Backups}}
-<div class="empty-state"><p>Belum ada cadangan tersimpan.</p></div>
+<div class="empty-state"><p>{{t .Language "config_backups_empty"}}</p></div>
 {{else}}
 <div class="table-scroll">
 <table>
   <thead>
     <tr>
-      <th>Nama Berkas Cadangan</th>
-      <th>Ukuran &amp; Enkripsi</th>
-      <th>Waktu Cadangan</th>
-      <th style="text-align:right;">Aksi</th>
+      <th>{{t .Language "config_col_backup_name"}}</th>
+      <th>{{t .Language "config_col_size_enc"}}</th>
+      <th>{{t .Language "config_col_modtime"}}</th>
+      <th style="text-align:right;">{{t .Language "actions"}}</th>
     </tr>
   </thead>
   <tbody>
@@ -187,20 +187,20 @@
         <div style="display:inline-flex; gap:6px; justify-content:flex-end;">
           <a href="/api/config/backup/download?name={{.Name}}" class="btn" download="{{.Name}}.cfg" title="Dekripsi dan unduh berkas konfigurasi" style="display:inline-flex; align-items:center; gap:4px; text-decoration:none; padding:4px 10px; font-size:12px;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-            Unduh
+            {{t $.Language "config_btn_download"}}
           </a>
           <form style="display:inline" hx-post="/api/config/rollback" hx-confirm="Kembalikan konfigurasi aktif ke versi cadangan {{.Name}}? Konfigurasi aktif saat ini akan digantikan dan HAProxy akan dimuat ulang." hx-target="#apply-out" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
             <input type="hidden" name="name" value="{{.Name}}">
             <button type="submit" class="btn" style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; font-size:12px;" title="Restore konfigurasi ini">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
-              Kembalikan
+              {{t $.Language "config_btn_restore"}}
             </button>
           </form>
           <form style="display:inline" hx-post="/api/config/backup/delete" hx-confirm="Hapus berkas cadangan {{.Name}}? Tindakan ini permanen dan tidak dapat dibatalkan." hx-target="#backups-container" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>
             <input type="hidden" name="name" value="{{.Name}}">
             <button type="submit" class="btn danger" style="display:inline-flex; align-items:center; gap:4px; padding:4px 10px; font-size:12px;" title="Hapus berkas cadangan ini">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              Hapus
+              {{t $.Language "delete"}}
             </button>
           </form>
         </div>
@@ -215,14 +215,15 @@
 
 {{define "validate_result.html"}}
 <div class="panel">
-  {{if .OK}}<strong style="color:var(--ok)">Konfigurasi valid, aman diterapkan.</strong>{{else}}<strong style="color:var(--bad)">Konfigurasi tidak valid, belum diterapkan.</strong>{{end}}
+  {{if .OK}}<strong style="color:var(--ok)">{{t .Language "config_valid_msg"}}</strong>{{else}}<strong style="color:var(--bad)">{{t .Language "config_invalid_msg"}}</strong>{{end}}
   <pre>{{.Output}}</pre>
 </div>
 {{end}}
 
 {{define "apply_result.html"}}
 <div class="panel">
-  {{if .OK}}<strong style="color:var(--ok)">Berhasil diterapkan.</strong>{{else}}<strong style="color:var(--bad)">Gagal diterapkan.</strong>{{end}}
+  {{if .OK}}<strong style="color:var(--ok)">{{t .Language "config_apply_success"}}</strong>{{else}}<strong style="color:var(--bad)">{{t .Language "config_apply_fail"}}</strong>{{end}}
   <pre>{{.Output}}</pre>
 </div>
 {{end}}
+

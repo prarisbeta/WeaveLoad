@@ -3,11 +3,11 @@
 {{define "error_pages_content"}}
 <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px;">
   <div>
-    <h1>Halaman Error Kustom (Custom Error Pages)</h1>
-    <p class="hint">Sesuaikan halaman tampilan yang dilihat oleh pengunjung (visitor) ketika server mengalami antrean padat, pemeliharaan, atau kendala jaringan upstream.</p>
+    <h1>{{t .Language "ep_title"}}</h1>
+    <p class="hint">{{t .Language "ep_desc"}}</p>
   </div>
   <div style="display:flex; gap:8px;">
-    <a href="/config" class="btn">← Kembali ke Editor Konfigurasi</a>
+    <a href="/config" class="btn">{{t .Language "ep_back_config"}}</a>
   </div>
 </div>
 
@@ -24,11 +24,11 @@
   <div class="panel" style="margin-bottom:0;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
       <div>
-        <h3 style="margin:0; font-size:16px;">Editor Respons HTTP: {{.ActivePage.Name}}</h3>
-        <span class="muted" style="font-size:12px;">Berkas target: <code>{{.ActivePage.Path}}</code></span>
+        <h3 style="margin:0; font-size:16px;">{{t .Language "ep_editor_title"}} {{.ActivePage.Name}}</h3>
+        <span class="muted" style="font-size:12px;">{{t .Language "ep_target_file"}} <code>{{.ActivePage.Path}}</code></span>
       </div>
       <button type="button" class="btn" id="btn-load-preset" data-code="{{.ActiveCode}}" style="font-size:12px; padding:6px 12px;">
-        Muat Standar Cloudflare
+        {{t .Language "ep_load_cloudflare_preset"}}
       </button>
     </div>
 
@@ -40,10 +40,10 @@
 
       <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
         <button type="button" class="btn" id="btn-update-preview" style="font-size:13px;">
-          Perbarui Pratinjau
+          {{t .Language "ep_update_preview_btn"}}
         </button>
         <button type="submit" class="primary" id="btn-save-error-page" style="font-size:13px; font-weight:600;">
-          Simpan &amp; Terapkan Halaman Error
+          {{t .Language "ep_save_btn"}}
         </button>
       </div>
     </form>
@@ -54,13 +54,13 @@
   <div class="panel" style="margin-bottom:0; background:#070b14; border:1px solid var(--border);">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06);">
       <div style="display:flex; align-items:center; gap:8px;">
-        <span style="font-size:13px; font-weight:700; color:var(--text);">Pratinjau Pengunjung (Live Preview)</span>
+        <span style="font-size:13px; font-weight:700; color:var(--text);">{{t .Language "ep_visitor_preview"}}</span>
         <span class="badge" style="background:rgba(56, 189, 248, 0.15); color:var(--accent); font-size:11px;">Sandbox</span>
       </div>
       <div style="display:flex; gap:6px;" id="preview-viewport-controls">
-        <button type="button" class="btn active-viewport" data-viewport="100%" style="padding:4px 8px; font-size:11px;">Desktop (100%)</button>
-        <button type="button" class="btn" data-viewport="480px" style="padding:4px 8px; font-size:11px;">Mobile (480px)</button>
-        <a href="/api/config/error-pages/{{.ActiveCode}}/preview" target="_blank" class="btn" style="padding:4px 8px; font-size:11px; text-decoration:none;">Layar Penuh</a>
+        <button type="button" class="btn active-viewport" data-viewport="100%" style="padding:4px 8px; font-size:11px;">{{t .Language "ep_desktop"}}</button>
+        <button type="button" class="btn" data-viewport="480px" style="padding:4px 8px; font-size:11px;">{{t .Language "ep_mobile"}}</button>
+        <a href="/api/config/error-pages/{{.ActiveCode}}/preview" target="_blank" class="btn" style="padding:4px 8px; font-size:11px; text-decoration:none;">{{t .Language "ep_fullscreen"}}</a>
       </div>
     </div>
 
@@ -83,3 +83,4 @@
   </div>
 </div>
 {{end}}
+

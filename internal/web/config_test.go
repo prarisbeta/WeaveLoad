@@ -92,8 +92,8 @@ func testConfigTemplates(t *testing.T) *template.Template {
 	return mustParse(t, `
 {{define "config.html"}}CFG:{{.Active}}{{end}}
 {{define "config_backups.html"}}BACKUPS:{{range .Backups}}[{{.Name}}]{{end}}{{end}}
-{{define "validate_result.html"}}VALID={{.OK}} OUT={{.Output}}{{end}}
-{{define "apply_result.html"}}APPLIED={{.OK}} OUT={{.Output}}{{end}}
+{{define "validate_result.html"}}LANG={{.Language}} VALID={{.OK}} OUT={{.Output}}{{end}}
+{{define "apply_result.html"}}LANG={{.Language}} APPLIED={{.OK}} OUT={{.Output}}{{end}}
 `)
 }
 

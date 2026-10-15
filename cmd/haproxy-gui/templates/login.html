@@ -1,7 +1,7 @@
 {{define "login.html"}}<!doctype html>
-<html lang="id"><head><meta charset="utf-8">
+<html lang="{{if .Language}}{{.Language}}{{else}}id{{end}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Masuk - Konsol Gateway</title>
+<title>{{t .Language "login"}} - {{t .Language "brand_name"}}</title>
 <style>
 :root { --bg: #f6f8fb; --surface: #ffffff; --border: #dce3ed; --ink: #101828; --ink-muted: #5b6472; --accent: #0e7c86; --bad: #b91c1c; --bad-soft: #fbeaea; }
 * { box-sizing: border-box; }
@@ -12,7 +12,7 @@ body {
 }
 .box {
   background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-  padding: 36px 32px; text-align: center; width: 100%; max-width: 340px;
+  padding: 36px 32px; text-align: center; width: 100%; max-width: 360px;
   box-shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
 }
 .brand-mark {
@@ -21,22 +21,63 @@ body {
   margin: 0 auto 16px;
 }
 h1 { font-size: 17px; margin: 0 0 4px; }
-p.sub { color: var(--ink-muted); font-size: 13px; margin: 0 0 24px; }
+p.sub { color: var(--ink-muted); font-size: 13px; margin: 0 0 20px; }
 .btn {
   display: block; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600;
-  padding: 11px 20px; border-radius: 8px; font-size: 14px;
+  padding: 11px 20px; border-radius: 8px; font-size: 14px; text-align: center; width: 100%; border: none; cursor: pointer;
 }
 .btn:hover { filter: brightness(1.06); }
+.btn-secondary {
+  background: transparent; color: var(--accent); border: 1px solid var(--accent);
+}
+.btn-secondary:hover { background: rgba(14,124,134,.05); }
 .err { background: var(--bad-soft); color: var(--bad); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 0 0 16px; text-align: left; }
+.field { margin-bottom: 14px; text-align: left; }
+.field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; color: var(--ink-muted); }
+.field input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: #fff; }
+.field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.divider { display: flex; align-items: center; margin: 20px 0; color: var(--ink-muted); font-size: 12px; }
+.divider::before, .divider::after { content: ""; flex: 1; border-bottom: 1px solid var(--border); }
+.divider span { padding: 0 10px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style></head>
 <body>
 <div class="box">
   <div class="brand-mark">G</div>
-  <h1>Konsol Gateway</h1>
-  <p class="sub">Masuk dengan akun kantor Anda untuk melanjutkan.</p>
+  <h1>{{t .Language "brand_name"}}</h1>
+  <p class="sub">{{t .Language "login_sub"}}</p>
   {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
-  <a class="btn" href="/auth/login">Masuk dengan akun SSO</a>
+
+  <form action="/auth/login-password" method="POST">
+    {{if .RequireTOTP}}
+    <input type="hidden" name="username" value="{{.Username}}">
+    <input type="hidden" name="password" value="{{.Password}}">
+    <div class="field">
+      <label for="totp_code">{{t .Language "totp_prompt"}}</label>
+      <input type="text" id="totp_code" name="totp_code" placeholder="123456" required autofocus autocomplete="one-time-code" maxlength="8">
+    </div>
+    <button type="submit" class="btn">{{t .Language "login_verify_2fa"}}</button>
+    <a href="/login" style="display:block; margin-top:12px; font-size:12px; color:var(--ink-muted); text-decoration:none;">{{t .Language "cancel"}}</a>
+    {{else}}
+    <div class="field">
+      <label for="username">{{t .Language "username"}}</label>
+      <input type="text" id="username" name="username" placeholder="{{t .Language "username_ph"}}" required autocomplete="username" value="{{.Username}}">
+    </div>
+    <div class="field">
+      <label for="password">{{t .Language "password"}}</label>
+      <input type="password" id="password" name="password" placeholder="{{t .Language "password_ph"}}" required autocomplete="current-password">
+    </div>
+    <button type="submit" class="btn">{{t .Language "login"}}</button>
+    {{end}}
+  </form>
+
+  {{if not .RequireTOTP}}
+  <div class="divider"><span>{{t .Language "or_login_with"}}</span></div>
+
+  <a class="btn btn-secondary" href="/auth/login">{{t .Language "login_sso_btn"}}</a>
+  {{end}}
 </div>
 </body></html>
 {{end}}
+
+

@@ -15,11 +15,13 @@ import (
 )
 
 type fakeCertLister struct {
-	list []certs.Info
-	err  error
+	list   []certs.Info
+	staged []certs.Info
+	err    error
 }
 
-func (f fakeCertLister) List() ([]certs.Info, error) { return f.list, f.err }
+func (f fakeCertLister) List() ([]certs.Info, error)       { return f.list, f.err }
+func (f fakeCertLister) ListStaged() ([]certs.Info, error) { return f.staged, f.err }
 
 type fakeCertStager struct {
 	stagedPath string
@@ -37,7 +39,7 @@ func (f *fakeCertStager) StagePEM(dir, name string, content []byte) (string, cer
 func certsTemplates(t *testing.T) *template.Template {
 	return mustParse(t, `
 {{define "certs.html"}}{{range .Certs}}{{.CommonName}}{{end}}{{end}}
-{{define "apply_result.html"}}OK={{.OK}} {{.Output}}{{end}}
+{{define "apply_result.html"}}LANG={{.Language}} OK={{.OK}} {{.Output}}{{end}}
 `)
 }
 
@@ -96,6 +98,9 @@ func TestCertUploadHandler_ValidUpload_Staged(t *testing.T) {
 	if stager.gotDir != "/staging" || stager.gotName != "new.pem" {
 		t.Errorf("stager called with dir=%q name=%q", stager.gotDir, stager.gotName)
 	}
+	if !strings.Contains(rec.Body.String(), "LANG=id") {
+		t.Errorf("result partial missing language, body = %q", rec.Body.String())
+	}
 	if len(au.entries) != 1 || au.entries[0].Action != "cert.upload" {
 		t.Errorf("audit entries = %+v", au.entries)
 	}
@@ -137,5 +142,69 @@ func TestCertUploadHandler_MissingFileField_400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400 for missing file field", rec.Code)
+	}
+}
+
+type fakeCertInstaller struct {
+	res     certs.InstallResult
+	err     error
+	gotName string
+}
+
+func (f *fakeCertInstaller) Install(name string) (certs.InstallResult, error) {
+	f.gotName = name
+	return f.res, f.err
+}
+
+func installRequest(name string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/certs/install", strings.NewReader("filename="+name))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return withUser(req, store.User{Email: "admin@example.com"})
+}
+
+func TestCertInstallHandler_Success_AuditedAndRendered(t *testing.T) {
+	inst := &fakeCertInstaller{res: certs.InstallResult{OK: true, Output: "installed and reloaded"}}
+	au := &fakeAudit{}
+	h := &CertInstallHandler{Installer: inst, Audit: au, Templates: certsTemplates(t)}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, installRequest("palapacloud.id.pem"))
+
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "LANG=id OK=true") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if inst.gotName != "palapacloud.id.pem" {
+		t.Errorf("installer got %q", inst.gotName)
+	}
+	if len(au.entries) != 1 || au.entries[0].Action != "cert.install" || au.entries[0].Target != "palapacloud.id.pem" {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestCertInstallHandler_HelperFailure_502AndAudited(t *testing.T) {
+	inst := &fakeCertInstaller{res: certs.InstallResult{OK: false, Output: "haproxy -c failed, rolled back"}}
+	au := &fakeAudit{}
+	h := &CertInstallHandler{Installer: inst, Audit: au, Templates: certsTemplates(t)}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, installRequest("x.pem"))
+
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "rolled back") {
+		t.Errorf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(au.entries) != 1 || !strings.Contains(au.entries[0].Detail, "failed") {
+		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+func TestCertInstallHandler_InvalidName_400(t *testing.T) {
+	inst := &fakeCertInstaller{err: certs.ErrInvalidFileName}
+	h := &CertInstallHandler{Installer: inst, Audit: &fakeAudit{}, Templates: certsTemplates(t)}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, installRequest("..%2Fetc.pem"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
 	}
 }

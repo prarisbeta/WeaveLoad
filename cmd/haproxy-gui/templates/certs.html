@@ -1,15 +1,15 @@
 {{define "certs.html"}}{{template "chrome_header" .}}{{template "certs_content" .}}{{template "chrome_footer" .}}{{end}}
 
 {{define "certs_content"}}
-<h1>Sertifikat SSL</h1>
-<p class="hint">Sertifikat ini membuktikan identitas situs ke pengunjung dan mengaktifkan koneksi terenkripsi (https). Sertifikat yang kedaluwarsa membuat pengunjung melihat peringatan "tidak aman".</p>
+<h1>{{t .Language "certs_title"}}</h1>
+<p class="hint">{{t .Language "certs_desc"}}</p>
 <div class="panel">
   {{if not .Certs}}
-  <div class="empty-state"><h3>Belum ada sertifikat terpasang</h3></div>
+  <div class="empty-state"><h3>{{t .Language "certs_empty"}}</h3></div>
   {{else}}
   <div class="table-scroll">
   <table>
-    <tr><th>Berkas</th><th>Untuk domain</th><th>Domain lain yang dicakup</th><th>Berlaku sampai</th><th>Status</th></tr>
+    <tr><th>{{t .Language "certs_col_file"}}</th><th>{{t .Language "certs_col_domain"}}</th><th>{{t .Language "certs_col_alt_domains"}}</th><th>{{t .Language "certs_col_valid_until"}}</th><th>{{t .Language "status"}}</th></tr>
     {{range .Certs}}
     <tr>
       <td>{{.FileName}}</td>
@@ -17,9 +17,9 @@
       <td class="muted">{{range .DNSNames}}{{.}} {{end}}</td>
       <td>{{.NotAfter.Format "2 Jan 2006"}}</td>
       <td>
-        {{if .Expired $.Now}}<span class="badge badge-down">Sudah kedaluwarsa</span>
-        {{else if .ExpiresWithin30 $.Now}}<span class="badge badge-maint">Kurang dari 30 hari lagi</span>
-        {{else}}<span class="badge badge-up">Berlaku</span>{{end}}
+        {{if .Expired $.Now}}<span class="badge badge-down">{{t $.Language "certs_status_expired"}}</span>
+        {{else if .ExpiresWithin30 $.Now}}<span class="badge badge-maint">{{t $.Language "certs_status_expiring_soon"}}</span>
+        {{else}}<span class="badge badge-up">{{t $.Language "certs_status_valid"}}</span>{{end}}
       </td>
     </tr>
     {{end}}
@@ -30,14 +30,37 @@
 
 {{if .CanUpload}}
 <div class="panel">
-  <h3>Tambah atau ganti sertifikat</h3>
-  <p class="hint">Unggah satu berkas PEM berisi sertifikat, rantai sertifikat, dan kunci privat digabung jadi satu. Setelah diunggah, sertifikat belum otomatis aktif; hubungkan lewat menu Konfigurasi.</p>
+  <h3>{{t .Language "certs_upload_title"}}</h3>
+  <p class="hint">{{t .Language "certs_upload_hint"}}</p>
   <form hx-encoding="multipart/form-data" hx-post="/api/certs/upload" hx-target="#upload-out" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>
-    <p>Nama berkas (harus diakhiri .pem): <input type="text" name="filename" required></p>
-    <p>Berkas PEM: <input type="file" name="bundle" required></p>
-    <button type="submit" class="primary">Unggah &amp; validasi</button>
+    <p>{{t .Language "certs_upload_filename_label"}} <input type="text" name="filename" required></p>
+    <p>{{t .Language "certs_upload_file_label"}} <input type="file" name="bundle" required></p>
+    <button type="submit" class="primary">{{t .Language "certs_upload_btn"}}</button>
   </form>
   <div id="upload-out"></div>
 </div>
+
+{{if .Staged}}
+<div class="panel">
+  <h3>{{t .Language "certs_staged_title"}}</h3>
+  <div class="table-scroll">
+  <table>
+    <tr><th>{{t .Language "certs_col_file"}}</th><th>{{t .Language "certs_col_domain"}}</th><th>{{t .Language "certs_col_valid_until"}}</th><th></th></tr>
+    {{range .Staged}}
+    <tr>
+      <td>{{.FileName}}</td>
+      <td>{{.CommonName}}</td>
+      <td>{{.NotAfter.Format "2 Jan 2006"}}</td>
+      <td>
+        <button type="button" class="primary" hx-post="/api/certs/install" hx-vals='{"filename":"{{.FileName}}"}' hx-target="#install-out" hx-confirm="{{t $.Language "certs_install_confirm"}}" hx-headers='{"X-CSRF-Token":"{{$.CSRFToken}}"}'>{{t $.Language "certs_install_btn"}}</button>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  <div id="install-out"></div>
+</div>
 {{end}}
 {{end}}
+{{end}}
+

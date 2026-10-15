@@ -357,7 +357,10 @@ func (h *QueueTokenGenerateAction) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	renderTemplate(w, h.Templates, "queue_token_result.html", struct{ Token string }{Token: token})
+	renderTemplate(w, h.Templates, "queue_token_result.html", struct {
+		Language string
+		Token    string
+	}{Language: NewChrome(r, "").Language, Token: token})
 }
 
 func generateToken() (string, error) {

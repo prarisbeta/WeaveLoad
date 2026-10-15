@@ -83,6 +83,7 @@ func buildRoutes(d routeDeps) http.Handler {
 
 	// --- public ---
 	mux.Handle("GET /login", &auth.LoginHandler{Templates: d.templates})
+	mux.Handle("POST /auth/login-password", &auth.PasswordLoginHandler{Auth: d.store, Templates: d.templates, CookieSecure: secure})
 	mux.Handle("GET /auth/login", &auth.BeginLoginHandler{Provider: d.provider, CookieSecure: secure})
 	mux.Handle("GET /auth/callback", &auth.CallbackHandler{Provider: d.provider, Store: d.store, CookieSecure: secure})
 	mux.Handle("POST /auth/logout", chain(&auth.LogoutHandler{Store: d.store, CookieSecure: secure}, requireAuth))
@@ -142,6 +143,8 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/incidents/{id}/status", chain(&web.IncidentStatusAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 	mux.Handle("POST /api/incidents/{id}/notes", chain(&web.IncidentNoteAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
 	mux.Handle("POST /api/incidents/{id}/link", chain(&web.IncidentLinkAction{Store: d.store, Audit: d.store}, requireAuth, requireManageIncidents, auth.RequireCSRF))
+	mux.Handle("POST /api/incidents/{id}/ai-analyze", chain(&web.AIIncidentAnalyzeHandler{Store: d.store}, requireAuth, requireViewSecurity, auth.RequireCSRF))
+	mux.Handle("POST /api/security/events/{id}/ai-analyze", chain(&web.AISecurityAnalyzeHandler{Store: d.store}, requireAuth, requireViewSecurity, auth.RequireCSRF))
 
 	aclHandler := &web.AclHandler{
 		Files: []web.MapFile{
@@ -197,6 +200,9 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/certs/upload", chain(&web.CertUploadHandler{
 		Stager: d.certs, StagingDir: d.cfg.StagingDir, Audit: d.store, Templates: d.templates,
 	}, requireAuth, requireManageConfig, auth.RequireCSRF))
+	mux.Handle("POST /api/certs/install", chain(&web.CertInstallHandler{
+		Installer: d.certs, Audit: d.store, Templates: d.templates,
+	}, requireAuth, requireManageConfig, auth.RequireCSRF))
 
 	// --- manage users, manage settings ---
 	usersHandler := &web.UsersHandler{Store: d.store, Audit: d.store, Templates: d.templates}
@@ -206,6 +212,12 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /api/users/search", chain(&web.UserSearchHandler{Directory: d.dir, Templates: d.templates}, requireAuth, requireManageUsers))
 	
 	mux.Handle("POST /api/profile/language", chain(&web.ProfileLanguageHandler{Store: d.store}, requireAuth, auth.RequireCSRF))
+	mux.Handle("POST /api/profile/password", chain(&web.ProfilePasswordHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))
+	mux.Handle("POST /api/profile/totp", chain(&web.ProfileTOTPHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))
+
+	mux.Handle("GET /traffic", chain(&web.TrafficHandler{LogPath: d.cfg.LogPath, Templates: d.templates}, requireAuth))
+	mux.Handle("GET /alerts", chain(&web.AlertsHandler{Store: d.store, Templates: d.templates}, requireAuth))
+	mux.Handle("POST /api/alerts/{id}/ack", chain(&web.AlertAckHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))
 
 	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates}, requireAuth, requireManageSettings))
 	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))

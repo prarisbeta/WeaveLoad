@@ -21,6 +21,7 @@ type Config struct {
 	StagingDir    string // e.g. /var/lib/haproxy-gui/staging
 	ApplyScript   string // e.g. /usr/local/sbin/haproxy-gui-apply
 	RestartScript string // e.g. /usr/local/sbin/haproxy-gui-restart
+	CertScript    string // e.g. /usr/local/sbin/haproxy-gui-install-cert
 	SudoBin       string // e.g. sudo — set to "" only for local dev without sudoers configured
 	SSLDir        string // e.g. /etc/haproxy/ssl
 	BackupDir     string // e.g. /var/lib/haproxy-gui/backups or /etc/haproxy/backups
@@ -87,6 +88,7 @@ func Load() (Config, error) {
 		StagingDir:    getenv("STAGING_DIR", "/var/lib/haproxy-gui/staging"),
 		ApplyScript:   getenv("APPLY_SCRIPT", "/usr/local/sbin/haproxy-gui-apply"),
 		RestartScript: getenv("RESTART_SCRIPT", "/usr/local/sbin/haproxy-gui-restart"),
+		CertScript:    getenv("INSTALL_CERT_SCRIPT", "/usr/local/sbin/haproxy-gui-install-cert"),
 		SudoBin:       getenv("SUDO_BIN", "sudo"),
 		SSLDir:        getenv("SSL_DIR", "/etc/haproxy/ssl"),
 		BackupDir:     getenv("BACKUP_DIR", "/etc/haproxy/backups"),

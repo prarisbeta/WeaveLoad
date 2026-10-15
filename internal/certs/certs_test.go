@@ -205,3 +205,88 @@ func TestStagePEM_RejectsInvalidBundle(t *testing.T) {
 		t.Fatal("expected error for garbage input")
 	}
 }
+
+func TestListStaged_ReturnsOnlyValidPEMBundles(t *testing.T) {
+	staging := t.TempDir()
+	good := genCertPEM(t, "new.cni.net.id", time.Now().Add(90*24*time.Hour), nil)
+	os.WriteFile(filepath.Join(staging, "new.pem"), good, 0o600)
+	os.WriteFile(filepath.Join(staging, "draft-1.cfg"), []byte("global\n"), 0o600)
+	os.WriteFile(filepath.Join(staging, "broken.pem"), []byte("junk"), 0o600)
+
+	s := New(t.TempDir())
+	s.StagingDir = staging
+	list, err := s.ListStaged()
+	if err != nil {
+		t.Fatalf("ListStaged: %v", err)
+	}
+	if len(list) != 1 || list[0].FileName != "new.pem" {
+		t.Fatalf("ListStaged = %+v, want only new.pem", list)
+	}
+}
+
+func TestListStaged_MissingDirIsEmptyNotError(t *testing.T) {
+	s := New(t.TempDir())
+	s.StagingDir = filepath.Join(t.TempDir(), "does-not-exist")
+	list, err := s.ListStaged()
+	if err != nil || len(list) != 0 {
+		t.Fatalf("ListStaged = %v, %v; want empty, nil", list, err)
+	}
+}
+
+func installScript(t *testing.T, dir, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, "install-cert.sh")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestInstall_PassesStagedPathToHelperViaSudo(t *testing.T) {
+	dir := t.TempDir()
+	logFile := filepath.Join(dir, "called-with.txt")
+	sudo := filepath.Join(dir, "fake-sudo.sh")
+	os.WriteFile(sudo, []byte("#!/bin/sh\nshift\nexec \"$@\"\n"), 0o755)
+
+	s := New(t.TempDir())
+	s.StagingDir = "/var/lib/haproxy-gui/staging"
+	s.InstallScript = installScript(t, dir, "echo \"$1\" > "+logFile+"\necho installed\n")
+	s.SudoBin = sudo
+
+	res, err := s.Install("palapacloud.id.pem")
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if !res.OK || res.Output != "installed\n" {
+		t.Errorf("res = %+v", res)
+	}
+	got, _ := os.ReadFile(logFile)
+	if string(got) != "/var/lib/haproxy-gui/staging/palapacloud.id.pem\n" {
+		t.Errorf("helper called with %q", got)
+	}
+}
+
+func TestInstall_HelperFailureReportedNotError(t *testing.T) {
+	dir := t.TempDir()
+	s := New(t.TempDir())
+	s.StagingDir = dir
+	s.InstallScript = installScript(t, dir, "echo 'haproxy -c failed' >&2\nexit 1\n")
+
+	res, err := s.Install("x.pem")
+	if err != nil {
+		t.Fatalf("Install returned error %v, want OK=false result", err)
+	}
+	if res.OK || res.Output != "haproxy -c failed\n" {
+		t.Errorf("res = %+v", res)
+	}
+}
+
+func TestInstall_RejectsBadFileName(t *testing.T) {
+	s := New(t.TempDir())
+	s.InstallScript = "/bin/true"
+	for _, name := range []string{"", "../x.pem", "a/b.pem", "x.crt"} {
+		if _, err := s.Install(name); err == nil {
+			t.Errorf("Install(%q) = nil error, want rejection", name)
+		}
+	}
+}
