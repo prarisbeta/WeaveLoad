@@ -16,6 +16,7 @@ func TemplateFuncs() template.FuncMap {
 		"bytes": formatSize,
 		"t":     i18n.T,
 		"list":  func(v ...string) []string { return v },
+		"mulf":  func(a, b float64) float64 { return a * b },
 	}
 }
 

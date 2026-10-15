@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -45,6 +46,13 @@ func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) {
 func (f fileConfig) GetBackupPath(name string) (string, error) { return "", nil }
 func (f fileConfig) ReadBackup(name string) (string, error)    { return f.content, nil }
 func (f fileConfig) DeleteBackup(name string) error            { return nil }
+
+// cannedProvider answers every copilot turn with a final answer.
+type cannedProvider struct{}
+
+func (cannedProvider) Analyze(context.Context, string, string) (string, error) {
+	return `{"final":{"answer":"Lonjakan SQLi dari satu IP","timeline":["09:00 lonjakan","09:02 5xx"],"recommendations":[{"action":"block_ip","target":"203.0.113.77","reason":"SQLi","confidence":0.9}]}}`, nil
+}
 
 type noopExecutor struct{}
 
@@ -187,6 +195,10 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /ask", &web.CopilotPageHandler{Templates: realTemplates(t), Enabled: true})
+	mux.Handle("POST /api/ai/ask", &web.CopilotAskHandler{
+		Provider: cannedProvider{}, Toolbox: &web.CopilotToolbox{Store: ps}, Engine: pe, Audit: ps, Templates: realTemplates(t),
+	})
 	mux.Handle("GET /policy", &web.PolicyHandler{Engine: pe, Store: ps, Templates: realTemplates(t)})
 	mux.Handle("GET /pools", &web.PoolsHandler{PoolService: svc})
 	mux.Handle("GET /pools/new", &web.PoolNewFormHandler{PoolService: svc})
@@ -238,6 +250,9 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"config_backup_size", http.MethodGet, "/config", nil, "26.3 KiB"},
 		{"config_settings_mcp_url", http.MethodGet, "/config", nil, "/mcp"},
 		{"config_api_tokens_in_mcp_panel", http.MethodGet, "/config", nil, `id="api-tokens"`},
+		{"ask.html", http.MethodGet, "/ask", nil, "Tanya Gateway"},
+		{"ask_result.html", http.MethodPost, "/api/ai/ask", url.Values{"question": {"kenapa lambat?"}}, "Linimasa korelasi"},
+		{"ask_result_recs", http.MethodPost, "/api/ai/ask", url.Values{"question": {"kenapa lambat?"}}, "203.0.113.77"},
 		{"policy.html", http.MethodGet, "/policy", nil, "Kill switch"},
 		{"policy_pending_action", http.MethodGet, "/policy", nil, "9.9.9.9"},
 		{"policy_modes", http.MethodGet, "/policy", nil, `name="mode_block_ip"`},

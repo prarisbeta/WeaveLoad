@@ -1,0 +1,51 @@
+{{define "ask.html"}}{{template "chrome_header" .}}{{template "ask_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "ask_content"}}
+<h1>Tanya Gateway</h1>
+<p class="hint">Tanyakan dalam bahasa biasa, mis. <em>"kenapa OMS lambat?"</em> atau <em>"IP mana yang paling berbahaya hari ini?"</em>. AI mengambil data lewat tool baca-saja, menyusun linimasa, lalu mengusulkan tindakan. AI <strong>tidak pernah menjalankan</strong> apa pun: usulan masuk Policy Engine dan menunggu persetujuan manusia.</p>
+
+{{if not .Enabled}}
+<div class="panel notice-bad"><strong>Provider AI belum dikonfigurasi.</strong> Isi <code>KONSOLGW_GEMINI_API_KEY</code> atau <code>KONSOLGW_ANTHROPIC_API_KEY</code> di <code>/etc/haproxy-gui/env</code>, lalu restart layanan. Ringkasan insiden dikirim ke penyedia AI tanpa password/token; alamat IP klien ikut terkirim.</div>
+{{end}}
+
+<div class="panel">
+  <form id="ask-form" class="member-form">
+    <label>Pertanyaan<textarea name="question" rows="3" maxlength="500" required placeholder="Kenapa backend OMS lambat sejak jam 09.00?"></textarea></label>
+    <div class="row-actions">
+      <button type="button" class="primary" {{if not .Enabled}}disabled{{end}} hx-post="/api/ai/ask" hx-include="#ask-form" hx-target="#ask-out" hx-indicator="#ask-spin" hx-headers='{"X-CSRF-Token":"{{.CSRFToken}}"}'>Tanya</button>
+      <span id="ask-spin" class="htmx-indicator muted">Menganalisis&hellip;</span>
+    </div>
+  </form>
+</div>
+<div id="ask-out"></div>
+{{end}}
+
+{{define "ask_result.html"}}
+{{if .Error}}
+<div class="panel notice-bad"><strong>{{.Error}}</strong></div>
+{{else if .Answer}}
+<div class="panel">
+  <h3 style="margin-top:0">Jawaban</h3>
+  <p style="white-space:pre-wrap">{{.Answer.Answer}}</p>
+  {{if .Answer.Timeline}}
+  <h4>Linimasa korelasi</h4>
+  <ol>{{range .Answer.Timeline}}<li>{{.}}</li>{{end}}</ol>
+  {{end}}
+  {{if .Recs}}
+  <h4>Usulan tindakan</h4>
+  <div class="table-scroll"><table>
+    <tr><th>Aksi</th><th>Target</th><th>Alasan</th><th>Keyakinan</th><th>Status</th></tr>
+    {{range .Recs}}
+    <tr><td><code>{{.Type}}</code></td><td><strong>{{.Target}}</strong></td><td>{{.Reason}}</td><td>{{printf "%.0f" (mulf .Confidence 100)}}%</td><td>{{.Note}}</td></tr>
+    {{end}}
+  </table></div>
+  <p class="hint">Setujui atau tolak di halaman <a href="/policy">Policy</a>.</p>
+  {{end}}
+  {{if .Answer.Steps}}
+  <details><summary class="muted">Data yang diambil AI ({{len .Answer.Steps}} langkah)</summary>
+    <ul>{{range .Answer.Steps}}<li><code>{{.Tool}}</code></li>{{end}}</ul>
+  </details>
+  {{end}}
+</div>
+{{end}}
+{{end}}

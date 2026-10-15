@@ -248,6 +248,14 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 
+	// --- AI copilot: read-only tools, answers become Policy Engine proposals ---
+	toolbox := &web.CopilotToolbox{Store: d.store, Stats: d.runtime}
+	if d.intel != nil {
+		toolbox.Intel = d.intel
+	}
+	mux.Handle("GET /ask", chain(&web.CopilotPageHandler{Templates: d.templates, Enabled: aiProvider != nil}, requireAuth, requireViewSecurity))
+	mux.Handle("POST /api/ai/ask", chain(&web.CopilotAskHandler{Provider: aiProvider, Toolbox: toolbox, Engine: d.policy, Audit: d.store, Templates: d.templates}, requireAuth, requireViewSecurity, auth.RequireCSRF))
+
 	// --- Policy Engine: the single gate for automated and proposed changes ---
 	requirePolicyView := requireViewSecurity
 	mux.Handle("GET /policy", chain(&web.PolicyHandler{Engine: d.policy, Store: d.store, Templates: d.templates}, requireAuth, requirePolicyView))
