@@ -622,3 +622,57 @@ backend pool_b
 		t.Errorf("pool_b should still exist:\n%s", out)
 	}
 }
+
+// A rejected request must not feed the rate counter: the check has to run
+// before track-sc0 and read the table without touching it, otherwise every
+// retry from the waiting page keeps the visitor over the limit.
+func TestRateLimitLines_DenyBeforeTrack(t *testing.T) {
+	for name, spec := range map[string]RateLimitSpec{
+		"plain":      {RPS: 20, Action: "deny"},
+		"cloudflare": {RPS: 20, Action: "tarpit", IgnoreCloudflare: true},
+	} {
+		lines := rateLimitLines("", spec)
+		deny, track := -1, -1
+		for i, l := range lines {
+			if strings.Contains(l, "table_http_req_rate") && deny < 0 {
+				deny = i
+			}
+			if strings.Contains(l, "track-sc0") && track < 0 {
+				track = i
+			}
+		}
+		if deny < 0 || track < 0 || deny > track {
+			t.Errorf("%s: deny at %d, track-sc0 at %d; the check must come first:\n%s", name, deny, track, strings.Join(lines, "\n"))
+		}
+		if strings.Contains(strings.Join(lines, "\n"), "sc_http_req_rate") {
+			t.Errorf("%s: still uses sc_http_req_rate, which only works after tracking", name)
+		}
+	}
+}
+
+// The reordered block keeps the 6/8 line sizes the parser relies on, so a
+// block written by an older release (old order) and a new one both remove cleanly.
+func TestRateLimitLines_KeepsParserLineCounts(t *testing.T) {
+	if n := len(rateLimitLines("", RateLimitSpec{RPS: 5, Action: "deny"})); n != 6 {
+		t.Errorf("plain block has %d lines, parser expects 6", n)
+	}
+	if n := len(rateLimitLines("", RateLimitSpec{RPS: 5, Action: "deny", IgnoreCloudflare: true})); n != 8 {
+		t.Errorf("cloudflare block has %d lines, parser expects 8", n)
+	}
+}
+
+func TestRemoveRateLimit_RemovesNewOrderBlock(t *testing.T) {
+	for _, cf := range []bool{false, true} {
+		withLimit, _, err := SetRateLimit(sampleCfg, "http_oms", RateLimitSpec{RPS: 20, Action: "deny", IgnoreCloudflare: cf})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := RemoveRateLimit(withLimit, "http_oms")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out, "table_http_req_rate") || strings.Contains(out, "track-sc0") {
+			t.Errorf("cf=%v: block not fully removed:\n%s", cf, out)
+		}
+	}
+}

@@ -173,7 +173,6 @@ Connection: close
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="5">
   <title>Ruang Tunggu Antrean Kunjungan</title>
   <style>
     :root {
@@ -230,15 +229,29 @@ Connection: close
   </div>
   <script>
     (function() {
-      var seconds = 5;
+      // Retry with a growing, randomised delay (about 5s, 8s, 13s ... up to 30s)
+      // so waiting visitors do not all hit the server at the same moment.
+      var KEY = 'kgw_wait';
+      var attempt = 0;
+      try {
+        var saved = JSON.parse(sessionStorage.getItem(KEY) || '{}');
+        if (saved.t && Date.now() - saved.t < 120000) { attempt = saved.n || 0; }
+        sessionStorage.setItem(KEY, JSON.stringify({ n: attempt + 1, t: Date.now() }));
+      } catch (e) {}
+      var base = Math.min(30, 5 * Math.pow(1.6, attempt));
+      var seconds = Math.max(3, Math.round(base * (0.7 + Math.random() * 0.6)));
       var el = document.getElementById('countdown-val');
+      var fill = document.querySelector('.progress-bar-fill');
+      if (el) { el.textContent = seconds; }
+      if (fill) { fill.style.animation = 'countdown-progress ' + seconds + 's linear forwards'; }
+      function retry() { window.location.replace(window.location.href); }
       var timer = setInterval(function() {
         seconds--;
         if (el) { el.textContent = seconds > 0 ? seconds : 0; }
-        if (seconds <= 0) { clearInterval(timer); window.location.reload(); }
+        if (seconds <= 0) { clearInterval(timer); retry(); }
       }, 1000);
       var btn = document.getElementById('btn-manual-reload');
-      if (btn) { btn.addEventListener('click', function() { window.location.reload(); }); }
+      if (btn) { btn.addEventListener('click', retry); }
     })();
   </script>
 </body>

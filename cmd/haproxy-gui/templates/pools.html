@@ -127,7 +127,7 @@
   <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
     <div>
       <h3 style="margin:0;">Batas Laju &amp; Ruang Tunggu Pengunjung</h3>
-      <p class="hint" style="margin:4px 0 0 0;">Membatasi frekuensi permintaan per alamat IP. Pengunjung yang melebihi batas laju akan otomatis dialihkan ke <strong>Halaman Ruang Tunggu (Virtual Waiting Room: HTTP 429)</strong> dengan hitung mundur auto-reload.</p>
+      <p class="hint" style="margin:4px 0 0 0;">Membatasi frekuensi permintaan per alamat IP. Pengunjung yang melebihi batas laju akan otomatis dialihkan ke <strong>Halaman Ruang Tunggu (Virtual Waiting Room: HTTP 429)</strong> dengan hitung mundur muat ulang otomatis (jeda acak 5-30 detik). Percobaan yang ditolak tidak ikut dihitung, jadi pengunjung lepas sendiri setelah trafiknya reda. Batas laju yang dibuat sebelum versi ini perlu disimpan ulang agar memakai aturan baru.</p>
     </div>
     <div style="display:flex; gap:6px;">
       <a href="/queue/waiting-room" target="_blank" class="btn" style="font-size:12px; padding:4px 10px; text-decoration:none;">

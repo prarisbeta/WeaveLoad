@@ -63,6 +63,50 @@ type Runner struct {
 
 	// Now defaults to time.Now; overridable for tests.
 	Now func() time.Time
+
+	lastDecay time.Time
+}
+
+// decayInterval is how often scores are recomputed for IPs that are still
+// marked at risk but have produced no new events.
+const decayInterval = time.Hour
+
+// riskLister is the optional Store capability DecayRisks needs.
+type riskLister interface {
+	ListTopRisk(n int) ([]store.IPRisk, error)
+}
+
+// DecayRisks recomputes the score of every IP still marked at risk. A score
+// only changes when an IP produces new events, so without this an IP whose
+// detections have aged out would stay flagged (and keep its Redis snapshot)
+// for good. It returns how many IPs it re-scored.
+func (r *Runner) DecayRisks(now time.Time) int {
+	l, ok := r.Store.(riskLister)
+	if !ok {
+		return 0
+	}
+	risks, err := l.ListTopRisk(500)
+	if err != nil {
+		log.Printf("security: list risks to decay: %v", err)
+		return 0
+	}
+	n := 0
+	for _, risk := range risks {
+		if risk.State == string(RiskNormal) {
+			continue
+		}
+		r.rescore(risk.IP, now, risk.LastSeen)
+		n++
+	}
+	return n
+}
+
+func (r *Runner) maybeDecay(now time.Time) {
+	if !r.lastDecay.IsZero() && now.Sub(r.lastDecay) < decayInterval {
+		return
+	}
+	r.lastDecay = now
+	r.DecayRisks(now)
 }
 
 // Submitter is the slice of *policy.Engine the Runner uses.
@@ -81,6 +125,7 @@ func (r *Runner) Tick() error {
 		now = r.Now
 	}
 	t := now()
+	r.maybeDecay(t)
 
 	lines, err := r.Tailer.ReadNew()
 	if err != nil {
@@ -261,6 +306,12 @@ func (r *Runner) proposeBlocks(detections []Detection, scores map[string]float64
 // updateRisk recomputes and stores ip's risk score and returns it (0 when the
 // score could not be computed).
 func (r *Runner) updateRisk(ip string, now time.Time) (score float64) {
+	return r.rescore(ip, now, now)
+}
+
+// rescore is updateRisk with an explicit last-seen time: a decay pass must not
+// make an IP look active just because its score was recomputed.
+func (r *Runner) rescore(ip string, now, lastSeen time.Time) (score float64) {
 	events, _, err := r.Store.ListSecurityEvents(store.SecurityFilter{
 		Subject: ip,
 		Since:   now.Add(-24 * time.Hour),
@@ -283,7 +334,7 @@ func (r *Runner) updateRisk(ip string, now time.Time) (score float64) {
 	}
 	risk := store.IPRisk{
 		IP: ip, Score: score, State: string(state),
-		FirstSeen: firstSeen, LastSeen: now, Detections24h: len(dets),
+		FirstSeen: firstSeen, LastSeen: lastSeen, Detections24h: len(dets),
 	}
 	if err := r.Store.UpsertIPRisk(risk); err != nil {
 		log.Printf("security: persist risk for %s: %v", ip, err)
@@ -298,10 +349,15 @@ func (r *Runner) updateRisk(ip string, now time.Time) (score float64) {
 		return
 	}
 	if state == RiskNormal {
-		return // only publish for IPs worth another system's attention
+		// Only IPs worth another system's attention are published, and one that
+		// has calmed down must disappear again rather than linger until its TTL.
+		if err := redisping.Del(opts, "security:"+ip); err != nil {
+			log.Printf("security: release risk snapshot for %s: %v", ip, err)
+		}
+		return
 	}
 	payload, err := json.Marshal(map[string]any{
-		"score": score, "state": state, "last_seen": now.UTC().Format(time.RFC3339),
+		"score": score, "state": state, "last_seen": lastSeen.UTC().Format(time.RFC3339),
 	})
 	if err != nil {
 		return

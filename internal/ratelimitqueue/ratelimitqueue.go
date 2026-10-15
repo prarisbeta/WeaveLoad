@@ -7,6 +7,7 @@
 package ratelimitqueue
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -17,6 +18,45 @@ import (
 // main.pushRateLimitEventsPeriodically) and read/drained from (by the queue
 // viewer page and the external consumption API in internal/web).
 const QueueKey = "haproxy:ratelimit:events"
+
+// MaxQueueEvents caps the Redis list. The oldest events fall off once it is
+// exceeded, so an unconsumed queue cannot grow without bound.
+const MaxQueueEvents = 5000
+
+// Pusher is the slice of Redis Publish needs: append one value to a list and
+// trim the list to [start, stop].
+type Pusher interface {
+	Push(key, value string) error
+	Trim(key string, start, stop int) error
+}
+
+// Publish appends events to QueueKey, oldest first, then trims the list to
+// the newest MaxQueueEvents entries. It returns how many events were stored;
+// a failed push is skipped (and reported through the returned error) so one
+// bad event does not block the rest.
+func Publish(p Pusher, events []Event) (int, error) {
+	var firstErr error
+	pushed := 0
+	for _, ev := range events {
+		b, err := json.Marshal(ev)
+		if err != nil {
+			continue
+		}
+		if err := p.Push(QueueKey, string(b)); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		pushed++
+	}
+	if pushed > 0 {
+		if err := p.Trim(QueueKey, -MaxQueueEvents, -1); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return pushed, firstErr
+}
 
 // Event is one rate-limit rejection worth recording.
 type Event struct {

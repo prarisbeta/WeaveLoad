@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"embed"
-	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -382,7 +381,8 @@ const rateLimitBlockStatus = 429
 func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath string) {
 	t := time.NewTicker(15 * time.Second)
 	defer t.Stop()
-	var since time.Time
+	// Start from now: a restart must not push the whole day's rejections again.
+	since := time.Now()
 	for range t.C {
 		rs, err := s.GetRedisSettings()
 		if err != nil || rs.Host == "" {
@@ -404,17 +404,22 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 			continue
 		}
 		since = newest
-		for _, ev := range events {
-			b, err := json.Marshal(ev)
-			if err != nil {
-				continue
-			}
-			opts := redisping.Options{Host: rs.Host, Port: rs.Port, Password: rs.Password, DB: rs.DB, TLS: rs.TLS}
-			if err := redisping.Push(opts, ratelimitqueue.QueueKey, string(b)); err != nil {
-				log.Printf("push rate-limit event to redis: %v", err)
-			}
+		if len(events) == 0 {
+			continue
+		}
+		opts := redisping.Options{Host: rs.Host, Port: rs.Port, Password: rs.Password, DB: rs.DB, TLS: rs.TLS}
+		if _, err := ratelimitqueue.Publish(redisQueue{opts}, events); err != nil {
+			log.Printf("push rate-limit events to redis: %v", err)
 		}
 	}
+}
+
+// redisQueue adapts redisping to ratelimitqueue.Pusher.
+type redisQueue struct{ opts redisping.Options }
+
+func (q redisQueue) Push(key, value string) error { return redisping.Push(q.opts, key, value) }
+func (q redisQueue) Trim(key string, start, stop int) error {
+	return redisping.LTrim(q.opts, key, start, stop)
 }
 
 // runSecurityEnginePeriodically starts the internal/security Runner on a
