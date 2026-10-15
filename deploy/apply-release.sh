@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ "$(id -u)" -eq 0 ] || { echo "run as root (sudo)" >&2; exit 1; }
-[ -x "$REL/bin/haproxy-gui" ] || { echo "no $REL/bin/haproxy-gui, run from an extracted release" >&2; exit 1; }
+[ -f "$REL/bin/haproxy-gui" ] || { echo "no $REL/bin/haproxy-gui, run from an extracted release" >&2; exit 1; }
 
 step() { echo; echo "==> $*"; }
 snapname=""
