@@ -23,11 +23,11 @@ type ErrorPagesHandler struct {
 // ErrorPagesView holds data for rendering error pages management UI.
 type ErrorPagesView struct {
 	Chrome
-	Pages       []errorpages.Page
-	ActivePage  errorpages.Page
-	ActiveCode  int
-	SuccessMsg  string
-	ErrorMsg    string
+	Pages      []errorpages.Page
+	ActivePage errorpages.Page
+	ActiveCode int
+	SuccessMsg string
+	ErrorMsg   string
 }
 
 func (h *ErrorPagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -501,5 +501,3 @@ func (h *PoolDeleteAction) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	actionDesc := fmt.Sprintf("Kelompok %s berhasil dihapus dari konfigurasi.", pool)
 	h.applyChange(w, r, "pool.delete", pool, "deleted pool "+pool, updated, actionDesc)
 }
-
-

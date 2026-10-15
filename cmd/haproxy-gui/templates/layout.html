@@ -438,6 +438,10 @@ code { font: 12.5px ui-monospace, "SFMono-Regular", Menlo, monospace; background
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4M12 17h.01"/></svg>
         {{t .Language "nav_incidents"}}
       </a>
+      <a class="nav-link{{if eq .Active "policy"}} active{{end}}" href="/policy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="15" r="3"/></svg>
+        {{t .Language "nav_policy"}}
+      </a>
       {{end}}
       {{if .User.Role.Can "manage_users"}}
       <a class="nav-link{{if eq .Active "users"}} active{{end}}" href="/users">

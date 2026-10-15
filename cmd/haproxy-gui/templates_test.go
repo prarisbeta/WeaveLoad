@@ -14,6 +14,7 @@ import (
 	"haproxy-gui/internal/auth"
 	"haproxy-gui/internal/certs"
 	"haproxy-gui/internal/cfgfile"
+	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/web"
 )
@@ -44,6 +45,13 @@ func (f fileConfig) ListBackups() ([]cfgfile.Backup, error) {
 func (f fileConfig) GetBackupPath(name string) (string, error) { return "", nil }
 func (f fileConfig) ReadBackup(name string) (string, error)    { return f.content, nil }
 func (f fileConfig) DeleteBackup(name string) error            { return nil }
+
+type noopExecutor struct{}
+
+func (noopExecutor) BlockIP(string) error      { return nil }
+func (noopExecutor) UnblockIP(string) error    { return nil }
+func (noopExecutor) Drain(_, _ string) error   { return nil }
+func (noopExecutor) Undrain(_, _ string) error { return nil }
 
 type fixedSettings struct{ redis store.RedisSettings }
 
@@ -168,7 +176,18 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		Templates: realTemplates(t),
 	}
 
+	ps, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	pe := &policy.Engine{Repo: ps, Exec: noopExecutor{}, Audit: ps}
+	if _, _, err := pe.Submit(policy.Action{Type: policy.BlockIP, Target: "9.9.9.9", Reason: "SQLi burst", Source: "auto:threat_intel"}); err != nil {
+		t.Fatal(err)
+	}
+
 	mux := http.NewServeMux()
+	mux.Handle("GET /policy", &web.PolicyHandler{Engine: pe, Store: ps, Templates: realTemplates(t)})
 	mux.Handle("GET /pools", &web.PoolsHandler{PoolService: svc})
 	mux.Handle("GET /pools/new", &web.PoolNewFormHandler{PoolService: svc})
 	mux.Handle("GET /pools/{name}", &web.PoolDetailHandler{PoolService: svc})
@@ -218,6 +237,10 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"config_lists_backups", http.MethodGet, "/config", nil, "haproxy.cfg.bak-1792045394840025288"},
 		{"config_backup_size", http.MethodGet, "/config", nil, "26.3 KiB"},
 		{"config_settings_mcp_url", http.MethodGet, "/config", nil, "/mcp"},
+		{"config_api_tokens_in_mcp_panel", http.MethodGet, "/config", nil, `id="api-tokens"`},
+		{"policy.html", http.MethodGet, "/policy", nil, "Kill switch"},
+		{"policy_pending_action", http.MethodGet, "/policy", nil, "9.9.9.9"},
+		{"policy_modes", http.MethodGet, "/policy", nil, `name="mode_block_ip"`},
 		{"api_token_result.html", http.MethodPost, "/api/settings/api-tokens", url.Values{"name": {"claude-code"}}, "kgw_plaintextplaintextplaintext"},
 		{"login.html", http.MethodGet, "/login", nil, `href="/auth/login"`},
 		{"certs.html", http.MethodGet, "/certs", nil, "palapacloud.id.pem"},

@@ -15,6 +15,7 @@ func TemplateFuncs() template.FuncMap {
 		"upper": strings.ToUpper,
 		"bytes": formatSize,
 		"t":     i18n.T,
+		"list":  func(v ...string) []string { return v },
 	}
 }
 

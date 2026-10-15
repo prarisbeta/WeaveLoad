@@ -41,10 +41,19 @@ func Tools() []Tool {
 			InputSchema: Schema{Type: "object", Properties: map[string]any{
 				"id": map[string]any{"type": "integer", "description": "Incident ID"},
 			}, Required: []string{"id"}}, Annotations: readOnly},
-		{Name: "propose_action", Description: "Propose an action for a human operator to review. This only records the proposal on the operator's alerts page; nothing is executed.",
+		{Name: "policy_check_action", Description: "Dry run: ask the Policy Engine whether a block_ip or drain_server action would be allowed, and in what mode, without recording or running anything.",
 			InputSchema: Schema{Type: "object", Properties: map[string]any{
-				"reason":   str("Why this action is proposed"),
-				"evidence": str("Evidence supporting the action"),
+				"action":      str("block_ip or drain_server"),
+				"target":      str("An IP address for block_ip, or backend/server for drain_server"),
+				"ttl_seconds": map[string]any{"type": "integer", "description": "How long the action should last (optional)"},
+			}, Required: []string{"action", "target"}}, Annotations: readOnly},
+		{Name: "propose_action", Description: "Propose an action for a human operator to review. It is recorded on the operator's alerts page; nothing is executed. Optionally name a typed action (block_ip or drain_server) so the operator can approve it with one click in the Policy Engine; it still only runs after a human approves.",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{
+				"reason":      str("Why this action is proposed"),
+				"evidence":    str("Evidence supporting the action"),
+				"action":      str("Optional: block_ip or drain_server"),
+				"target":      str("Optional: IP address, or backend/server"),
+				"ttl_seconds": map[string]any{"type": "integer", "description": "Optional: how long the action should last"},
 			}, Required: []string{"reason", "evidence"}}},
 	}
 }

@@ -17,6 +17,7 @@ type Store interface {
 	PruneStaleSecurityEvents(olderThan time.Time) (int64, error)
 	PruneIPRisk(olderThan time.Time) (int64, error)
 	PruneAlerts(olderThan time.Time) (int64, error)
+	PrunePolicyActions(olderThan time.Time) (int64, error)
 }
 
 // Backups prunes config backups, keeping the newest N.
@@ -32,6 +33,7 @@ type Policy struct {
 	SecurityEvents time.Duration
 	IPRisk         time.Duration
 	Alerts         time.Duration
+	PolicyActions  time.Duration
 	KeepBackups    int
 }
 
@@ -43,6 +45,7 @@ func DefaultPolicy() Policy {
 		SecurityEvents: 90 * day,
 		IPRisk:         90 * day,
 		Alerts:         90 * day,
+		PolicyActions:  90 * day,
 		KeepBackups:    50,
 	}
 }
@@ -98,6 +101,10 @@ func (s *Sweeper) Sweep() Result {
 	if p.Alerts > 0 {
 		n, err = s.Store.PruneAlerts(t.Add(-p.Alerts))
 		record("alerts", n, err)
+	}
+	if p.PolicyActions > 0 {
+		n, err = s.Store.PrunePolicyActions(t.Add(-p.PolicyActions))
+		record("policy_actions", n, err)
 	}
 	if s.Backups != nil && p.KeepBackups > 0 {
 		b, err := s.Backups.PruneBackups(p.KeepBackups)

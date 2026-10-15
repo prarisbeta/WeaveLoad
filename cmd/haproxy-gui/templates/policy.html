@@ -1,0 +1,107 @@
+{{define "policy.html"}}{{template "chrome_header" .}}{{template "policy_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "policy_content"}}
+<h1>Policy Engine</h1>
+<p class="hint">Satu-satunya gerbang antara deteksi/AI dan perubahan nyata pada HAProxy. Setiap aksi dicatat di audit log, dibatasi per jam, berbatas waktu (TTL), dan otomatis dibatalkan saat TTL habis.</p>
+
+{{if .Notice}}<div class="panel notice-ok"><strong>{{.Notice}}</strong></div>{{end}}
+
+<div class="panel" style="{{if .Config.KillSwitch}}border:1px solid var(--danger, #dc2626);{{end}}">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h3 style="margin:0;">Kill switch</h3>
+      <p class="hint" style="margin:4px 0 0 0;">
+        {{if .Config.KillSwitch}}<span class="badge badge-down">AKTIF</span> Semua aksi ditolak, termasuk usulan baru.
+        {{else}}<span class="badge badge-up">MATI</span> Policy Engine berjalan sesuai mode di bawah.{{end}}
+      </p>
+    </div>
+    {{if .CanDecide}}
+    <form method="POST" action="/api/policy/kill-switch">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <input type="hidden" name="on" value="{{if .Config.KillSwitch}}0{{else}}1{{end}}">
+      <button type="submit" class="{{if .Config.KillSwitch}}primary{{else}}danger{{end}}">{{if .Config.KillSwitch}}Matikan kill switch{{else}}Aktifkan kill switch{{end}}</button>
+    </form>
+    {{end}}
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Menunggu persetujuan</h3>
+  {{if not .Pending}}
+  <p class="muted">Tidak ada usulan yang menunggu.</p>
+  {{else}}
+  <div class="table-scroll"><table>
+    <tr><th>Waktu</th><th>Aksi</th><th>Target</th><th>TTL</th><th>Sumber</th><th>Alasan</th><th></th></tr>
+    {{range .Pending}}
+    <tr>
+      <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+      <td><code>{{.Type}}</code></td>
+      <td><strong>{{.Target}}</strong></td>
+      <td>{{.TTLSeconds}} dtk</td>
+      <td>{{.Source}}</td>
+      <td>{{.Reason}}{{if .Evidence}}<details><summary class="muted">bukti</summary><pre>{{.Evidence}}</pre></details>{{end}}</td>
+      <td>
+        {{if $.CanDecide}}
+        <form method="POST" action="/api/policy/{{.ID}}/approve" style="display:inline" onsubmit="return confirm('Jalankan {{.Type}} pada {{.Target}} sekarang?')">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit" class="primary">Setujui</button></form>
+        <form method="POST" action="/api/policy/{{.ID}}/reject" style="display:inline">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit">Tolak</button></form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table></div>
+  {{end}}
+</div>
+
+<div class="panel">
+  <h3>Mode &amp; batas</h3>
+  <p class="hint"><code>off</code> = ditolak &middot; <code>shadow</code> = hanya dicatat "akan dilakukan" &middot; <code>propose</code> = menunggu persetujuan manusia &middot; <code>auto</code> = langsung dijalankan. Token API dan AI tidak pernah lebih dari <code>propose</code>.</p>
+  <form method="POST" action="/api/policy/config" class="member-form">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    {{range $t := .Types}}
+    <label>Mode <code>{{$t}}</code>
+      <select name="mode_{{$t}}" {{if not $.CanConfigure}}disabled{{end}}>
+        {{range $m := list "off" "shadow" "propose" "auto"}}<option value="{{$m}}" {{if eq (index $.Config.Modes $t) $m}}selected{{end}}>{{$m}}</option>{{end}}
+      </select>
+    </label>
+    <label>Batas per jam <code>{{$t}}</code><input type="number" min="0" name="max_{{$t}}" value="{{index $.Config.MaxPerHour $t}}" {{if not $.CanConfigure}}disabled{{end}}></label>
+    {{end}}
+    <label>TTL bawaan (menit)<input type="number" min="1" name="default_ttl_min" value="{{.DefaultMin}}" {{if not .CanConfigure}}disabled{{end}}></label>
+    <label>TTL maksimum (menit)<input type="number" min="1" name="max_ttl_min" value="{{.MaxMin}}" {{if not .CanConfigure}}disabled{{end}}></label>
+    <label>Rentang IP terlindungi (CIDR, satu per baris; tidak pernah diblokir)<textarea name="protected_cidrs" rows="3" {{if not .CanConfigure}}disabled{{end}}>{{.Protected}}</textarea></label>
+    {{if .CanConfigure}}<div class="row-actions"><button type="submit" class="primary" onclick="return confirm('Simpan konfigurasi policy? Mode auto menjalankan aksi tanpa persetujuan manusia.')">Simpan</button></div>
+    {{else}}<p class="muted">Mengubah konfigurasi butuh hak manage_settings.</p>{{end}}
+  </form>
+</div>
+
+<div class="panel">
+  <h3>Riwayat</h3>
+  {{if not .History}}
+  <p class="muted">Belum ada aksi.</p>
+  {{else}}
+  <div class="table-scroll"><table>
+    <tr><th>Waktu</th><th>Aksi</th><th>Target</th><th>Status</th><th>Berakhir</th><th>Oleh</th><th>Hasil</th><th></th></tr>
+    {{range .History}}
+    <tr>
+      <td>{{.CreatedAt.Format "2006-01-02 15:04:05"}}</td>
+      <td><code>{{.Type}}</code></td>
+      <td>{{.Target}}</td>
+      <td>
+        {{if eq .Status "executed"}}<span class="badge badge-up">executed</span>
+        {{else if eq .Status "pending"}}<span class="badge badge-warn">pending</span>
+        {{else if eq .Status "failed"}}<span class="badge badge-down">failed</span>
+        {{else}}<span class="badge badge-nocheck">{{.Status}}</span>{{end}}
+      </td>
+      <td>{{if .ExpiresAt}}{{.ExpiresAt.Format "15:04:05"}}{{else}}-{{end}}</td>
+      <td>{{if .DecidedBy}}{{.DecidedBy}}{{else}}{{.Source}}{{end}}</td>
+      <td>{{.Result}}</td>
+      <td>{{if and $.CanDecide (eq .Status "executed")}}
+        <form method="POST" action="/api/policy/{{.ID}}/revert" style="display:inline" onsubmit="return confirm('Batalkan aksi ini sekarang?')">
+          <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}"><button type="submit">Batalkan</button></form>{{end}}</td>
+    </tr>
+    {{end}}
+  </table></div>
+  {{end}}
+</div>
+{{end}}

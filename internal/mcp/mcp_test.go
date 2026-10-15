@@ -105,8 +105,8 @@ func TestToolsListMarksReadToolsReadOnlyAndNotPropose(t *testing.T) {
 	if err := json.Unmarshal(b, &out); err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Tools) != 7 {
-		t.Fatalf("got %d tools, want 7", len(out.Tools))
+	if len(out.Tools) != 8 {
+		t.Fatalf("got %d tools, want 8", len(out.Tools))
 	}
 	for _, tl := range out.Tools {
 		ro := tl.Annotations["readOnlyHint"] == true
@@ -166,6 +166,36 @@ func TestToolCall_InvalidArgumentsAreRPCErrors(t *testing.T) {
 		if r.Error == nil {
 			t.Errorf("%s => %+v, want an RPC error", params, r.Result)
 		}
+	}
+}
+
+func TestPolicyCheckAction_PostsADryRun(t *testing.T) {
+	fb := &fakeBackend{body: `{"success":true,"data":{"allowed":true,"mode":"propose"}}`}
+	r := call(t, &Server{Backend: fb}, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"policy_check_action","arguments":{"action":"block_ip","target":"9.9.9.9","ttl_seconds":600}}}`)
+	text, isErr := resultText(t, r)
+	if isErr || fb.method != "POST" || fb.path != "/policy/check" || !strings.Contains(text, `"allowed":true`) {
+		t.Fatalf("err=%v %s %s %q", isErr, fb.method, fb.path, text)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal(fb.sent, &sent); err != nil || sent["action"] != "block_ip" || sent["target"] != "9.9.9.9" || sent["ttl_seconds"] != float64(600) {
+		t.Errorf("sent = %s", fb.sent)
+	}
+	for _, params := range []string{
+		`{"name":"policy_check_action","arguments":{"action":"block_ip"}}`,
+		`{"name":"policy_check_action","arguments":{"target":"9.9.9.9"}}`,
+	} {
+		if r := call(t, &Server{Backend: &fakeBackend{}}, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":`+params+`}`); r.Error == nil {
+			t.Errorf("%s: want an RPC error", params)
+		}
+	}
+}
+
+func TestProposeAction_ForwardsTypedActionToThePolicyEndpoint(t *testing.T) {
+	fb := &fakeBackend{status: 201, body: `{"success":true}`}
+	call(t, &Server{Backend: fb}, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"propose_action","arguments":{"reason":"SQLi","evidence":"e","action":"block_ip","target":"9.9.9.9"}}}`)
+	var sent map[string]any
+	if err := json.Unmarshal(fb.sent, &sent); err != nil || sent["action"] != "block_ip" || sent["target"] != "9.9.9.9" {
+		t.Errorf("sent = %s", fb.sent)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"haproxy-gui/internal/haproxylog"
+	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/redisping"
 	"haproxy-gui/internal/store"
 )
@@ -40,8 +41,18 @@ type Runner struct {
 	// the engine and persistence work the same either way.
 	RedisOpts func() (redisping.Options, bool)
 
+	// Policy, when set, receives block requests for critical threat-intel
+	// detections. The detector only observes; whether anything happens is the
+	// Policy Engine's decision.
+	Policy Submitter
+
 	// Now defaults to time.Now; overridable for tests.
 	Now func() time.Time
+}
+
+// Submitter is the slice of *policy.Engine the Runner uses.
+type Submitter interface {
+	Submit(policy.Action) (store.PolicyAction, policy.Decision, error)
 }
 
 // Tick reads whatever new log lines are available, runs them through the
@@ -80,13 +91,50 @@ func (r *Runner) Tick() error {
 		}
 	}
 
+	scores := map[string]float64{}
 	for ip := range touchedIPs {
-		r.updateRisk(ip, t)
+		scores[ip] = r.updateRisk(ip, t)
 	}
+	r.proposeBlocks(detections, scores)
 	return nil
 }
 
-func (r *Runner) updateRisk(ip string, now time.Time) {
+// autoBlockScore is the risk score an IP must reach before a critical CTI
+// detection asks the Policy Engine to block it.
+const autoBlockScore = 60
+
+// proposeBlocks hands critical threat-intel detections to the Policy Engine.
+// The engine, not this code, decides whether that means nothing (off),
+// a logged "would block" (shadow), a queued proposal or an automatic block.
+func (r *Runner) proposeBlocks(detections []Detection, scores map[string]float64) {
+	if r.Policy == nil {
+		return
+	}
+	for _, d := range detections {
+		if d.Rule != RuleThreatIntel || d.Severity != SeverityCritical || d.SubjectType != SubjectIP {
+			continue
+		}
+		if scores[d.Subject] < autoBlockScore {
+			continue
+		}
+		evidence, _ := json.Marshal(d.Evidence)
+		_, _, err := r.Policy.Submit(policy.Action{
+			Type:       policy.BlockIP,
+			Target:     d.Subject,
+			Reason:     fmt.Sprintf("critical threat-intel detection (%d hits)", d.Count),
+			Evidence:   string(evidence),
+			Source:     "auto:threat_intel",
+			Confidence: 0.9,
+		})
+		if err != nil {
+			log.Printf("security: submit block for %s: %v", d.Subject, err)
+		}
+	}
+}
+
+// updateRisk recomputes and stores ip's risk score and returns it (0 when the
+// score could not be computed).
+func (r *Runner) updateRisk(ip string, now time.Time) (score float64) {
 	events, _, err := r.Store.ListSecurityEvents(store.SecurityFilter{
 		Subject: ip,
 		Since:   now.Add(-24 * time.Hour),
@@ -100,7 +148,7 @@ func (r *Runner) updateRisk(ip string, now time.Time) {
 	for _, e := range events {
 		dets = append(dets, Detection{Rule: Rule(e.Rule), Severity: Severity(e.Severity), LastSeen: e.LastSeen})
 	}
-	score := Score(dets, now)
+	score = Score(dets, now)
 	state := State(score)
 
 	firstSeen := now
@@ -135,6 +183,7 @@ func (r *Runner) updateRisk(ip string, now time.Time) {
 	if err := redisping.Set(opts, "security:"+ip, string(payload), 24*time.Hour); err != nil {
 		log.Printf("security: publish risk snapshot for %s: %v", ip, err)
 	}
+	return score
 }
 
 func toStoreEvent(d Detection) store.SecurityEvent {

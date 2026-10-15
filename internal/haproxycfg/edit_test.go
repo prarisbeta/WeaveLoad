@@ -622,4 +622,3 @@ backend pool_b
 		t.Errorf("pool_b should still exist:\n%s", out)
 	}
 }
-

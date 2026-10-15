@@ -24,6 +24,7 @@ import (
 	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/haproxylog"
 	"haproxy-gui/internal/omsdir"
+	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/ratelimitqueue"
 	"haproxy-gui/internal/redisping"
 	"haproxy-gui/internal/retention"
@@ -36,6 +37,28 @@ import (
 
 //go:embed templates/*.html
 var templatesFS embed.FS
+
+// blocklistPath is the HAProxy map file the Policy Engine adds blocked IPs to
+// (the same "Blocklist IP" list the ACL page manages).
+const blocklistPath = "/etc/haproxy/maps/blocklist_ip.lst"
+
+// expirePolicyPeriodically undoes policy actions whose TTL has ended.
+func expirePolicyPeriodically(ctx context.Context, e *policy.Engine) {
+	t := time.NewTicker(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n, err := e.ExpireDue(); err != nil {
+				log.Printf("policy expire: %v", err)
+			} else if n > 0 {
+				log.Printf("policy: reverted %d expired action(s)", n)
+			}
+		}
+	}
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -92,7 +115,14 @@ func run() error {
 		return err
 	}
 
+	policyEngine := &policy.Engine{
+		Repo:  s,
+		Exec:  &policy.HAProxyExecutor{Maps: rt, Servers: rt, BlocklistPath: blocklistPath},
+		Audit: s,
+	}
+
 	mux := buildRoutes(routeDeps{
+		policy:    policyEngine,
 		templates: tpl,
 		store:     s,
 		runtime:   rt,
@@ -114,8 +144,9 @@ func run() error {
 	retentionCtx, stopRetention := context.WithCancel(context.Background())
 	defer stopRetention()
 	go sweeper.Run(retentionCtx, time.Hour)
+	go expirePolicyPeriodically(retentionCtx, policyEngine)
 	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
-	if err := runSecurityEnginePeriodically(s, cfg.LogPath); err != nil {
+	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine); err != nil {
 		log.Printf("security engine disabled: %v", err)
 	}
 
@@ -198,7 +229,7 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 // reuses whatever Redis connection the Settings page has configured for the
 // rate-limit queue, read fresh on every tick so a later configuration
 // change takes effect without a restart.
-func runSecurityEnginePeriodically(s *store.Store, logPath string) error {
+func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine) error {
 	tailer, err := haproxylog.NewTailerAtEnd(logPath)
 	if err != nil {
 		return err
@@ -207,6 +238,7 @@ func runSecurityEnginePeriodically(s *store.Store, logPath string) error {
 		Store:  s,
 		Engine: security.NewEngine(security.DefaultThresholds()),
 		Tailer: tailer,
+		Policy: pe,
 		RedisOpts: func() (redisping.Options, bool) {
 			rs, err := s.GetRedisSettings()
 			if err != nil || rs.Host == "" {

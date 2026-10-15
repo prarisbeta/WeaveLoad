@@ -196,7 +196,17 @@ func (s *Server) callTool(ctx context.Context, p CallToolParams) (map[string]any
 		if reason == "" || evidence == "" {
 			return nil, &Error{Code: CodeInvalidParams, Message: "Both reason and evidence are required"}
 		}
-		body, _ := json.Marshal(map[string]string{"reason": reason, "evidence": evidence})
+		payload := map[string]any{"reason": reason, "evidence": evidence}
+		// Optional typed action: it goes to the Policy Engine, which for an
+		// API caller never goes beyond "propose" (a human still approves).
+		if action, _ := p.Arguments["action"].(string); action != "" {
+			payload["action"] = action
+			payload["target"], _ = p.Arguments["target"].(string)
+			if ttl := intArg(p.Arguments["ttl_seconds"]); ttl > 0 {
+				payload["ttl_seconds"] = ttl
+			}
+		}
+		body, _ := json.Marshal(payload)
 		status, resp, err := s.Backend.Do(ctx, "POST", "/proposals", body)
 		res := apiResult(status, resp, err)
 		if _, failed := res["isError"]; !failed {
@@ -204,6 +214,19 @@ func (s *Server) callTool(ctx context.Context, p CallToolParams) (map[string]any
 			return textResult(strings.TrimSpace(text), false), nil
 		}
 		return res, nil
+	case "policy_check_action":
+		action, _ := p.Arguments["action"].(string)
+		target, _ := p.Arguments["target"].(string)
+		if strings.TrimSpace(action) == "" || strings.TrimSpace(target) == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "Both action and target are required"}
+		}
+		payload := map[string]any{"action": action, "target": target}
+		if ttl := intArg(p.Arguments["ttl_seconds"]); ttl > 0 {
+			payload["ttl_seconds"] = ttl
+		}
+		body, _ := json.Marshal(payload)
+		status, resp, err := s.Backend.Do(ctx, "POST", "/policy/check", body)
+		return apiResult(status, resp, err), nil
 	default:
 		return nil, &Error{Code: CodeMethodNotFound, Message: "Tool not found: " + p.Name}
 	}

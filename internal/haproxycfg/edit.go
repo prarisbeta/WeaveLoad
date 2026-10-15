@@ -584,5 +584,3 @@ func DeletePool(content, pool string) (string, error) {
 	updated := deleteLines(content, start, count)
 	return updated, nil
 }
-
-

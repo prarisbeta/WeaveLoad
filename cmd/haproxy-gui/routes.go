@@ -16,6 +16,7 @@ import (
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/errorpages"
 	"haproxy-gui/internal/omsdir"
+	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/runtime"
 	"haproxy-gui/internal/store"
 	"haproxy-gui/internal/sysinfo"
@@ -57,6 +58,7 @@ type routeDeps struct {
 	dir       *omsdir.Client
 	sys       *sysinfo.Sampler
 	cfg       appconfig.Config
+	policy    *policy.Engine
 }
 
 // chain applies middleware in the order given: chain(h, a, b, c) runs
@@ -238,6 +240,16 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 
+	// --- Policy Engine: the single gate for automated and proposed changes ---
+	requirePolicyView := requireViewSecurity
+	mux.Handle("GET /policy", chain(&web.PolicyHandler{Engine: d.policy, Store: d.store, Templates: d.templates}, requireAuth, requirePolicyView))
+	for _, verb := range []string{"approve", "reject", "revert"} {
+		mux.Handle("POST /api/policy/{id}/"+verb, chain(&web.PolicyDecisionAction{Engine: d.policy, Verb: verb}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	}
+	mux.Handle("POST /api/policy/kill-switch", chain(&web.PolicyKillSwitchAction{Engine: d.policy}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
+	mux.Handle("POST /api/policy/config", chain(&web.PolicyConfigAction{Engine: d.policy}, requireAuth, requireManageSettings, auth.RequireCSRF))
+	mux.Handle("POST /api/v1/policy/check", chain(&web.APIV1PolicyCheckHandler{Engine: d.policy}, requireAPI, requireViewSecurity, auth.RequireCSRF))
+
 	// --- HTTP API /api/v1 (C1-4) ---
 	mux.Handle("GET /api/v1/status", chain(&web.APIV1StatusHandler{Stats: d.runtime, Sys: d.sys, DiskPaths: d.cfg.SysDiskPaths}, requireAPI))
 	mux.Handle("GET /api/v1/backends", chain(&web.APIV1BackendsHandler{Stats: d.runtime, Config: d.cfgfile}, requireAPI))
@@ -246,7 +258,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /api/v1/incidents", chain(&web.APIV1IncidentsHandler{Store: d.store}, requireAPI, requireViewSecurity))
 	mux.Handle("GET /api/v1/incidents/{id}", chain(&web.APIV1IncidentDetailHandler{Store: d.store}, requireAPI, requireViewSecurity))
 
-	mux.Handle("POST /api/v1/proposals", chain(&web.APIV1ProposalHandler{Store: d.store, Audit: d.store}, requireAPI, requireViewSecurity, auth.RequireCSRF))
+	mux.Handle("POST /api/v1/proposals", chain(&web.APIV1ProposalHandler{Store: d.store, Audit: d.store, Policy: d.policy}, requireAPI, requireViewSecurity, auth.RequireCSRF))
 
 	// --- MCP over HTTP: remote MCP clients (Claude Code, Cursor, n8n, ...) that
 	// take a URL + Authorization header instead of launching konsolgw-mcp. Token

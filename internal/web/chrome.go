@@ -17,7 +17,7 @@ type Chrome struct {
 	CSRFToken string
 	// Active is the nav key of the current page ("dashboard", "config",
 	// "certs", "acl", "audit", "users"), used to highlight it in chrome_nav.
-	Active string
+	Active   string
 	Language string
 }
 

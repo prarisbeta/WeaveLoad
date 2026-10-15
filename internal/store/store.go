@@ -174,6 +174,26 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 	last_used_at TEXT,
 	revoked      INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS policy_actions (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	created_at  TEXT NOT NULL,
+	type        TEXT NOT NULL,
+	target      TEXT NOT NULL,
+	ttl_seconds INTEGER NOT NULL DEFAULT 0,
+	reason      TEXT NOT NULL DEFAULT '',
+	evidence    TEXT NOT NULL DEFAULT '',
+	source      TEXT NOT NULL DEFAULT '',
+	confidence  REAL NOT NULL DEFAULT 0,
+	status      TEXT NOT NULL,
+	decided_by  TEXT NOT NULL DEFAULT '',
+	decided_at  TEXT,
+	executed_at TEXT,
+	expires_at  TEXT,
+	result      TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_policy_status ON policy_actions(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_policy_target ON policy_actions(type, target);
 `
 
 func (s *Store) migrate() error {
