@@ -9,6 +9,7 @@ import (
 
 	"haproxy-gui/internal/anomaly"
 	"haproxy-gui/internal/haproxylog"
+	"haproxy-gui/internal/notify"
 	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/redisping"
 	"haproxy-gui/internal/store"
@@ -48,6 +49,9 @@ type Runner struct {
 	// detections. The detector only observes; whether anything happens is the
 	// Policy Engine's decision.
 	Policy Submitter
+
+	// Notifier, when set, hears about new detections.
+	Notifier Notifier
 
 	// Anomaly, when set, learns each backend's normal traffic per hour of the
 	// week and records deviations.
@@ -96,9 +100,13 @@ func (r *Runner) Tick() error {
 	detections := r.Engine.Ingest(lines, t)
 	touchedIPs := map[string]bool{}
 	for _, d := range detections {
-		if _, _, err := r.Store.UpsertSecurityEvent(toStoreEvent(d)); err != nil {
+		_, created, err := r.Store.UpsertSecurityEvent(toStoreEvent(d))
+		if err != nil {
 			log.Printf("security: persist detection %s for %s: %v", d.Rule, d.Subject, err)
 			continue
+		}
+		if created {
+			r.notifyDetection(d)
 		}
 		if d.SubjectType == SubjectIP {
 			touchedIPs[d.Subject] = true
@@ -143,6 +151,26 @@ func (r *Runner) runAnomaly(lines []haproxylog.Line, now time.Time) {
 			log.Printf("security: persist traffic anomaly for %s: %v", a.Backend, err)
 		}
 	}
+}
+
+// Notifier is the slice of *notify.Notifier the Runner uses.
+type Notifier interface {
+	Notify(notify.Notice)
+}
+
+// notifyDetection queues a message for a newly created detection; the
+// Notifier itself drops anything below its severity threshold.
+func (r *Runner) notifyDetection(d Detection) {
+	if r.Notifier == nil {
+		return
+	}
+	detail, _ := json.Marshal(d.Evidence)
+	r.Notifier.Notify(notify.Notice{
+		Severity: string(d.Severity),
+		Title:    fmt.Sprintf("%s %s", d.Rule, d.Subject),
+		Detail:   string(detail),
+		At:       d.LastSeen,
+	})
 }
 
 // IntelLookup is the slice of *threatintel.Service the Runner uses.

@@ -2,7 +2,7 @@
 
 {{define "security_page"}}
 <h1>{{t .Language "nav_security"}}</h1>
-<p class="hint">{{t .Language "sec_desc"}}</p>
+<p class="hint">{{t .Language "sec_desc"}} <a href="/reports/weekly">Laporan mingguan</a></p>
 
 <div class="panel" style="margin-bottom:16px">
   <form hx-get="/security" hx-target="#sec-table" hx-push-url="true" style="display:flex; gap:10px; flex-wrap:wrap; align-items:end">

@@ -1,0 +1,49 @@
+{{define "report_weekly.html"}}{{template "chrome_header" .}}{{template "report_weekly_content" .}}{{template "chrome_footer" .}}{{end}}
+
+{{define "report_weekly_content"}}
+<style>@media print { .sidebar, .topbar, nav, .no-print { display:none !important; } .panel { break-inside: avoid; } }</style>
+<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+  <div>
+    <h1 style="margin:0;">Laporan Keamanan Mingguan</h1>
+    <p class="hint" style="margin:4px 0 0 0;">{{.Report.From.Format "2 Jan 2006"}} &ndash; {{.Report.To.Format "2 Jan 2006"}}</p>
+  </div>
+  <button type="button" class="no-print" onclick="window.print()">Cetak / simpan PDF</button>
+</div>
+
+<div class="panel">
+  <table>
+    <tr><th>Kejadian keamanan</th><td><strong>{{.Report.Events}}</strong></td></tr>
+    <tr><th>Insiden selesai</th><td>{{.Report.Resolved}}{{if .Report.Resolved}} &middot; MTTR rata-rata <strong>{{.Report.MTTR}}</strong>{{end}}</td></tr>
+    <tr><th>Insiden masih terbuka</th><td>{{.Report.StillOpen}}</td></tr>
+    <tr><th>Aksi Policy Engine</th><td>{{.Report.PolicyTotal}}{{range .Report.PolicyByState}} &middot; {{.Label}}: {{.Count}}{{end}}</td></tr>
+  </table>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Kejadian per aturan</h3>
+  {{if .Report.ByRule}}<table>{{range .Report.ByRule}}<tr><td><code>{{.Label}}</code></td><td>{{.Count}}</td></tr>{{end}}</table>
+  {{else}}<p class="muted">Tidak ada kejadian pada periode ini.</p>{{end}}
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Per tingkat keparahan</h3>
+  {{if .Report.BySeverity}}<table>{{range .Report.BySeverity}}<tr><td>{{.Label}}</td><td>{{.Count}}</td></tr>{{end}}</table>
+  {{else}}<p class="muted">-</p>{{end}}
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">Teknik MITRE ATT&amp;CK yang terdeteksi</h3>
+  {{if .Report.MITRE}}<table>{{range .Report.MITRE}}<tr><td><a href="https://attack.mitre.org/techniques/{{.Label}}/" rel="noopener noreferrer" target="_blank">{{.Label}}</a></td><td>{{.Count}}</td></tr>{{end}}</table>
+  {{else}}<p class="muted">Tidak ada teknik yang terpetakan.</p>{{end}}
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0">10 IP berisiko tertinggi</h3>
+  {{if .Report.TopIPs}}
+  <table>
+    <tr><th>IP</th><th>Skor</th><th>Status</th><th>Terakhir terlihat</th></tr>
+    {{range .Report.TopIPs}}<tr><td><a href="/security/ip/{{.IP}}">{{.IP}}</a></td><td>{{printf "%.0f" .Score}}</td><td>{{.State}}</td><td>{{.LastSeen.Format "2006-01-02 15:04"}}</td></tr>{{end}}
+  </table>
+  {{else}}<p class="muted">Belum ada profil risiko.</p>{{end}}
+</div>
+{{end}}

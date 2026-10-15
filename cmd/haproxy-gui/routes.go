@@ -248,6 +248,10 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/settings/redis", chain(&web.RedisSaveAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/queue-token/generate", chain(&web.QueueTokenGenerateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 
+	// --- Observability: Prometheus scrape target and the weekly report ---
+	mux.Handle("GET /metrics", chain(&web.MetricsHandler{Store: d.store, Stats: d.runtime, Engine: d.policy}, requireAPI, requireViewSecurity))
+	mux.Handle("GET /reports/weekly", chain(&web.WeeklyReportHandler{Store: d.store, Templates: d.templates}, requireAuth, requireViewSecurity))
+
 	// --- AI copilot: read-only tools, answers become Policy Engine proposals ---
 	toolbox := &web.CopilotToolbox{Store: d.store, Stats: d.runtime}
 	if d.intel != nil {

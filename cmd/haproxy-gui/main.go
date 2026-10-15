@@ -28,6 +28,7 @@ import (
 	"haproxy-gui/internal/cfgfile"
 	"haproxy-gui/internal/haproxycfg"
 	"haproxy-gui/internal/haproxylog"
+	"haproxy-gui/internal/notify"
 	"haproxy-gui/internal/omsdir"
 	"haproxy-gui/internal/policy"
 	"haproxy-gui/internal/ratelimitqueue"
@@ -66,6 +67,41 @@ func newIntelService(s *store.Store) *threatintel.Service {
 	limit, _ := strconv.Atoi(os.Getenv("KONSOLGW_ABUSEIPDB_DAILY_LIMIT"))
 	log.Printf("threat intel enabled: %d feed(s), abuseipdb=%v", len(feeds), key != "")
 	return &threatintel.Service{Feeds: feeds, Store: s, AbuseKey: key, AbuseDailyLimit: limit}
+}
+
+// newNotifier builds the alert notifier from the environment, or returns nil
+// when no channel is configured (a nil *Notifier ignores every Notify call).
+//
+//	KONSOLGW_NOTIFY_WEBHOOK_URL                      generic JSON webhook, {"text": "..."}
+//	KONSOLGW_NOTIFY_TELEGRAM_TOKEN / _CHAT_ID        Telegram bot
+//	KONSOLGW_NOTIFY_MIN_SEVERITY=high                low|medium|high|critical
+//	KONSOLGW_NOTIFY_WINDOW_SECONDS=300               digest window
+func newNotifier() *notify.Notifier {
+	var chans []notify.Channel
+	if u := os.Getenv("KONSOLGW_NOTIFY_WEBHOOK_URL"); u != "" {
+		chans = append(chans, &notify.Webhook{URL: u})
+	}
+	if tok, chat := os.Getenv("KONSOLGW_NOTIFY_TELEGRAM_TOKEN"), os.Getenv("KONSOLGW_NOTIFY_TELEGRAM_CHAT_ID"); tok != "" && chat != "" {
+		chans = append(chans, &notify.Telegram{Token: tok, ChatID: chat})
+	}
+	if len(chans) == 0 {
+		return nil
+	}
+	secs, _ := strconv.Atoi(os.Getenv("KONSOLGW_NOTIFY_WINDOW_SECONDS"))
+	host, _ := os.Hostname()
+	log.Printf("notifications enabled: %d channel(s)", len(chans))
+	return &notify.Notifier{
+		Channels: chans, MinSeverity: os.Getenv("KONSOLGW_NOTIFY_MIN_SEVERITY"),
+		Window: time.Duration(secs) * time.Second, Hostname: host,
+	}
+}
+
+// notifierOrNil avoids handing the Runner an interface that wraps a nil pointer.
+func notifierOrNil(n *notify.Notifier) security.Notifier {
+	if n == nil {
+		return nil
+	}
+	return n
 }
 
 // intelOrNil avoids handing the Runner an interface that wraps a nil pointer.
@@ -155,6 +191,13 @@ func run() error {
 		Audit: s,
 	}
 
+	notifier := newNotifier()
+	notifyCtx, stopNotify := context.WithCancel(context.Background())
+	defer stopNotify()
+	if notifier != nil {
+		go notifier.Run(notifyCtx)
+	}
+
 	canaryWatcher := &canary.Watcher{
 		Window: policyEngine.CanaryWindow,
 		NewSource: func() (canary.LogSource, error) {
@@ -178,6 +221,7 @@ func run() error {
 			if _, err := s.CreateAlert(rule, severity, subject, message); err != nil {
 				log.Printf("canary: create alert: %v", err)
 			}
+			notifier.Notify(notify.Notice{Severity: severity, Title: rule + " " + subject, Detail: message})
 		},
 		Audit: s,
 	}
@@ -216,7 +260,7 @@ func run() error {
 	go sweeper.Run(retentionCtx, time.Hour)
 	go expirePolicyPeriodically(retentionCtx, policyEngine)
 	go pushRateLimitEventsPeriodically(s, cf, cfg.LogPath)
-	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine, intel); err != nil {
+	if err := runSecurityEnginePeriodically(s, cfg.LogPath, policyEngine, intel, notifier); err != nil {
 		log.Printf("security engine disabled: %v", err)
 	}
 
@@ -299,18 +343,19 @@ func pushRateLimitEventsPeriodically(s *store.Store, cf *cfgfile.Store, logPath 
 // reuses whatever Redis connection the Settings page has configured for the
 // rate-limit queue, read fresh on every tick so a later configuration
 // change takes effect without a restart.
-func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine, intel *threatintel.Service) error {
+func runSecurityEnginePeriodically(s *store.Store, logPath string, pe *policy.Engine, intel *threatintel.Service, nf *notify.Notifier) error {
 	tailer, err := haproxylog.NewTailerAtEnd(logPath)
 	if err != nil {
 		return err
 	}
 	r := &security.Runner{
-		Store:   s,
-		Engine:  security.NewEngine(security.DefaultThresholds()),
-		Tailer:  tailer,
-		Policy:  pe,
-		Intel:   intelOrNil(intel),
-		Anomaly: anomaly.NewTracker(anomaly.DefaultConfig(), s),
+		Store:    s,
+		Engine:   security.NewEngine(security.DefaultThresholds()),
+		Tailer:   tailer,
+		Policy:   pe,
+		Intel:    intelOrNil(intel),
+		Notifier: notifierOrNil(nf),
+		Anomaly:  anomaly.NewTracker(anomaly.DefaultConfig(), s),
 		RedisOpts: func() (redisping.Options, bool) {
 			rs, err := s.GetRedisSettings()
 			if err != nil || rs.Host == "" {

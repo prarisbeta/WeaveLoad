@@ -195,6 +195,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
+	mux.Handle("GET /reports/weekly", &web.WeeklyReportHandler{Store: ps, Templates: realTemplates(t)})
 	mux.Handle("GET /ask", &web.CopilotPageHandler{Templates: realTemplates(t), Enabled: true})
 	mux.Handle("POST /api/ai/ask", &web.CopilotAskHandler{
 		Provider: cannedProvider{}, Toolbox: &web.CopilotToolbox{Store: ps}, Engine: pe, Audit: ps, Templates: realTemplates(t),
@@ -250,6 +251,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 		{"config_backup_size", http.MethodGet, "/config", nil, "26.3 KiB"},
 		{"config_settings_mcp_url", http.MethodGet, "/config", nil, "/mcp"},
 		{"config_api_tokens_in_mcp_panel", http.MethodGet, "/config", nil, `id="api-tokens"`},
+		{"report_weekly.html", http.MethodGet, "/reports/weekly", nil, "Laporan Keamanan Mingguan"},
 		{"ask.html", http.MethodGet, "/ask", nil, "Tanya Gateway"},
 		{"ask_result.html", http.MethodPost, "/api/ai/ask", url.Values{"question": {"kenapa lambat?"}}, "Linimasa korelasi"},
 		{"ask_result_recs", http.MethodPost, "/api/ai/ask", url.Values{"question": {"kenapa lambat?"}}, "203.0.113.77"},

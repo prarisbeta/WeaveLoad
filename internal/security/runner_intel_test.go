@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"haproxy-gui/internal/notify"
 	"haproxy-gui/internal/threatintel"
 )
 
@@ -57,6 +58,20 @@ func TestCheckIntel_LiveScoreThreshold(t *testing.T) {
 	if r.checkIntel("198.51.100.2", time.Now(), true) {
 		t.Error("a low AbuseIPDB score must not")
 	}
+}
+
+type captureNotifier struct{ got []notify.Notice }
+
+func (c *captureNotifier) Notify(n notify.Notice) { c.got = append(c.got, n) }
+
+func TestNotifyDetection(t *testing.T) {
+	cn := &captureNotifier{}
+	r := &Runner{Notifier: cn}
+	r.notifyDetection(Detection{Rule: RuleThreatIntel, Severity: SeverityCritical, Subject: "9.9.9.9", Evidence: map[string]any{"mitre": []string{"T1190"}}})
+	if len(cn.got) != 1 || cn.got[0].Severity != "critical" || cn.got[0].Title != "threat_intel 9.9.9.9" || cn.got[0].Detail == "" {
+		t.Errorf("notices = %+v", cn.got)
+	}
+	(&Runner{}).notifyDetection(Detection{}) // no notifier: must not panic
 }
 
 func TestCheckIntel_NilIntelIsNoOp(t *testing.T) {
