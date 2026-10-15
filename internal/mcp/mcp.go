@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -183,6 +184,44 @@ func (s *Server) callTool(ctx context.Context, p CallToolParams) (map[string]any
 			path += "?minutes=" + strconv.FormatInt(n, 10)
 		}
 		return get(path)
+	case "get_traffic_timeseries":
+		q := url.Values{}
+		if n := intArg(p.Arguments["minutes"]); n > 0 {
+			q.Set("minutes", strconv.FormatInt(n, 10))
+		}
+		if n := intArg(p.Arguments["step_minutes"]); n > 0 {
+			q.Set("step", strconv.FormatInt(n, 10))
+		}
+		if b, _ := p.Arguments["backend"].(string); strings.TrimSpace(b) != "" {
+			q.Set("backend", strings.TrimSpace(b))
+		}
+		path := "/traffic/timeseries"
+		if len(q) > 0 {
+			path += "?" + q.Encode()
+		}
+		return get(path)
+	case "get_top_error_paths":
+		q := url.Values{}
+		if c, _ := p.Arguments["class"].(string); c != "" {
+			q.Set("class", c)
+		}
+		for _, arg := range []string{"lines", "limit"} {
+			if n := intArg(p.Arguments[arg]); n > 0 {
+				q.Set(arg, strconv.FormatInt(n, 10))
+			}
+		}
+		path := "/traffic/errors"
+		if len(q) > 0 {
+			path += "?" + q.Encode()
+		}
+		return get(path)
+	case "get_ip_profile":
+		ip, _ := p.Arguments["ip"].(string)
+		ip = strings.TrimSpace(ip)
+		if net.ParseIP(ip) == nil {
+			return nil, &Error{Code: CodeInvalidParams, Message: "A valid IP address is required"}
+		}
+		return get("/security/ip/" + url.PathEscape(ip))
 	case "get_active_sessions":
 		return get("/sessions")
 	case "list_incidents":

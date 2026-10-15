@@ -291,6 +291,13 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /api/v1/nodes", chain(&web.APIV1NodesHandler{Config: d.cfgfile, Stats: d.runtime}, requireAPI))
 	mux.Handle("GET /api/v1/sessions", chain(&web.APIV1SessionsHandler{Config: d.cfgfile, Stats: d.runtime}, requireAPI))
 	mux.Handle("GET /api/v1/waiting-room", chain(&web.APIV1WaitingRoomHandler{LogPath: d.cfg.LogPath}, requireAPI))
+	mux.Handle("GET /api/v1/traffic/timeseries", chain(&web.APIV1TrafficSeriesHandler{LogPath: d.cfg.LogPath}, requireAPI))
+	mux.Handle("GET /api/v1/traffic/errors", chain(&web.APIV1TrafficErrorsHandler{LogPath: d.cfg.LogPath}, requireAPI))
+	ipProfile := &web.APIV1IPProfileHandler{Store: d.store, LogPath: d.cfg.LogPath}
+	if d.intel != nil { // a nil *Service in the interface would not compare equal to nil
+		ipProfile.Intel = d.intel
+	}
+	mux.Handle("GET /api/v1/security/ip/{ip}", chain(ipProfile, requireAPI, requireViewSecurity))
 	mux.Handle("GET /api/v1/traffic", chain(&web.APIV1TrafficHandler{LogPath: d.cfg.LogPath}, requireAPI))
 	mux.Handle("GET /api/v1/incidents", chain(&web.APIV1IncidentsHandler{Store: d.store}, requireAPI, requireViewSecurity))
 	mux.Handle("GET /api/v1/incidents/{id}", chain(&web.APIV1IncidentDetailHandler{Store: d.store}, requireAPI, requireViewSecurity))

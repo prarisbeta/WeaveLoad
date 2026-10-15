@@ -35,6 +35,22 @@ func Tools() []Tool {
 			InputSchema: Schema{Type: "object", Properties: map[string]any{
 				"lines": map[string]any{"type": "integer", "description": "How many of the newest log lines to analyze (100-5000, default 1000)"},
 			}}, Annotations: readOnly},
+		{Name: "get_traffic_timeseries", Description: "Requests, 4xx errors, 5xx errors and average latency per time slice (oldest first, empty slices included), to place a spike, slowdown or outage in time. Optionally for one backend.",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{
+				"minutes":      map[string]any{"type": "integer", "description": "Window length in minutes (1-360, default 60)"},
+				"step_minutes": map[string]any{"type": "integer", "description": "Minutes per slice (default 1, or 5 for windows over 2 hours)"},
+				"backend":      str("Only this backend (optional)"),
+			}}, Annotations: readOnly},
+		{Name: "get_top_error_paths", Description: "Which paths and client IPs cause the most 4xx/5xx responses in recent traffic, with the status, backend and the top IP for each path.",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{
+				"class": str("4xx, 5xx or all (default all)"),
+				"lines": map[string]any{"type": "integer", "description": "How many of the newest log lines to analyze (100-5000, default 2000)"},
+				"limit": map[string]any{"type": "integer", "description": "Rows to return (1-25, default 10)"},
+			}}, Annotations: readOnly},
+		{Name: "get_ip_profile", Description: "Everything known about one client IP: risk score and state, recent security detections, threat intelligence when configured, and its recent request pattern (status mix, top paths).",
+			InputSchema: Schema{Type: "object", Properties: map[string]any{
+				"ip": str("IPv4 or IPv6 address"),
+			}, Required: []string{"ip"}}, Annotations: readOnly},
 		{Name: "get_waiting_room", Description: "Show how many visitors are held on the waiting page (HTTP 429) right now: visitors waiting, admitted and abandoned in the look-back window, 429 responses, longest wait, per-pool counts and the longest-waiting client IPs. Estimated from the access log, so counts are distinct client IPs.",
 			InputSchema: Schema{Type: "object", Properties: map[string]any{
 				"minutes": map[string]any{"type": "integer", "description": "Look-back window in minutes (1-60, default 10)"},

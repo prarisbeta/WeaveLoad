@@ -184,3 +184,10 @@ func TestAPIV1SessionsHandler_ReportsUnavailableStats(t *testing.T) {
 		t.Errorf("code = %d, want 503 when live stats are missing", rec.Code)
 	}
 }
+
+func decodeBody(t *testing.T, rec *httptest.ResponseRecorder, v any) {
+	t.Helper()
+	if err := json.Unmarshal(rec.Body.Bytes(), v); err != nil {
+		t.Fatalf("decode %q: %v", rec.Body.String(), err)
+	}
+}
