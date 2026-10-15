@@ -1,6 +1,6 @@
 # Panduan Deploy Rilis ke Server (HAProxy GUI / Konsol Gateway)
 
-Rilis `bbd75bc-sslfix6`: **perbaikan halaman /config (error .Size int64)**, **halaman Pengaturan digabung ke /config** (/settings dialihkan), **MCP bisa dikonfigurasi dari aplikasi pihak ketiga** (token API di Pengaturan, endpoint HTTP `POST /mcp`, lihat `docs/MCP_INTEGRATION.md`), halaman login menampilkan form dan tombol SSO lagi, hapus sertifikat dari GUI, perbaikan upload SSL (HTTP 500), pemasangan sertifikat dari GUI, 2FA/manajemen user, traffic, alerts, AI investigation, serta sistem snapshot/rollback di server.
+Rilis `284ed39-cti`: **CTI bawaan (signature serangan + MITRE, aturan `threat_intel`) dan analisis AI Gemini opsional**, token API digabung ke panel MCP, **perbaikan halaman /config (error .Size int64)**, **halaman Pengaturan digabung ke /config** (/settings dialihkan), **MCP bisa dikonfigurasi dari aplikasi pihak ketiga** (token API di Pengaturan, endpoint HTTP `POST /mcp`, lihat `docs/MCP_INTEGRATION.md`), halaman login menampilkan form dan tombol SSO lagi, hapus sertifikat dari GUI, perbaikan upload SSL (HTTP 500), pemasangan sertifikat dari GUI, 2FA/manajemen user, traffic, alerts, AI investigation, serta sistem snapshot/rollback di server.
 
 ---
 
@@ -8,23 +8,23 @@ Rilis `bbd75bc-sslfix6`: **perbaikan halaman /config (error .Size int64)**, **ha
 
 | Nama Berkas | Lokasi Lokal | SHA256 |
 | :--- | :--- | :--- |
-| **Tarball** | `dist/haproxy-gui-bbd75bc-sslfix6.tar.gz` | `a47bc114f3a479afa5a69a81ea0a5de43627e2bddfc0100733db69110aafc94f` |
-| **haproxy-gui** | `dist/haproxy-gui-bbd75bc-sslfix6/bin/haproxy-gui` | `8f88e23fcce32338aef9c06085361f848cb35524cca3c1385b6c1589b0122f94` |
-| **konsolgw-mcp** | `dist/haproxy-gui-bbd75bc-sslfix6/bin/konsolgw-mcp` | `50f56e9ac6be1518de2950560a087a8b5d29f9ff4ecabe18cac71204ecf6b004` |
+| **Tarball** | `dist/haproxy-gui-284ed39-cti.tar.gz` | `4342fca8c78107d45ab5d55d5bab4a07d1623ae25763f82b4d1c5cda637d4195` |
+| **haproxy-gui** | `dist/haproxy-gui-284ed39-cti/bin/haproxy-gui` | `2488794ee2c31d1f4abeb63df9b13a02cd46304d23d5997643ac43d459ca25b8` |
+| **konsolgw-mcp** | `dist/haproxy-gui-284ed39-cti/bin/konsolgw-mcp` | `50f56e9ac6be1518de2950560a087a8b5d29f9ff4ecabe18cac71204ecf6b004` |
 
 ---
 
 ### 🚀 Langkah 1: Upload (dari terminal lokal)
 
 ```bash
-scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix6.tar.gz dist/haproxy-gui-bbd75bc-sslfix6.tar.gz.sha256 programmer@103.31.159.8:/tmp/
+scp -P 2212 dist/haproxy-gui-284ed39-cti.tar.gz dist/haproxy-gui-284ed39-cti.tar.gz.sha256 programmer@103.31.159.8:/tmp/
 scp -P 2212 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/palapacloud.pem
 ```
 
 ### ⚙️ Langkah 2: Update + uji + snapshot otomatis (satu perintah)
 
 ```bash
-ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-bbd75bc-sslfix6.tar.gz.sha256 && rm -rf haproxy-gui-bbd75bc-sslfix6 && tar xzf haproxy-gui-bbd75bc-sslfix6.tar.gz && sudo bash haproxy-gui-bbd75bc-sslfix6/deploy/apply-release.sh --cert /tmp/palapacloud.pem'
+ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-284ed39-cti.tar.gz.sha256 && rm -rf haproxy-gui-284ed39-cti && tar xzf haproxy-gui-284ed39-cti.tar.gz && sudo bash haproxy-gui-284ed39-cti/deploy/apply-release.sh --cert /tmp/palapacloud.pem'
 ```
 
 `apply-release.sh` bekerja berurutan dan berhenti aman di setiap tahap:
