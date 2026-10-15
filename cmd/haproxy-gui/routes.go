@@ -136,7 +136,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /logs", chain(logHandler, requireAuth, requireViewLogs))
 
 	errPagesMgr := errorpages.NewManager("")
-	errorPagesHandler := &web.ErrorPagesHandler{Manager: errPagesMgr, Audit: d.store, Templates: d.templates}
+	errorPagesHandler := &web.ErrorPagesHandler{Manager: errPagesMgr, Audit: d.store, Templates: d.templates, Config: d.cfgfile}
 	mux.Handle("GET /config/error-pages", chain(errorPagesHandler, requireAuth, requireManageConfig))
 	mux.Handle("POST /api/config/error-pages/{code}", chain(&web.ErrorPageSaveAction{Manager: errPagesMgr, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("GET /api/config/error-pages/{code}/preview", &web.ErrorPagePreviewHandler{Manager: errPagesMgr})

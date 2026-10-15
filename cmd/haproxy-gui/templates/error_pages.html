@@ -11,10 +11,31 @@
   </div>
 </div>
 
+{{if .WiringChecked}}
+  {{if not .ActiveWiring.Referenced}}
+<div class="panel notice-bad" id="errorfile-warning" role="alert" style="margin-bottom:20px;">
+  <strong>{{t .Language "ep_wiring_missing_title"}}</strong>
+  <p style="margin:6px 0;">{{t .Language "ep_wiring_missing_body"}}</p>
+  <pre style="margin:6px 0;"><code>{{.Directive}}</code></pre>
+  <a href="/config" class="btn" style="font-size:12px; padding:6px 12px; text-decoration:none;">{{t .Language "ep_wiring_open_config"}}</a>
+</div>
+  {{else if not .ActiveWiring.PathMatches}}
+<div class="panel notice-bad" id="errorfile-warning" role="alert" style="margin-bottom:20px;">
+  <strong>{{t .Language "ep_wiring_path_title"}}</strong>
+  <p style="margin:6px 0;">{{t .Language "ep_wiring_path_body"}}</p>
+  <pre style="margin:6px 0;"><code>{{.Directive}}</code></pre>
+  <span class="muted" style="font-size:12px;">errorfile {{.ActiveCode}} <code>{{.ActiveWiring.Path}}</code></span>
+</div>
+  {{else}}
+<p class="hint" id="errorfile-reload-hint" style="margin:-8px 0 16px;">{{t .Language "ep_wiring_reload_hint"}}</p>
+  {{end}}
+{{end}}
+
 <div class="tabs" style="display:flex; gap:8px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:20px; flex-wrap:wrap;">
   {{range .Pages}}
   <a href="/config/error-pages?code={{.Code}}" class="tab-btn {{if eq .Code $.ActiveCode}}active{{end}}" style="text-decoration:none; padding:8px 16px; border-radius:8px; font-weight:600; font-size:13px; display:inline-flex; align-items:center; gap:6px; {{if eq .Code $.ActiveCode}}background:var(--accent); color:#fff;{{else}}background:rgba(255,255,255,0.05); color:var(--text);{{end}}">
     HTTP {{.Code}}
+    {{if $.WiringChecked}}{{if not (index $.WiringByCode .Code).Referenced}}<span class="badge badge-maint" title="{{t $.Language "ep_wiring_missing_title"}}">{{t $.Language "ep_wiring_tab_inactive"}}</span>{{end}}{{end}}
   </a>
   {{end}}
 </div>

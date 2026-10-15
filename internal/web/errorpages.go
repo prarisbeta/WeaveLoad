@@ -18,6 +18,9 @@ type ErrorPagesHandler struct {
 	Manager   *errorpages.Manager
 	Audit     AuditRecorder
 	Templates *template.Template
+	// Config, when set, lets the page warn about error pages that haproxy.cfg
+	// does not reference (HAProxy would then show its plain built-in page).
+	Config interface{ Active() (string, error) }
 }
 
 // ErrorPagesView holds data for rendering error pages management UI.
@@ -28,6 +31,13 @@ type ErrorPagesView struct {
 	ActiveCode int
 	SuccessMsg string
 	ErrorMsg   string
+
+	// WiringChecked is false when the active config could not be read, in which
+	// case no warning is shown rather than a wrong one.
+	WiringChecked bool
+	WiringByCode  map[int]errorpages.Wiring
+	ActiveWiring  errorpages.Wiring
+	Directive     string // the config line that would wire the active page
 }
 
 func (h *ErrorPagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -45,12 +55,21 @@ func (h *ErrorPagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		activeCode = activePage.Code
 	}
 
-	renderTemplate(w, h.Templates, "error_pages.html", ErrorPagesView{
+	view := ErrorPagesView{
 		Chrome:     NewChrome(r, "config"),
 		Pages:      pages,
 		ActivePage: activePage,
 		ActiveCode: activeCode,
-	})
+		Directive:  h.Manager.Directive(activeCode),
+	}
+	if h.Config != nil {
+		if content, err := h.Config.Active(); err == nil {
+			view.WiringChecked = true
+			view.WiringByCode = h.Manager.CheckWiring(content)
+			view.ActiveWiring = view.WiringByCode[activeCode]
+		}
+	}
+	renderTemplate(w, h.Templates, "error_pages.html", view)
 }
 
 // ErrorPageSaveAction saves an edited error page .http file to disk.
@@ -99,7 +118,7 @@ func (h *ErrorPageSaveAction) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":      true,
-		"message": fmt.Sprintf("Halaman error HTTP %d berhasil disimpan dan diperbarui.", code),
+		"message": fmt.Sprintf("Halaman error HTTP %d berhasil disimpan. HAProxy hanya memuat halaman error saat reload: jalankan Save & Apply di editor Config agar mulai dipakai.", code),
 		"code":    code,
 	})
 }
