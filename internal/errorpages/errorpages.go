@@ -173,6 +173,9 @@ Connection: close
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Safety net: if scripts are blocked (CSP, extensions), the browser still retries.
+       The script below normally navigates earlier, with a randomised delay. -->
+  <meta http-equiv="refresh" content="45">
   <title>Ruang Tunggu Antrean Kunjungan</title>
   <style>
     :root {
