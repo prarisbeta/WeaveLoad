@@ -175,8 +175,7 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 	mux.Handle("POST /api/pools/{name}/members/preview", &web.PoolMemberPreview{PoolService: svc})
 	mux.Handle("POST /api/pools/{name}/members/edit/preview", &web.PoolMemberEditPreview{PoolService: svc})
 	mux.Handle("POST /api/pools/new/preview", &web.PoolNewPreview{PoolService: svc})
-	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t)})
-	mux.Handle("GET /settings", &web.SettingsHandler{Store: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Templates: realTemplates(t), Tokens: fixedTokens{}})
+	mux.Handle("GET /config", &web.ConfigHandler{Config: fileConfig{string(cfgBytes)}, Templates: realTemplates(t), Settings: fixedSettings{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6379"}}, Tokens: fixedTokens{}})
 	mux.Handle("POST /api/settings/api-tokens", &web.APITokenCreateAction{Store: fixedTokens{}, Audit: noopAudit{}, Templates: realTemplates(t)})
 	mux.Handle("GET /login", &auth.LoginHandler{Templates: realTemplates(t)})
 	mux.Handle("GET /certs", &web.CertsHandler{Certs: fixedCerts{}, Templates: realTemplates(t)})
@@ -210,9 +209,11 @@ func TestPoolPagesRenderWithRealTemplates(t *testing.T) {
 			url.Values{"current_name": {"node01"}, "name": {"node01"}, "host": {"192.168.200.108"}, "port": {"443"}, "weight": {"50"}},
 			"weight 50"},
 		{"config.html", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
-		{"settings.html", http.MethodGet, "/settings", nil, "10.0.0.5"},
-		{"settings_tokens", http.MethodGet, "/settings", nil, "n8n-prod"},
-		{"settings_tokens_mcp_url", http.MethodGet, "/settings", nil, "/mcp"},
+		{"config_settings_redis", http.MethodGet, "/config", nil, "10.0.0.5"},
+		{"config_settings_tokens", http.MethodGet, "/config", nil, "n8n-prod"},
+		{"config_settings_anchor", http.MethodGet, "/config", nil, `id="settings"`},
+		{"config_still_has_editor", http.MethodGet, "/config", nil, "Restart layanan HAProxy"},
+		{"config_settings_mcp_url", http.MethodGet, "/config", nil, "/mcp"},
 		{"api_token_result.html", http.MethodPost, "/api/settings/api-tokens", url.Values{"name": {"claude-code"}}, "kgw_plaintextplaintextplaintext"},
 		{"login.html", http.MethodGet, "/login", nil, `href="/auth/login"`},
 		{"certs.html", http.MethodGet, "/certs", nil, "palapacloud.id.pem"},

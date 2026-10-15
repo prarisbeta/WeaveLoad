@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"html/template"
 	"net/http"
 	"net/http/httptest"
@@ -347,5 +348,64 @@ func TestRestartServiceAction_Failure_502AndAudited(t *testing.T) {
 	}
 	if len(au.entries) != 1 || !strings.Contains(au.entries[0].Detail, "restart failed") {
 		t.Errorf("audit entries = %+v", au.entries)
+	}
+}
+
+// settingsConfigTemplates exposes what the merged /config page hands to the
+// settings sections.
+func settingsConfigTemplates(t *testing.T) *template.Template {
+	t.Helper()
+	return mustParse(t, `{{define "config.html"}}SHOW={{.ShowSettings}} host={{.Redis.Host}} tokens={{.ShowAPITokens}}/{{len .APITokens}} url={{.MCPURL}} cfg={{.Active}}{{end}}`)
+}
+
+func configPage(h *ConfigHandler, role store.Role) string {
+	req := httptest.NewRequest(http.MethodGet, "/config", nil)
+	req.Host = "gw.example:9443"
+	req = withUser(req, store.User{Email: "u@x.id", Role: role})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Body.String()
+}
+
+func TestConfigHandler_MergesSettingsForUsersWhoMayManageThem(t *testing.T) {
+	h := &ConfigHandler{
+		Config:    &fakeConfigStore{active: "global\n"},
+		Templates: settingsConfigTemplates(t),
+		Settings:  &fakeSettingsStore{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6380"}},
+		Tokens:    &fakeTokenStore{list: []store.APIToken{{ID: 1, Name: "a"}}},
+	}
+
+	got := configPage(h, store.RolePlatformAdmin)
+	for _, want := range []string{"SHOW=true", "host=10.0.0.5", "tokens=true/1", "url=http://gw.example:9443/mcp", "cfg=global"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("admin page missing %q: %s", want, got)
+		}
+	}
+
+	// SRE may edit the config but holds no manage_settings.
+	got = configPage(h, store.RoleSRE)
+	if !strings.Contains(got, "SHOW=false") || strings.Contains(got, "host=10.0.0.5") || !strings.Contains(got, "cfg=global") {
+		t.Errorf("sre page = %s, want the editor without any settings data", got)
+	}
+}
+
+func TestConfigHandler_WithoutSettingsWiredStillRenders(t *testing.T) {
+	h := &ConfigHandler{Config: &fakeConfigStore{active: "global\n"}, Templates: settingsConfigTemplates(t)}
+	if got := configPage(h, store.RolePlatformAdmin); !strings.Contains(got, "SHOW=false") || !strings.Contains(got, "cfg=global") {
+		t.Errorf("page = %s", got)
+	}
+}
+
+func TestConfigHandler_SettingsFailureIs500(t *testing.T) {
+	h := &ConfigHandler{
+		Config:    &fakeConfigStore{active: "global\n"},
+		Templates: settingsConfigTemplates(t),
+		Settings:  &fakeSettingsStore{getErr: errors.New("db locked")},
+	}
+	req := withUser(httptest.NewRequest(http.MethodGet, "/config", nil), store.User{Role: store.RolePlatformAdmin})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", rec.Code)
 	}
 }

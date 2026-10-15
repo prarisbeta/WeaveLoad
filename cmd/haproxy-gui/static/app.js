@@ -745,9 +745,11 @@
             JSON.stringify(mcpJson, null, 2) + "\n\n" +
             "# 3) Claude Desktop (lewat mcp-remote, butuh Node.js)\n" +
             JSON.stringify(viaProxy, null, 2) + "\n\n" +
-            "# 4) Uji cepat dari terminal\n" +
-            "curl -sk " + mcpUrl + ' -H "' + plainHdr + '" -H "Content-Type: application/json" -d \'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\'';
-          if (mcpTabHint) mcpTabHint.innerHTML = 'Endpoint MCP HTTP: <code>' + mcpUrl + '</code>. Butuh token dari <a href="/settings">Pengaturan → Token API</a>. Alamat ini hanya bisa dijangkau dari IP yang diizinkan (VPN); sertifikat self-signed perlu dipercaya klien (di Node: <code>NODE_EXTRA_CA_CERTS</code>, atau <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> hanya untuk uji).';
+            "# 4) Uji cepat: Linux/macOS/Git Bash\n" +
+            "curl -sk " + mcpUrl + ' -H "' + plainHdr + '" -H "Content-Type: application/json" -d \'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\'' + "\n\n" +
+            "# 4b) Windows cmd.exe (kutip tunggal tidak dikenali, pakai kutip ganda ber-escape)\n" +
+            "curl -sk " + mcpUrl + ' -H "' + plainHdr + '" -H "Content-Type: application/json" -d "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"tools/list\\"}"';
+          if (mcpTabHint) mcpTabHint.innerHTML = 'Endpoint MCP HTTP: <code>' + mcpUrl + '</code>. Butuh token dari <a href="/config#settings">Konfigurasi → Pengaturan → Token API</a>. Alamat ini hanya bisa dijangkau dari IP yang diizinkan (VPN); sertifikat self-signed perlu dipercaya klien (di Node: <code>NODE_EXTRA_CA_CERTS</code>, atau <code>NODE_TLS_REJECT_UNAUTHORIZED=0</code> hanya untuk uji).';
         }
         mcpSnippetArea.style.height = activeMcpTab === "remote" ? "300px" : "130px";
       }

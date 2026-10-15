@@ -40,6 +40,10 @@ type ConfigHandler struct {
 	Config    ConfigStore
 	Audit     AuditRecorder
 	Templates *template.Template
+	// Settings and Tokens, when set, add the settings sections (Redis queue,
+	// queue token, API tokens) to this page for users who hold manage_settings.
+	Settings SettingsStore
+	Tokens   APITokenStore
 }
 
 func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -49,12 +53,18 @@ func (h *ConfigHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	backups, _ := h.Config.ListBackups()
+	settings, err := loadSettingsData(r, h.Settings, h.Tokens)
+	if err != nil {
+		http.Error(w, "failed to load settings: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	renderTemplate(w, h.Templates, "config.html", struct {
 		Chrome
+		SettingsData
 		Active  string
 		Backups []cfgfile.Backup
-	}{Chrome: NewChrome(r, "config"), Active: active, Backups: backups})
+	}{Chrome: NewChrome(r, "config"), SettingsData: settings, Active: active, Backups: backups})
 }
 
 // ValidateAction handles "Validate" clicks: runs haproxy -c against the

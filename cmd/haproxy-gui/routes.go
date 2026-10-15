@@ -174,7 +174,7 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("POST /api/acl/delete", chain(&web.AclDeleteHandler{AclHandler: aclHandler}, requireAuth, requireRuntimeControl, auth.RequireCSRF))
 
 	// --- manage config (config editor, pools/members, rate limits, certs) ---
-	configHandler := &web.ConfigHandler{Config: d.cfgfile, Audit: d.store, Templates: d.templates}
+	configHandler := &web.ConfigHandler{Config: d.cfgfile, Audit: d.store, Templates: d.templates, Settings: d.store, Tokens: d.store}
 	mux.Handle("GET /config", chain(configHandler, requireAuth, requireManageConfig))
 	mux.Handle("POST /api/config/validate", chain(&web.ValidateAction{Config: d.cfgfile, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
 	mux.Handle("POST /api/config/apply", chain(&web.SaveApplyAction{Config: d.cfgfile, Audit: d.store, Templates: d.templates}, requireAuth, requireManageConfig, auth.RequireCSRF))
@@ -225,7 +225,8 @@ func buildRoutes(d routeDeps) http.Handler {
 	mux.Handle("GET /alerts", chain(&web.AlertsHandler{Store: d.store, Templates: d.templates}, requireAuth))
 	mux.Handle("POST /api/alerts/{id}/ack", chain(&web.AlertAckHandler{Store: d.store, Audit: d.store}, requireAuth, auth.RequireCSRF))
 
-	mux.Handle("GET /settings", chain(&web.SettingsHandler{Store: d.store, Templates: d.templates, Tokens: d.store}, requireAuth, requireManageSettings))
+	// Settings moved into the /config page; old links and bookmarks still work.
+	mux.Handle("GET /settings", chain(http.RedirectHandler("/config#settings", http.StatusFound), requireAuth))
 	mux.Handle("POST /api/settings/api-tokens", chain(&web.APITokenCreateAction{Store: d.store, Audit: d.store, Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/api-tokens/revoke", chain(&web.APITokenRevokeAction{Store: d.store, Audit: d.store}, requireAuth, requireManageSettings, auth.RequireCSRF))
 	mux.Handle("POST /api/settings/redis/test", chain(&web.RedisTestAction{Templates: d.templates}, requireAuth, requireManageSettings, auth.RequireCSRF))

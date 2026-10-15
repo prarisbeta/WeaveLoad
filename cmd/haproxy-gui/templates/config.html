@@ -11,6 +11,7 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"></path><circle cx="9" cy="10" r="1"></circle><circle cx="15" cy="10" r="1"></circle></svg>
       Setup MCP / AI
     </a>
+    {{if .ShowSettings}}<a href="#settings" class="btn" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">{{t .Language "nav_settings"}}</a>{{end}}
     <a href="/config/error-pages" class="btn primary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; font-weight:600;">
       {{t .Language "cfg_error_pages_btn"}}
     </a>
@@ -148,6 +149,12 @@
     {{template "config_backups.html" .}}
   </div>
 </div>
+
+{{if .ShowSettings}}
+<h2 id="settings" style="margin:28px 0 4px;">{{t .Language "settings_title"}}</h2>
+<p class="hint">{{t .Language "settings_desc"}}</p>
+{{template "settings_sections" .}}
+{{end}}
 {{end}}
 
 {{define "config_backups.html"}}

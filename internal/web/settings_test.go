@@ -43,22 +43,8 @@ func (f *fakeSettingsStore) SetQueueAPIToken(token string) error {
 func testSettingsTemplates(t *testing.T) *template.Template {
 	t.Helper()
 	return mustParse(t, `
-{{define "settings.html"}}SETTINGS host={{.Redis.Host}} port={{.Redis.Port}}{{end}}
 {{define "redis_test_result.html"}}OK={{.OK}} MSG={{.Message}}{{end}}
 `)
-}
-
-func TestSettingsHandler_RendersSavedRedisSettings(t *testing.T) {
-	ss := &fakeSettingsStore{redis: store.RedisSettings{Host: "10.0.0.5", Port: "6380"}}
-	h := &SettingsHandler{Store: ss, Templates: testSettingsTemplates(t)}
-
-	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "host=10.0.0.5") {
-		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
-	}
 }
 
 func TestRedisTestAction_RequiresHostAndPort(t *testing.T) {

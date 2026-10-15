@@ -23,7 +23,7 @@ Keduanya memakai **token API** (bagian 2). Sebelum perbaikan ini tidak ada cara 
 
 ## 2. Membuat token
 
-1. Masuk sebagai admin, buka **Pengaturan → Token API**.
+1. Masuk sebagai admin, buka **Konfigurasi → Pengaturan → Token API**.
 2. Isi nama (mis. aplikasi yang memakainya), klik **Buat token**.
 3. Salin token (`kgw_...`) **sekarang**; tidak akan ditampilkan lagi.
 4. Satu token per aplikasi, supaya bisa dicabut sendiri-sendiri. Kolom *Terakhir dipakai* membantu menemukan token yang tidak terpakai.
@@ -76,6 +76,12 @@ curl -sk https://103.31.159.8:9443/mcp \
   -H "Authorization: Bearer kgw_..." -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
+
+Windows `cmd.exe` tidak mengenali kutip tunggal, sehingga body terkirim dengan tanda kutip ikut dan dijawab `Parse error` (-32700). Pakai kutip ganda ber-escape:
+```bat
+curl -sk https://103.31.159.8:9443/mcp -H "Authorization: Bearer kgw_..." -H "Content-Type: application/json" -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}"
+```
+Jawaban `Parse error` justru menandakan token diterima (token salah dijawab HTTP 401).
 
 ### Catatan jaringan dan TLS
 * **Jangkauan.** Alamat `:9443` hanya menerima IP di `/etc/haproxy/maps/admin_allow.lst` (VPN). Aplikasi cloud (mis. claude.ai web) tidak bisa menjangkaunya kecuali IP-nya diizinkan atau gateway dipublikasikan lewat jalur lain; itu keputusan jaringan, bukan perubahan aplikasi.

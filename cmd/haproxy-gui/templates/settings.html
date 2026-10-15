@@ -1,8 +1,5 @@
-{{define "settings.html"}}{{template "chrome_header" .}}{{template "settings_content" .}}{{template "chrome_footer" .}}{{end}}
 
-{{define "settings_content"}}
-<h1>{{t .Language "settings_title"}}</h1>
-<p class="hint">{{t .Language "settings_desc"}}</p>
+{{define "settings_sections"}}
 
 <div class="panel">
   <h3>{{t .Language "settings_redis_title"}}</h3>

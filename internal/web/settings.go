@@ -23,42 +23,50 @@ type SettingsStore interface {
 	SetQueueAPIToken(string) error
 }
 
-// SettingsHandler renders the Settings page — currently just the Redis
-// queue connection, admin-only like every other app-level configuration.
-type SettingsHandler struct {
-	Store     SettingsStore
-	Templates *template.Template
-	// Tokens, when set, adds the API token section (third-party / MCP access).
-	Tokens APITokenStore
+// SettingsData is what the settings sections of the /config page render: the
+// Redis queue connection, the queue consumption token, and the API tokens for
+// third-party apps and MCP. They used to be a separate /settings page.
+type SettingsData struct {
+	ShowSettings  bool // the viewer holds manage_settings and the stores are wired
+	Redis         store.RedisSettings
+	QueueTokenSet bool
+	ShowAPITokens bool
+	APITokens     []store.APIToken
+	MCPURL        string
+	APIURL        string
 }
 
-func (h *SettingsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rs, err := h.Store.GetRedisSettings()
-	if err != nil {
-		http.Error(w, "failed to load settings: "+err.Error(), http.StatusInternalServerError)
-		return
+// loadSettingsData gathers the settings sections for r's user. It returns the
+// zero value (ShowSettings false) for a user without manage_settings, so the
+// section simply is not rendered for them; the POST actions enforce the
+// capability on their own.
+func loadSettingsData(r *http.Request, ss SettingsStore, tokens APITokenStore) (SettingsData, error) {
+	u, _ := auth.UserFromContext(r.Context())
+	if ss == nil || !u.Role.Can(store.CapManageSettings) {
+		return SettingsData{}, nil
 	}
-	token, err := h.Store.GetQueueAPIToken()
+	rs, err := ss.GetRedisSettings()
 	if err != nil {
-		http.Error(w, "failed to load settings: "+err.Error(), http.StatusInternalServerError)
-		return
+		return SettingsData{}, fmt.Errorf("load settings: %w", err)
 	}
-	var tokens []store.APIToken
-	if h.Tokens != nil {
-		if tokens, err = h.Tokens.ListAPITokens(); err != nil {
-			http.Error(w, "failed to load API tokens: "+err.Error(), http.StatusInternalServerError)
-			return
+	queueToken, err := ss.GetQueueAPIToken()
+	if err != nil {
+		return SettingsData{}, fmt.Errorf("load settings: %w", err)
+	}
+	d := SettingsData{
+		ShowSettings:  true,
+		Redis:         rs,
+		QueueTokenSet: queueToken != "",
+		MCPURL:        publicURL(r) + "/mcp",
+		APIURL:        publicURL(r) + "/api/v1",
+	}
+	if tokens != nil {
+		if d.APITokens, err = tokens.ListAPITokens(); err != nil {
+			return SettingsData{}, fmt.Errorf("load API tokens: %w", err)
 		}
+		d.ShowAPITokens = true
 	}
-	renderTemplate(w, h.Templates, "settings.html", struct {
-		Chrome
-		Redis         store.RedisSettings
-		QueueTokenSet bool
-		ShowAPITokens bool
-		APITokens     []store.APIToken
-		MCPURL        string
-		APIURL        string
-	}{Chrome: NewChrome(r, "settings"), Redis: rs, QueueTokenSet: token != "", ShowAPITokens: h.Tokens != nil, APITokens: tokens, MCPURL: publicURL(r) + "/mcp", APIURL: publicURL(r) + "/api/v1"})
+	return d, nil
 }
 
 func redisSettingsFromForm(r *http.Request) store.RedisSettings {

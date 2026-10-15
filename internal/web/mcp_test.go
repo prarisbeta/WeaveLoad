@@ -121,27 +121,6 @@ func TestAPITokenRevoke(t *testing.T) {
 	}
 }
 
-func TestSettingsHandler_ListsAPITokensOnlyWhenWired(t *testing.T) {
-	tpl := mustParse(t, `{{define "settings.html"}}SHOW={{.ShowAPITokens}} N={{len .APITokens}} URL={{.MCPURL}}{{end}}`)
-	req := func() *http.Request {
-		r := httptest.NewRequest(http.MethodGet, "/settings", nil)
-		r.Host = "gw.example:9443"
-		return r
-	}
-
-	rec := httptest.NewRecorder()
-	(&SettingsHandler{Store: &fakeSettingsStore{}, Templates: tpl}).ServeHTTP(rec, req())
-	if !strings.Contains(rec.Body.String(), "SHOW=false N=0") {
-		t.Errorf("without Tokens: %q", rec.Body.String())
-	}
-
-	rec = httptest.NewRecorder()
-	(&SettingsHandler{Store: &fakeSettingsStore{}, Templates: tpl, Tokens: &fakeTokenStore{list: []store.APIToken{{ID: 1, Name: "a"}}}}).ServeHTTP(rec, req())
-	if !strings.Contains(rec.Body.String(), "SHOW=true N=1 URL=http://gw.example:9443/mcp") {
-		t.Errorf("with Tokens: %q", rec.Body.String())
-	}
-}
-
 // --- proposals ---
 
 type fakeProposalStore struct {
