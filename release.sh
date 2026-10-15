@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-VER=$(git rev-parse --short HEAD)
+VER="${VER:-$(git rev-parse --short HEAD)}"
 IMG=golang:1.26-alpine
 
 echo "==> building bin/haproxy-gui (linux/amd64, static) at $VER"

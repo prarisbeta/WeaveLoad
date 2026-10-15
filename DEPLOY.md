@@ -1,82 +1,80 @@
-# Panduan Deploy Rilis Terbaru ke Server (HAProxy GUI / Konsol Gateway)
+# Panduan Deploy Rilis ke Server (HAProxy GUI / Konsol Gateway)
 
-Paket rilis biner statis Linux amd64 telah siap dikompilasi beserta template *error files*, MCP server binary, root helpers, dan file konfigurasi.
+Rilis `bbd75bc-sslfix2`: perbaikan upload SSL (HTTP 500 pada hasil upload), pemasangan sertifikat dari GUI, 2FA/manajemen user, traffic, alerts, AI investigation, serta sistem snapshot/rollback di server.
 
 ---
 
-### 📦 Berkas Rilis Siap Upload
+### 📦 Berkas Rilis
 
-| Nama Berkas | Lokasi Lokal | SHA256 Checksum |
+| Nama Berkas | Lokasi Lokal | SHA256 |
 | :--- | :--- | :--- |
-| **Tarball Rilis** | `dist/haproxy-gui-62fe96b.tar.gz` | `fca95f26d4c1645afb6a322afe35fefcdc4bd75c24bdd7755f31e4062f9b84b0` |
-| **Checksum SHA256** | `dist/haproxy-gui-62fe96b.tar.gz.sha256` | — |
-| **Biner Utama Linux** | `dist/haproxy-gui-62fe96b/bin/haproxy-gui` | `8ae2735e8c4b6be2191cc7d9546a0eefd80884ad8f9b665dfa2dc24b957e4aae` |
-| **Biner MCP Server** | `dist/haproxy-gui-62fe96b/bin/konsolgw-mcp` | `c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df` |
+| **Tarball** | `dist/haproxy-gui-bbd75bc-sslfix2.tar.gz` | `d06056b938f871dd6bfb1b6e71c8b853f7dfd9438959b4f5b9ecd21e457d1b1b` |
+| **haproxy-gui** | `dist/haproxy-gui-bbd75bc-sslfix2/bin/haproxy-gui` | `191dba33cfabe4d942c94504a4dee29ecd5f9be0743d960ab017705fea461264` |
+| **konsolgw-mcp** | `dist/haproxy-gui-bbd75bc-sslfix2/bin/konsolgw-mcp` | `c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df` |
 
 ---
 
-### 🚀 Langkah 1: Upload Berkas Rilis ke Server
-
-Jalankan perintah ini dari terminal lokal Anda (PowerShell / Git Bash / Command Prompt):
+### 🚀 Langkah 1: Upload (dari terminal lokal)
 
 ```bash
-scp -P 2212 dist/haproxy-gui-62fe96b.tar.gz dist/haproxy-gui-62fe96b.tar.gz.sha256 programmer@103.31.159.8:/tmp/
+scp -P 2212 dist/haproxy-gui-bbd75bc-sslfix2.tar.gz dist/haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 "C:/Users/User/Downloads/palapacloud.id.pem" programmer@103.31.159.8:/tmp/
+```
+
+### ⚙️ Langkah 2: Update + uji + snapshot otomatis (satu perintah)
+
+```bash
+ssh -t -p 2212 programmer@103.31.159.8 'cd /tmp && sha256sum -c haproxy-gui-bbd75bc-sslfix2.tar.gz.sha256 && rm -rf haproxy-gui-bbd75bc-sslfix2 && tar xzf haproxy-gui-bbd75bc-sslfix2.tar.gz && sudo bash haproxy-gui-bbd75bc-sslfix2/deploy/apply-release.sh --cert /tmp/palapacloud.id.pem'
+```
+
+`apply-release.sh` bekerja berurutan dan berhenti aman di setiap tahap:
+
+1. Memasang alat snapshot `/usr/local/sbin/haproxy-gui-snapshot`.
+2. **Snapshot** kondisi saat ini ke `/var/backups/haproxy-gui/` (biner, helper, sudoers, unit, `env`, `haproxy.cfg`, folder `ssl`/`errors`/`maps`, dan database `app.db`). GUI dihentikan sebentar agar database konsisten; **HAProxy tidak dihentikan**. Jika snapshot gagal, update dibatalkan sebelum ada yang berubah.
+3. Memasang biner, helper root, aturan sudoers, dan unit.
+4. Restart `haproxy-gui`.
+5. **Uji otomatis**: `GET /login` = 200, service aktif, `/traffic` `/alerts` `/certs` meminta login, sudoers mengizinkan helper pemasang sertifikat, `haproxy -c` lolos, tidak ada panic/fatal di log. **Jika ada yang gagal, otomatis rollback ke snapshot.**
+6. Jika `--cert` diberikan dan berkas dengan nama yang sama sudah ada di `/etc/haproxy/ssl/`, sertifikat diganti lewat helper (cadangkan yang lama, `haproxy -c`, reload, rollback otomatis bila gagal). Jika namanya belum ada, hanya disiapkan di staging.
+
+### ⏪ Rollback manual kapan saja
+
+```bash
+sudo haproxy-gui-snapshot list
+sudo haproxy-gui-snapshot restore <nama-snapshot>      # atau: latest
+```
+
+Restore juga membuat snapshot `pre-restore` terlebih dahulu, jadi restore itu sendiri bisa dibatalkan. Berkas yang baru ada setelah snapshot (mis. helper baru, sertifikat baru) ikut dihapus, dan database kembali ke isi saat snapshot.
+
+---
+
+### 🔑 Akun admin awal (PENTING)
+
+Akun lokal `konsolgw` (Super Admin) **dibuat hanya jika belum ada** dan tidak pernah ditimpa saat restart. Password awalnya:
+
+* dari `KONSOLGW_BOOTSTRAP_PASSWORD` di `/etc/haproxy-gui/env` bila diisi, atau
+* acak dan dicatat **sekali** di log: `sudo journalctl -u haproxy-gui | grep "created local admin"`.
+
+Ganti password setelah login pertama. Tidak ada lagi password tetap bawaan.
+
+---
+
+### 🔐 Memasang sertifikat lewat GUI (alternatif, tanpa `--cert`)
+
+Berkas `palapacloud.id.pem` adalah bundle lengkap (leaf → intermediate → root → private key), CN `*.palapacloud.id`, valid s/d 2 Apr 2027.
+
+1. Buka **Sertifikat SSL** (`/certs`) sebagai admin.
+2. Nama berkas `palapacloud.id.pem` (nama sama dengan di `/etc/haproxy/ssl/` agar menggantikan yang lama; `bind ... crt` tidak perlu diubah), pilih berkasnya, **Unggah & validasi**.
+3. Muat ulang halaman, di daftar **Siap dipasang** klik **Pasang & reload**.
+4. Verifikasi:
+```bash
+echo | openssl s_client -connect 127.0.0.1:443 -servername palapacloud.id 2>/dev/null | openssl x509 -noout -subject -dates
 ```
 
 ---
 
-### ⚙️ Langkah 2: Eksekusi Pemasangan di Server
-
-Login ke server melalui SSH:
-```bash
-ssh -p 2212 programmer@103.31.159.8
-```
-
-Lalu jalankan rangkaian perintah berikut:
+### 🧰 Backup & restore kode sumber (di mesin pengembang)
 
 ```bash
-cd /tmp
-
-# 1. Verifikasi integritas paket rilis
-sha256sum -c haproxy-gui-62fe96b.tar.gz.sha256
-
-# 2. Ekstrak paket rilis
-rm -rf haproxy-gui-62fe96b
-tar xzf haproxy-gui-62fe96b.tar.gz
-
-# 3. Verifikasi checksum biner
-sha256sum haproxy-gui-62fe96b/bin/haproxy-gui
-# Output harus sama dengan: 8ae2735e8c4b6be2191cc7d9546a0eefd80884ad8f9b665dfa2dc24b957e4aae
-
-sha256sum haproxy-gui-62fe96b/bin/konsolgw-mcp
-# Output harus sama dengan: c74bbca3e268c9fd273345bfa5ea08f67ad741cc54159e0dcaeb91793a1b23df
-
-# 4. Pasang biner baru
-sudo install -o root -g root -m 755 haproxy-gui-62fe96b/bin/haproxy-gui /usr/local/bin/haproxy-gui
-sudo install -o root -g root -m 755 haproxy-gui-62fe96b/bin/konsolgw-mcp /usr/local/bin/konsolgw-mcp
-
-# 5. Pasang template Error Pages (Waiting Room & Custom Error Pages)
-sudo mkdir -p /etc/haproxy/errors
-sudo cp -r haproxy-gui-62fe96b/deploy/errors/*.http /etc/haproxy/errors/ 2>/dev/null || true
-sudo chown -R root:haproxy /etc/haproxy/errors
-sudo chmod 644 /etc/haproxy/errors/*.http
-
-# 6. Pastikan direktori cadangan terisolasi & terenkripsi
-sudo mkdir -p /etc/haproxy/backups
-sudo chown -R root:haproxy /etc/haproxy/backups
-sudo chmod 775 /etc/haproxy/backups
-
-# 7. Restart service HAProxy GUI & cek status
-sudo systemctl restart haproxy-gui
-sudo journalctl -u haproxy-gui -n 20 --no-pager
+bash scripts/backup-source.sh [label]        # snapshot seluruh pohon kerja ke ../haproxy-cni-gui-backups
+bash scripts/backup-source.sh list
+bash scripts/restore-source.sh <nama|latest> [--dry-run] [--yes] [--with-git]
 ```
-
----
-
-### ✅ Fitur yang Terintegrasi di Rilis `62fe96b`:
-1. **🔒 Sistem Cadangan Terenkripsi (AES-256-GCM)**: Seluruh berkas cadangan disimpan di folder terisolasi `/etc/haproxy/backups/`, terenkripsi di disk, dengan tombol Unduh (dekripsi on-the-fly), Rollback instan, dan Hapus.
-2. **🤖 Setup & Integrasi Model Context Protocol (MCP)**: Biner `konsolgw-mcp`, panel setup interaktif pada `/config` dengan generator config untuk Antigravity/Claude/Cursor dan test live endpoint.
-3. **🚨 Incident Management & Evidence Bundle**: Halaman `/incidents`, linimasa catatan, korelasi kejadian keamanan otomatis, serta ekspor JSON dan CSV.
-4. **🪑 Waiting Room & Error Pages Management (`/config/error-pages`)**: Live interactive previewer HTTP 429, 503, 502, 504, 403, 400.
-5. **🌐 Framework Multi-Bahasa i18n**: Dukungan antarmuka Bahasa Indonesia dan English.
-6. **➕ F5-Style Pool & Node Management**: Wizard pool baru multi-node, inline member edit, batch host maintenance, dan dynamic routing.
